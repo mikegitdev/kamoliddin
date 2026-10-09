@@ -29,13 +29,18 @@ class OTPRequestView(APIView):
         serializer.is_valid(raise_exception=True)
         try:
             ip = request.META.get("REMOTE_ADDR", "")
-            request_otp(serializer.validated_data["phone"], ip=ip)
+            challenge = request_otp(serializer.validated_data["phone"], ip=ip)
         except (OTPError, ValueError):
             # Generic response; never reveal phone existence or throttle internals.
             return Response({"detail": "If the number is valid, an SMS code has been sent."},
                             status=status.HTTP_202_ACCEPTED)
-        return Response({"detail": "If the number is valid, an SMS code has been sent."},
-                        status=status.HTTP_202_ACCEPTED)
+        payload = {"detail": "If the number is valid, an SMS code has been sent."}
+        dev_code = getattr(challenge, "dev_code", None)
+        if dev_code:
+            # Dev/test stacks only: services.py gates this on the fake SMS
+            # adapter + OTP_DEV_ECHO (dev settings); prod never defines it.
+            payload["dev_code"] = dev_code
+        return Response(payload, status=status.HTTP_202_ACCEPTED)
 
 
 @extend_schema_view(

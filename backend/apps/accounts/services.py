@@ -73,6 +73,12 @@ def request_otp(raw_phone: str, *, ip: str = "") -> OTPChallenge:
         expires_at=now + timedelta(seconds=settings.OTP_CODE_TTL_SECONDS),
         resend_after=now + timedelta(seconds=settings.OTP_RESEND_AFTER_SECONDS),
     )
+    # Dev-only echo for the E2E suite (spec §9): stashed on the in-memory
+    # instance only — the DB keeps hashes, never plaintext. Double-gated:
+    # OTP_DEV_ECHO is defined solely in dev settings, and the provider must
+    # be the fake adapter. Prod can never satisfy either gate.
+    if settings.SMS_PROVIDER == "fake" and getattr(settings, "OTP_DEV_ECHO", False):
+        challenge.dev_code = code  # type: ignore[attr-defined]
     adapter = _sms_adapter()
     adapter.send_otp(
         phone_e164=phone,

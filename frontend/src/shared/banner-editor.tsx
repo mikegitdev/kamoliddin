@@ -126,6 +126,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
 
   // ---- pointer crop manipulation ----------------------------------------
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState<false | "move" | Handle>(false);
   const drag = useRef<{
     mode: "move" | Handle;
     sx: number;
@@ -137,10 +138,9 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
 
   const beginDrag = (mode: "move" | Handle) => (e: React.PointerEvent) => {
     const stage = stageRef.current;
-    if (!stage) return;
+    if (!stage || !src) return;
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     drag.current = {
       mode,
       sx: e.clientX,
@@ -149,53 +149,71 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
       w: stage.clientWidth,
       h: stage.clientHeight,
     };
+    setDragging(mode);
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d || !src) return;
-    const dx = (e.clientX - d.sx) / d.w;
-    const dy = (e.clientY - d.sy) / d.h;
-    const s = d.start;
+  // Window-level listeners while dragging: robust for mouse, touch and pen,
+  // independent of pointer capture and re-renders.
+  useEffect(() => {
+    if (!dragging || !src) return;
     const MIN = 0.04;
-    let { x, y, w, h } = s;
+    const ratioNow = ratio;
+    const kNow = k;
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d) return;
+      const dx = (e.clientX - d.sx) / d.w;
+      const dy = (e.clientY - d.sy) / d.h;
+      const s = d.start;
+      let { x, y, w, h } = s;
 
-    if (d.mode === "move") {
-      x = clamp(s.x + dx, 0, 1 - s.w);
-      y = clamp(s.y + dy, 0, 1 - s.h);
-    } else if (ratio === null) {
-      // free-form: each handle moves its own edges
-      if (d.mode.includes("e")) w = clamp(s.w + dx, MIN, 1 - s.x);
-      if (d.mode.includes("s")) h = clamp(s.h + dy, MIN, 1 - s.y);
-      if (d.mode.includes("w")) {
-        const nx = clamp(s.x + dx, 0, s.x + s.w - MIN);
-        w = s.w + (s.x - nx);
-        x = nx;
+      if (d.mode === "move") {
+        x = clamp(s.x + dx, 0, 1 - s.w);
+        y = clamp(s.y + dy, 0, 1 - s.h);
+      } else if (ratioNow === null) {
+        if (d.mode.includes("e")) w = clamp(s.w + dx, MIN, 1 - s.x);
+        if (d.mode.includes("s")) h = clamp(s.h + dy, MIN, 1 - s.y);
+        if (d.mode.includes("w")) {
+          const nx = clamp(s.x + dx, 0, s.x + s.w - MIN);
+          w = s.w + (s.x - nx);
+          x = nx;
+        }
+        if (d.mode.includes("n")) {
+          const ny = clamp(s.y + dy, 0, s.y + s.h - MIN);
+          h = s.h + (s.y - ny);
+          y = ny;
+        }
+      } else {
+        // aspect locked: corner handles only; h follows w (h = w * k)
+        const anchorX = d.mode.includes("w") ? s.x + s.w : s.x;
+        const anchorY = d.mode.includes("n") ? s.y + s.h : s.y;
+        const maxW = Math.min(
+          d.mode.includes("e") ? 1 - anchorX : anchorX,
+          1 / Math.max(kNow, 1e-6) // keep h = w * k within [0, 1]
+        );
+        const nw = clamp(d.mode.includes("e") ? s.w + dx : s.w - dx, MIN, maxW);
+        w = nw;
+        h = clamp(nw * kNow, MIN, 1);
+        if (d.mode.includes("w")) x = anchorX - nw;
+        if (d.mode.includes("n")) y = anchorY - h;
+        x = clamp(x, 0, 1 - w);
+        y = clamp(y, 0, 1 - h);
       }
-      if (d.mode.includes("n")) {
-        const ny = clamp(s.y + dy, 0, s.y + s.h - MIN);
-        h = s.h + (s.y - ny);
-        y = ny;
-      }
-    } else {
-      // aspect locked: corner handles only; h follows w (h = w * k)
-      const anchorX = d.mode.includes("w") ? s.x + s.w : s.x; // fixed edge
-      const anchorY = d.mode.includes("n") ? s.y + s.h : s.y;
-      let nw = d.mode.includes("e") ? s.w + dx : s.w - dx;
-      nw = clamp(nw, MIN, Math.min(1 - anchorX, anchorX, 1 / Math.max(k, 1e-6)));
-      w = nw;
-      h = clamp(nw * k, MIN, 1);
-      if (d.mode.includes("w")) x = anchorX - nw;
-      if (d.mode.includes("n")) y = anchorY - h;
-      x = clamp(x, 0, 1 - w);
-      y = clamp(y, 0, 1 - h);
-    }
-    setRect({ x, y, w, h });
-  };
-
-  const endDrag = () => {
-    drag.current = null;
-  };
+      setRect({ x, y, w, h });
+    };
+    const end = () => {
+      drag.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, [dragging, src, ratio, k]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!src) return;
@@ -332,18 +350,12 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
                 aria-label={t.beCropA11y}
                 onKeyDown={onKeyDown}
                 onPointerDown={beginDrag("move")}
-                onPointerMove={onPointerMove}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
               >
                 {handles.map((h) => (
                   <span
                     key={h}
                     className={`be-h be-h-${h}`}
                     onPointerDown={beginDrag(h)}
-                    onPointerMove={onPointerMove}
-                    onPointerUp={endDrag}
-                    onPointerCancel={endDrag}
                   />
                 ))}
               </div>

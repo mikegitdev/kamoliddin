@@ -38,7 +38,7 @@ export function StaffPage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
   const { data: user, isLoading } = useSession();
-  const [tab, setTab] = useState<Tab>("queue");
+  const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
   if (!isLoading && (!user || !user.is_staff)) {

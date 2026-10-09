@@ -148,9 +148,10 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/min",
+        "anon": "300/min",  # map browsing fires a request per pan/search
         "user": "120/min",
         "otp": "5/min",  # scoped rate for OTP request/verify (spec §9)
+        "report": "10/min",  # public complaint submissions
     },
     "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

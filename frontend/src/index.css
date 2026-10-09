@@ -1109,6 +1109,7 @@ a:hover {
   border-radius: 10px;
   background: var(--surface-subtle);
   overflow: hidden;
+  padding: 12px; /* keeps crop-handle hit areas inside the clip */
   user-select: none;
 }
 .be-imgwrap {

@@ -253,7 +253,7 @@ class PublicSearchView(APIView):
 class PublicReportView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_scope = "anon"
+    throttle_scope = "report"
 
     def post(self, request):
         entity = request.data.get("entity", "")
