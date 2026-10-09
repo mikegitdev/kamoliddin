@@ -116,7 +116,7 @@ export function BillingPage() {
                 <tr key={order.id}>
                   <td>{formatDateTime(order.created_at, locale)}</td>
                   <td style={{ maxWidth: 220, overflowWrap: "anywhere" }}>
-                    {order.campaign_headline}
+                    <Link to={`/app/orders/${order.id}`}>{order.campaign_headline}</Link>
                   </td>
                   <td>{formatMinor(order.amount_total, order.currency, locale)}</td>
                   <td>

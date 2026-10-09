@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.payments.models import PaymentAttempt
+
 from .models import Order, OrderItem
 
 
@@ -28,6 +30,31 @@ class OrderSerializer(serializers.ModelSerializer):
             "items", "created_at", "updated_at",
         )
         read_only_fields = fields
+
+
+class PaymentAttemptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentAttempt
+        fields = ("id", "provider", "provider_payment_id", "amount", "status",
+                  "created_at")
+        read_only_fields = fields
+
+
+class OrderDetailSerializer(OrderSerializer):
+    """Detail payload: adds the payment timeline and refund state (spec §5)."""
+
+    attempts = PaymentAttemptSerializer(many=True, read_only=True)
+    refund = serializers.SerializerMethodField()
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + ("attempts", "refund")
+
+    def get_refund(self, obj) -> dict | None:
+        refund = obj.refunds.order_by("-created_at").first()
+        if refund is None:
+            return None
+        return {"state": refund.state, "amount": refund.amount,
+                "reason": refund.reason, "created_at": refund.created_at}
 
 
 class QuoteRequestSerializer(serializers.Serializer):

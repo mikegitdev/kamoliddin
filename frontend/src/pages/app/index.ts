@@ -7,3 +7,4 @@ export { CampaignDetailPage } from "./CampaignDetailPage";
 export { CampaignEditorPage } from "./CampaignEditorPage";
 export { CheckoutPage } from "./CheckoutPage";
 export { BillingPage } from "./BillingPage";
+export { OrderDetailPage } from "./OrderDetailPage";

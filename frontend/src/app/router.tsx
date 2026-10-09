@@ -15,6 +15,7 @@ import {
   CampaignEditorPage,
   CheckoutPage,
   BillingPage,
+  OrderDetailPage,
 } from "@/pages/app";
 
 export function AppRouter() {
@@ -35,6 +36,7 @@ export function AppRouter() {
         <Route path="campaigns/:id/edit" element={<CampaignEditorPage />} />
         <Route path="checkout/:id" element={<CheckoutPage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="orders/:id" element={<OrderDetailPage />} />
       </Route>
       <Route path="/admin" element={<Navigate to="/admin/" replace />} />
       <Route path="*" element={<NotFoundPage />} />

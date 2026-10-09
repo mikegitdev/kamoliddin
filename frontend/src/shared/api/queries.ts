@@ -152,6 +152,56 @@ export function useAdLimit(enabled: boolean) {
   });
 }
 
+// ---------- Dashboard & order detail ----------
+
+export interface MeSummary {
+  campaigns: Record<string, number>;
+  active_placements: number;
+  expiring_soon: {
+    id: string;
+    campaign_id: string;
+    headline: string;
+    location: string;
+    ends_at: string;
+  }[];
+  spend: { total: number; month: number; currency: string };
+  next_renewal: {
+    agreement_id: string;
+    campaign_headline: string;
+    next_run_at: string;
+    locations_count: number;
+    charge_days: number;
+  } | null;
+}
+
+export function useMeSummary(enabled: boolean) {
+  return useQuery({
+    queryKey: ["me", "summary"],
+    queryFn: () => api<MeSummary>("/api/v1/auth/me/summary"),
+    enabled,
+  });
+}
+
+export interface ApiOrderDetail extends ApiOrder {
+  attempts: {
+    id: string;
+    provider: string;
+    provider_payment_id: string;
+    amount: number;
+    status: string;
+    created_at: string;
+  }[];
+  refund: { state: string; amount: number; reason: string; created_at: string } | null;
+}
+
+export function useOrder(id: string | undefined) {
+  return useQuery({
+    queryKey: ["order", id],
+    queryFn: () => api<ApiOrderDetail>(`/api/v1/orders/${id}`),
+    enabled: !!id,
+  });
+}
+
 // ---------- Advertiser cabinet ----------
 
 export function useBusinesses() {
@@ -184,14 +234,6 @@ export function useOrders() {
   return useQuery({
     queryKey: ["orders"],
     queryFn: () => api<ApiOrder[]>("/api/v1/orders"),
-  });
-}
-
-export function useOrder(id: string | undefined) {
-  return useQuery({
-    queryKey: ["order", id],
-    queryFn: () => api<ApiOrder>(`/api/v1/orders/${id}`),
-    enabled: !!id,
   });
 }
 

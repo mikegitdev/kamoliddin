@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useCampaign,
   useCampaignPlacements,
   useOrders,
+  useRenewals,
 } from "@/shared/api/queries";
+import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
 import { CampaignChip } from "@/shared/ui";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
@@ -36,10 +40,29 @@ const PLACEMENT_STATE_CLASS: Record<string, string> = {
 export function CampaignDetailPage() {
   const { t, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
   const { data: campaign, isLoading } = useCampaign(id);
   const { data: placements } = useCampaignPlacements(id);
   const { data: orders } = useOrders();
+  const { data: renewals } = useRenewals();
   const lang = locale as "ru" | "uz";
+  const agreement = (renewals ?? []).find((r) => r.campaign === id);
+  const [busy, setBusy] = useState(false);
+
+  const toggleRenewal = async () => {
+    if (!agreement) return;
+    setBusy(true);
+    try {
+      if (agreement.status === "active") {
+        await cancelRenewal(agreement.id);
+      } else {
+        await enableRenewal(agreement.id);
+      }
+      qc.invalidateQueries({ queryKey: ["renewals"] });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -154,6 +177,41 @@ export function CampaignDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {agreement && (
+        <div className="card" style={{ marginTop: 22 }}>
+          <div className="row-between">
+            <div>
+              <h2>🔁 {t.secRenewal}</h2>
+              <div className="muted-2">
+                📍 {agreement.locations_count} · {agreement.charge_days} × 24{t.hoursShort}
+              </div>
+              {agreement.status === "active" && agreement.next_run_at && (
+                <div className="chip blue" style={{ marginTop: 6 }}>
+                  {t.nextCharge}: {formatDateTime(agreement.next_run_at, lang)}
+                </div>
+              )}
+              {agreement.status === "alert" && (
+                <div className="chip red" style={{ marginTop: 6 }}>
+                  ⚠️ {t.renewalAlert}
+                </div>
+              )}
+            </div>
+            <div className="stack">
+              <span className={`chip ${agreement.status === "active" ? "green" : "gray"}`}>
+                {agreement.status === "active" ? t.renewalActive : t.renewalDisabled}
+              </span>
+              <button
+                className={`btn small ${agreement.status === "active" ? "" : "primary"}`}
+                disabled={busy}
+                onClick={toggleRenewal}
+              >
+                {agreement.status === "active" ? t.cancelRenewal : t.enableRenewal}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <h2 style={{ marginTop: 22 }}>{t.ordersSection}</h2>
       {campaignOrders.length === 0 && <p className="callout">💡 {t.noOrders}</p>}

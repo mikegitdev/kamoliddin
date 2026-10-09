@@ -6,7 +6,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Order
-from .serializers import CheckoutRequestSerializer, OrderSerializer, QuoteRequestSerializer
+from .serializers import (
+    CheckoutRequestSerializer,
+    OrderDetailSerializer,
+    OrderSerializer,
+    QuoteRequestSerializer,
+)
 from .services import (
     CheckoutError,
     RefundError,
@@ -34,7 +39,7 @@ class OrderListView(ListAPIView):
     get=extend_schema(tags=["Orders"], summary="Own order/payment status")
 )
 class OrderDetailView(RetrieveAPIView):
-    serializer_class = OrderSerializer
+    serializer_class = OrderDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_url_kwarg = "id"
 
@@ -42,7 +47,7 @@ class OrderDetailView(RetrieveAPIView):
         return (
             Order.objects.filter(business__owner=self.request.user)
             .select_related("business", "campaign")
-            .prefetch_related("items__location")
+            .prefetch_related("items__location", "attempts", "refunds")
         )
 
 

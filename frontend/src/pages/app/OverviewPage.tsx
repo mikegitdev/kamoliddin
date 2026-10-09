@@ -1,110 +1,105 @@
 import { Link } from "react-router-dom";
-import { useBusinesses, useCampaigns, useOrders } from "@/shared/api/queries";
+import { useBusinesses, useMeSummary } from "@/shared/api/queries";
+import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
 export function OverviewPage() {
-  const { t } = useI18n();
-  const { data: campaigns, isLoading } = useCampaigns();
-  const { data: orders } = useOrders();
+  const { t, locale } = useI18n();
+  const { data: summary, isLoading } = useMeSummary(true);
   const { data: businesses } = useBusinesses();
-
-  const count = (status: string) =>
-    campaigns?.filter((c) => c.review_status === status).length ?? 0;
-  const paidOrders = orders?.filter((o) => o.state === "paid").length ?? 0;
-
-  if (isLoading) {
-    return (
-      <section>
-        <div className="cards">
-          <div className="skeleton skeleton-card" />
-          <div className="skeleton skeleton-card" />
-          <div className="skeleton skeleton-card" />
-        </div>
-      </section>
-    );
-  }
-
-  // New advertiser: show the real setup path only after data has loaded.
-  if (businesses && businesses.length === 0) {
-    return (
-      <section>
-        <div className="card">
-          <div className="row-between">
-            <h2>{t.nextStep}</h2>
-          </div>
-          <div className="setup-checklist">
-            <div className="check-item">
-              <span className="check-num">1</span>
-              <span style={{ minWidth: 0 }}>{t.setupStep1}</span>
-              <Link to="/app/business" style={{ marginLeft: "auto" }}>
-                {t.business} →
-              </Link>
-            </div>
-            <div className="check-item">
-              <span className="check-num">2</span>
-              <span style={{ minWidth: 0 }}>{t.setupStep2}</span>
-              <Link to="/app/locations" style={{ marginLeft: "auto" }}>
-                {t.branches} →
-              </Link>
-            </div>
-            <div className="check-item">
-              <span className="check-num">3</span>
-              <span style={{ minWidth: 0 }}>{t.setupStep3}</span>
-              <Link to="/app/campaigns/new" style={{ marginLeft: "auto" }}>
-                {t.newCampaign} →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const lang = locale as "ru" | "uz";
 
   return (
     <section>
-      <div className="row-between" style={{ marginBottom: 14 }}>
-        <h2>{t.overview}</h2>
-        <Link to="/app/campaigns/new" className="btn primary">
-          + {t.newCampaign}
-        </Link>
-      </div>
+      {!businesses?.length && (
+        <p className="callout">
+          ℹ️ {t.createBusinessHint} — <Link to="/app/business">{t.business}</Link>
+        </p>
+      )}
 
-      {/* Honest metric: "approved" is moderation state, not public visibility
-          (payment and moderation are separate gates, spec §7.2). */}
-      <div className="cards">
-        <div className="stat-card tone-green">
-          <span className="num">{count("approved")}</span>
-          <span className="muted-2">{t.approvedLabel}</span>
-        </div>
-        <div className="stat-card tone-blue">
-          <span className="num">{count("submitted") + count("under_review")}</span>
-          <span className="muted-2">{t.pendingReview}</span>
-        </div>
-        <div className="stat-card tone-red">
-          <span className="num">{count("rejected")}</span>
-          <span className="muted-2">{t.rejectedLabel}</span>
-        </div>
-        <div className="stat-card">
-          <span className="num">{count("draft")}</span>
-          <span className="muted-2">{t.draftsLabel}</span>
-        </div>
-        <div className="stat-card tone-dark">
-          <span className="num">{paidOrders}</span>
-          <span className="muted-2">{t.paidOrdersLabel}</span>
-        </div>
-      </div>
+      {isLoading && <div className="skeleton skeleton-card" />}
 
-      <div className="quick-actions">
-        <Link to="/app/locations" className="btn">
-          + {t.addBranch}
-        </Link>
-        <Link to="/app/campaigns" className="btn">
-          {t.campaigns}
-        </Link>
-        <Link to="/app/billing" className="btn">
-          {t.billing}
-        </Link>
-      </div>
+      {summary && (
+        <>
+          <div className="cards">
+            <div className="stat-card">
+              <span className="icon">🟢</span>
+              <span className="num">{summary.active_placements}</span>
+              <span className="muted-2">{t.activePlacements}</span>
+            </div>
+            <div className="stat-card">
+              <span className="icon">⏳</span>
+              <span className="num">{summary.campaigns.submitted + summary.campaigns.under_review}</span>
+              <span className="muted-2">{t.pendingReview}</span>
+            </div>
+            <div className="stat-card">
+              <span className="icon">💰</span>
+              <span className="num" style={{ fontSize: "1.15rem" }}>
+                {formatMinor(summary.spend.total, summary.spend.currency, lang)}
+              </span>
+              <span className="muted-2">{t.totalSpent}</span>
+            </div>
+            <div className="stat-card">
+              <span className="icon">📅</span>
+              <span className="num" style={{ fontSize: "1.15rem" }}>
+                {formatMinor(summary.spend.month, summary.spend.currency, lang)}
+              </span>
+              <span className="muted-2">{t.thisMonth}</span>
+            </div>
+          </div>
+
+          {summary.expiring_soon.length > 0 && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <h2>⏳ {t.expiringSoon}</h2>
+              <ul className="list">
+                {summary.expiring_soon.map((p) => (
+                  <li key={p.id} className="row-between">
+                    <div>
+                      <Link to={`/app/campaigns/${p.campaign_id}`}>
+                        <strong>{p.headline}</strong>
+                      </Link>
+                      <div className="muted-2">📍 {p.location}</div>
+                    </div>
+                    <span className="chip orange">
+                      {formatDateTime(p.ends_at, lang)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {summary.next_renewal && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <h2>🔁 {t.nextCharge}</h2>
+              <div className="row-between">
+                <div>
+                  <strong>{summary.next_renewal.campaign_headline}</strong>
+                  <div className="muted-2">
+                    📍 {summary.next_renewal.locations_count} ·{" "}
+                    {summary.next_renewal.charge_days} × 24{t.hoursShort}
+                  </div>
+                </div>
+                <span className="chip blue">
+                  {formatDateTime(summary.next_renewal.next_run_at, lang)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="quick-actions">
+            <Link to="/app/campaigns/new" className="btn primary">
+              + {t.newCampaign}
+            </Link>
+            <Link to="/app/locations" className="btn">
+              + {t.addBranch}
+            </Link>
+            <Link to="/app/billing" className="btn">
+              {t.billing}
+            </Link>
+          </div>
+        </>
+      )}
     </section>
   );
 }
