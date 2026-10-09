@@ -105,3 +105,47 @@ def submit_for_review(*, campaign: Campaign) -> None:
         metadata={"content_version": campaign.review_version,
                   "at": timezone.now().isoformat()},
     )
+
+
+@transaction.atomic
+def suspend_campaign(*, campaign: Campaign, staff, reason: str) -> None:
+    """Admin takedown (spec §7.1): approved -> suspended. Public visibility is
+    computed live (approved-only), so a suspend hides every placement at once."""
+    if campaign.review_status != Campaign.ReviewStatus.APPROVED:
+        raise ModerationError(
+            f"Cannot suspend campaign in status {campaign.review_status!r}"
+        )
+    campaign.review_status = Campaign.ReviewStatus.SUSPENDED
+    campaign.save(update_fields=["review_status", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action="campaign.suspend", entity="campaign",
+        entity_id=str(campaign.id), metadata={"reason": reason},
+    )
+
+
+@transaction.atomic
+def unsuspend_campaign(*, campaign: Campaign, staff) -> None:
+    if campaign.review_status != Campaign.ReviewStatus.SUSPENDED:
+        raise ModerationError(
+            f"Cannot unsuspend campaign in status {campaign.review_status!r}"
+        )
+    campaign.review_status = Campaign.ReviewStatus.APPROVED
+    campaign.save(update_fields=["review_status", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action="campaign.unsuspend", entity="campaign",
+        entity_id=str(campaign.id), metadata={},
+    )
+
+
+@transaction.atomic
+def set_business_status(*, business, staff, status: str, reason: str) -> None:
+    """Disable/enable a business: disabling hides all its placements via the
+    live eligibility filter (business__status=active) — spec §7.2."""
+    if status not in {"active", "disabled"}:
+        raise ModerationError(f"Unsupported status {status!r}")
+    business.status = status
+    business.save(update_fields=["status", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action=f"business.{status}", entity="business",
+        entity_id=str(business.id), metadata={"reason": reason},
+    )

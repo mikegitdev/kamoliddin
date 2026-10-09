@@ -266,7 +266,7 @@ class PublicReportView(APIView):
                            "fields": {}}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        from apps.moderation.models import ActivityEvent
+        from apps.moderation.models import ActivityEvent, Report
 
         ActivityEvent.objects.create(
             actor=None,
@@ -274,5 +274,8 @@ class PublicReportView(APIView):
             entity=entity,
             entity_id=str(entity_id),
             metadata={"reason": reason[:2000]},
+        )
+        Report.objects.create(
+            entity=entity, entity_id=str(entity_id), reason=reason[:2000]
         )
         return Response({"detail": "Report received"}, status=status.HTTP_202_ACCEPTED)

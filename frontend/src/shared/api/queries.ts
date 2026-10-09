@@ -152,7 +152,104 @@ export function useAdLimit(enabled: boolean) {
   });
 }
 
-// ---------- Dashboard & order detail ----------
+// ---------- Staff admin panel (oversight) ----------
+
+export interface ApiReport {
+  id: string;
+  entity: string;
+  entity_id: string;
+  reason: string;
+  state: string;
+  resolution_note: string;
+  resolved_by_phone: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export function useReports(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "reports"],
+    queryFn: () => api<ApiReport[]>("/api/v1/admin/reports"),
+    enabled,
+  });
+}
+
+export interface ApiAdminCampaign {
+  id: string;
+  headline: string;
+  review_status: string;
+  review_version: number;
+  business_name: string;
+  owner_phone: string;
+  banner_url: string;
+  updated_at: string;
+}
+
+export function useAdminCampaigns(enabled: boolean, q: string, status: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["staff", "campaigns", q, status],
+    queryFn: () => api<ApiAdminCampaign[]>(`/api/v1/admin/campaigns${qs ? `?${qs}` : ""}`),
+    enabled,
+  });
+}
+
+export interface ApiAdminOrder {
+  id: string;
+  business_name: string;
+  campaign_headline: string;
+  amount_total: number;
+  currency: string;
+  state: string;
+  created_at: string;
+}
+
+export function useAdminOrders(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "orders"],
+    queryFn: () => api<ApiAdminOrder[]>("/api/v1/admin/orders"),
+    enabled,
+  });
+}
+
+export interface ApiActivity {
+  id: string;
+  action: string;
+  entity: string;
+  entity_id: string;
+  actor_phone: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export function useActivity(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "activity"],
+    queryFn: () => api<ApiActivity[]>("/api/v1/admin/activity"),
+    enabled,
+  });
+}
+
+export interface ApiAdminOverview {
+  queue_depth: number;
+  open_reports: number;
+  refunds_requested: number;
+  campaigns: Record<string, number>;
+  active_placements: number;
+  revenue: { total: number; month: number };
+  owners: number;
+}
+
+export function useAdminOverview(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "overview"],
+    queryFn: () => api<ApiAdminOverview>("/api/v1/admin/overview"),
+    enabled,
+  });
+}
 
 export interface MeSummary {
   campaigns: Record<string, number>;

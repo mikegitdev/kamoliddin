@@ -1,18 +1,38 @@
 from django.urls import path
 
 from .api import (
+    ActivityListView,
     AdLimitView,
+    AdminCampaignListView,
+    AdminOrderListView,
+    AdminOverviewView,
     CampaignReviewView,
+    CampaignSuspendView,
+    CampaignUnsuspendView,
     GrantView,
     RefundListView,
     RefundProcessView,
+    ReportListView,
+    ReportProcessView,
     ReviewQueueView,
 )
 
 urlpatterns = [
+    path("admin/overview", AdminOverviewView.as_view(), name="admin-overview"),
     path("admin/review-queue", ReviewQueueView.as_view(), name="admin-review-queue"),
+    path("admin/campaigns", AdminCampaignListView.as_view(),
+         name="admin-campaigns"),
     path("admin/campaigns/<uuid:id>/review", CampaignReviewView.as_view(),
          name="admin-campaign-review"),
+    path("admin/campaigns/<uuid:id>/suspend", CampaignSuspendView.as_view(),
+         name="admin-campaign-suspend"),
+    path("admin/campaigns/<uuid:id>/unsuspend", CampaignUnsuspendView.as_view(),
+         name="admin-campaign-unsuspend"),
+    path("admin/reports", ReportListView.as_view(), name="admin-reports"),
+    path("admin/reports/<uuid:id>/process", ReportProcessView.as_view(),
+         name="admin-report-process"),
+    path("admin/orders", AdminOrderListView.as_view(), name="admin-orders"),
+    path("admin/activity", ActivityListView.as_view(), name="admin-activity"),
     path("admin/grants", GrantView.as_view(), name="admin-grants"),
     path("admin/refunds", RefundListView.as_view(), name="admin-refunds"),
     path("admin/refunds/<uuid:id>/process", RefundProcessView.as_view(),

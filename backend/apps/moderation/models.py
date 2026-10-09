@@ -47,3 +47,39 @@ DEFAULT_SETTINGS = {
     "map_bbox_max_area_deg2": 1.0,   # bbox guard for /public/locations (spec §12)
     "public_locations_max_limit": 200,
 }
+
+
+class Report(models.Model):
+    """Public complaint work-queue (spec §12 admin block). The public endpoint
+    also writes an ActivityEvent for the immutable audit trail; this model is
+    the mutable queue staff actually works through."""
+
+    class Entity(models.TextChoices):
+        LOCATION = "location", "Location"
+        CAMPAIGN = "campaign", "Campaign"
+
+    class State(models.TextChoices):
+        OPEN = "open", "Open"
+        RESOLVED = "resolved", "Resolved (action taken)"
+        DISMISSED = "dismissed", "Dismissed (no violation)"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    entity = models.CharField(max_length=20, choices=Entity.choices)
+    entity_id = models.CharField(max_length=64)
+    reason = models.TextField()
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.OPEN)
+    resolution_note = models.TextField(blank=True, default="")
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="resolved_reports", null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [models.Index(fields=["state", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"Report {self.entity}:{self.entity_id} [{self.state}]"

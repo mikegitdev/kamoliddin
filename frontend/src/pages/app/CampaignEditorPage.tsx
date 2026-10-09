@@ -11,6 +11,7 @@ import {
   uploadMedia,
 } from "@/features/advertiser/api";
 import { localInputToIso } from "@/shared/format";
+import { BannerEditor } from "@/shared/banner-editor";
 import { useI18n } from "@/shared/i18n";
 import type { ApiCampaign } from "@/entities/types";
 
@@ -41,6 +42,8 @@ export function CampaignEditorPage() {
   const [body, setBody] = useState("");
   const [bannerKey, setBannerKey] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [rawFile, setRawFile] = useState<File | null>(null);
+  const [editingBanner, setEditingBanner] = useState(false);
   const [start, setStart] = useState(dates.start);
   const [end, setEnd] = useState(dates.end);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -217,9 +220,32 @@ export function CampaignEditorPage() {
             aria-describedby="ce-banner-hint"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) upload.mutate(file);
+              if (file && file.type.startsWith("image/")) {
+                setRawFile(file);
+                setEditingBanner(true);
+              }
+              e.target.value = "";
             }}
           />
+          {rawFile && !editingBanner && (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => setEditingBanner(true)}
+            >
+              ✎ {t.beEditAgain}
+            </button>
+          )}
+          {rawFile && editingBanner && (
+            <BannerEditor
+              file={rawFile}
+              onApply={(edited) => {
+                setEditingBanner(false);
+                upload.mutate(edited);
+              }}
+              onClose={() => setEditingBanner(false)}
+            />
+          )}
           {upload.isPending && <p className="muted-2">{t.loading}</p>}
           {fieldErrors.banner_key && (
             <span className="field-error" role="alert">
