@@ -75,7 +75,9 @@ export function CampaignsPage() {
             <div className="row" style={{ minWidth: 0 }}>
               <img className="thumb" src={c.banner_url} alt="" loading="lazy" />
               <div style={{ minWidth: 0 }}>
-                <strong style={{ overflowWrap: "anywhere" }}>{c.headline}</strong>
+                <Link to={`/app/campaigns/${c.id}`} style={{ fontWeight: 700, color: "inherit" }}>
+                  {c.headline}
+                </Link>
                 <div className="muted-2">
                   {c.business_name} · {formatDate(c.created_at, locale)}
                 </div>

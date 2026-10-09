@@ -65,6 +65,29 @@ export function useCampaign(id: string | undefined) {
   });
 }
 
+export interface ApiPlacement {
+  id: string;
+  location: string;
+  location_name: string;
+  location_business: string;
+  start_at: string;
+  end_at: string;
+  actual_start_at: string | null;
+  actual_end_at: string | null;
+  state: string;
+  source_type: "paid" | "grant";
+  charge_days: number;
+  created_at: string;
+}
+
+export function useCampaignPlacements(id: string | undefined) {
+  return useQuery({
+    queryKey: ["campaign", id, "placements"],
+    queryFn: () => api<ApiPlacement[]>(`/api/v1/campaigns/${id}/placements`),
+    enabled: !!id,
+  });
+}
+
 export interface ApiQueueCampaign {
   id: string;
   headline: string;
