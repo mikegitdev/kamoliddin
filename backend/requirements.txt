@@ -1,0 +1,15 @@
+# Pip fallback for the uv-first workflow (`uv sync` is preferred).
+# Kept in sync with pyproject.toml dependencies.
+Django~=5.2.0
+djangorestframework~=3.16.0
+drf-spectacular~=0.28.0
+django-filter~=25.1
+django-cors-headers~=4.7.0
+django-environ~=0.12.0
+django-storages[s3]~=1.14.0
+psycopg[binary]~=3.2.0
+celery[redis]~=5.5.0
+redis~=5.2.0
+Pillow~=11.2.0
+gunicorn~=23.0.0
+whitenoise~=6.9.0
