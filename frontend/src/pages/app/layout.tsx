@@ -20,6 +20,9 @@ export function AdvertiserLayout() {
   }
 
   const logout = async () => {
+    // Refresh the CSRF cookie first: a cleared cookie + live session would
+    // otherwise 403 the logout forever (found via browser testing).
+    await api("/api/v1/auth/csrf").catch(() => {});
     await api("/api/v1/auth/logout", { method: "POST", json: {} });
     navigate("/");
   };

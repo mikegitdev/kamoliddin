@@ -30,6 +30,7 @@ export function AppRouter() {
         <Route path="locations" element={<BranchesPage />} />
         <Route path="campaigns" element={<CampaignsPage />} />
         <Route path="campaigns/new" element={<CampaignEditorPage />} />
+        <Route path="campaigns/:id/edit" element={<CampaignEditorPage />} />
         <Route path="checkout/:id" element={<CheckoutPage />} />
         <Route path="billing" element={<BillingPage />} />
       </Route>

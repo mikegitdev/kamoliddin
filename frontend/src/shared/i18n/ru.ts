@@ -27,6 +27,7 @@ export const ru = {
   branches: "Точки на карте",
   campaigns: "Кампании",
   newCampaign: "Новая кампания",
+  editCampaign: "Редактировать",
   billing: "Оплаты",
   checkout: "Оплата",
   comingSoon: "Раздел в разработке",

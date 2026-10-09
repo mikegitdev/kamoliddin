@@ -57,6 +57,14 @@ export function useSession() {
 
 // ---------- Staff moderation (spec §12 admin block) ----------
 
+export function useCampaign(id: string | undefined) {
+  return useQuery({
+    queryKey: ["campaign", id],
+    queryFn: () => api<ApiCampaign>(`/api/v1/campaigns/${id}`),
+    enabled: !!id,
+  });
+}
+
 export interface ApiQueueCampaign {
   id: string;
   headline: string;

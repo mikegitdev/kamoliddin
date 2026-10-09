@@ -10,6 +10,18 @@ export default defineConfig({
       "@": new URL("./src", import.meta.url).pathname,
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1100, // maplibre-gl is ~1MB minified; isolated below
+    rollupOptions: {
+      output: {
+        // Split the heavy map engine into its own long-cacheable chunk.
+        manualChunks: {
+          maplibre: ["maplibre-gl"],
+          react: ["react", "react-dom", "react-router-dom"],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { useBusinessLocations, useBusinesses } from "@/shared/api/queries";
+import { useBusinessLocations, useBusinesses, useCampaign } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import {
   createCampaign,
@@ -24,14 +24,17 @@ function defaultDates(): { start: string; end: string } {
   return { start: fmt(start), end: fmt(end) };
 }
 
-/** New-campaign editor: content -> banner -> branches -> schedule -> renewal
- *  -> save/submit/quote. Server stays authoritative for prices and states. */
+/** Campaign editor: creates new drafts or edits an existing draft/rejected
+ *  campaign (/app/campaigns/:id/edit). Content edits on approved campaigns
+ *  bump review_version and force re-review (spec §7.1). */
 export function CampaignEditorPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const { id: editId } = useParams<{ id: string }>();
   const { data: businesses } = useBusinesses();
   const business = businesses?.[0];
   const { data: locations } = useBusinessLocations(business?.id);
+  const { data: editing } = useCampaign(editId);
 
   const dates = useMemo(defaultDates, []);
   const [headline, setHeadline] = useState("");
@@ -60,6 +63,16 @@ export function CampaignEditorPage() {
       setError(t.error);
     }
   };
+
+  // Prefill from the campaign being edited (once, without clobbering user input).
+  useEffect(() => {
+    if (!editing || dirty || saved?.id === editing.id) return;
+    setHeadline(editing.headline);
+    setBody(editing.body);
+    setBannerKey(editing.banner_key);
+    setBannerUrl(editing.banner_url);
+    setSaved(editing);
+  }, [editing, dirty, saved]);
 
   const saveDraft = useMutation({
     mutationFn: async (): Promise<ApiCampaign> => {

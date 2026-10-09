@@ -81,7 +81,14 @@ export function CampaignsPage() {
                 </div>
               </div>
             </div>
-            <CampaignChip status={c.review_status} />
+            <div className="row">
+              {(c.review_status === "draft" || c.review_status === "rejected") && (
+                <Link className="btn small" to={`/app/campaigns/${c.id}/edit`}>
+                  ✏️ {t.editCampaign}
+                </Link>
+              )}
+              <CampaignChip status={c.review_status} />
+            </div>
           </li>
         ))}
       </ul>

@@ -29,6 +29,7 @@ export const uz: Dict = {
   branches: "Xaritadagi nuqtalar",
   campaigns: "Kampaniyalar",
   newCampaign: "Yangi kampaniya",
+  editCampaign: "Tahrirlash",
   billing: "To'lovlar",
   checkout: "To'lov",
   comingSoon: "Bo'lim ishlanmoqda",
