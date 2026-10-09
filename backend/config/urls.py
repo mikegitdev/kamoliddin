@@ -16,6 +16,8 @@ def api_root_view(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health_view, name="health"),
+    # Strict probes (k8s, uptime checkers) often don't follow the APPEND_SLASH 301.
+    path("health", health_view),
     path("api/v1/", include([
         path("", api_root_view, name="api-root"),
         path("auth/", include("apps.accounts.urls")),
