@@ -19,8 +19,14 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.prod.example
+infra/docker/garage.prod.toml
 *.pem
 *.key
+
+# TLS material
+infra/nginx/certs/
+infra/nginx/certbot/
 
 # Django
 backend/media/

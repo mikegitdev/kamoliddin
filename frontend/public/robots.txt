@@ -1,0 +1,9 @@
+# Public map pages and ad pages are the indexable product;
+# cabinets and APIs stay out of search indexes.
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /staff
+Disallow: /admin
+Disallow: /login
+Disallow: /api

@@ -1,46 +1,355 @@
 import { Link } from "react-router-dom";
-import { useBusinesses, useMeSummary } from "@/shared/api/queries";
+import {
+  useBusinessLocations,
+  useBusinesses,
+  useCampaigns,
+  useMeSummary,
+  useOrders,
+  useRenewals,
+} from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import {
+  IconAlert,
+  IconCalendar,
+  IconCard,
+  IconCheck,
+  IconClock,
+  IconMoney,
+  IconOrb,
+  IconPin,
+  IconRocket,
+} from "@/shared/icons";
+import type { ApiCampaign, ApiOrder, ApiRenewal } from "@/entities/types";
+
+interface SetupStep {
+  done: boolean;
+  label: string;
+  href: string;
+  cta: string;
+}
+
+/* ---------- "Needs your attention": actionable states first ---------- */
+
+interface AttentionItem {
+  key: string;
+  tone: "danger" | "warn" | "quiet";
+  title: string;
+  meta?: string;
+  actionLabel: string;
+  to: string;
+}
+
+const TONE_RANK = { danger: 0, warn: 1, quiet: 2 } as const;
+
+/** Derive the actionable items from loaded owner data. A source that has not
+ *  loaded (or failed) contributes nothing — no false alarms while pending.
+ *  Every item carries the one action that resolves it. */
+function attentionItems(
+  campaigns: ApiCampaign[] | undefined,
+  orders: ApiOrder[] | undefined,
+  renewals: ApiRenewal[] | undefined,
+  t: ReturnType<typeof useI18n>["t"],
+): AttentionItem[] {
+  const items: AttentionItem[] = [];
+
+  for (const c of campaigns ?? []) {
+    if (c.review_status === "rejected") {
+      items.push({
+        key: `rejected:${c.id}`,
+        tone: "danger",
+        title: t.attRejected,
+        meta: c.headline,
+        actionLabel: t.rejectionFixBtn,
+        to: `/app/campaigns/${c.id}/edit`,
+      });
+    }
+  }
+  for (const r of renewals ?? []) {
+    if (r.status === "alert") {
+      items.push({
+        key: `renewal:${r.id}`,
+        tone: "danger",
+        title: t.attRenewalAlert,
+        meta: r.campaign_headline,
+        actionLabel: t.billing,
+        to: "/app/billing",
+      });
+    }
+  }
+  for (const o of orders ?? []) {
+    if (o.state === "awaiting_payment") {
+      items.push({
+        key: `order:${o.id}`,
+        tone: "warn",
+        title: t.attUnpaid,
+        meta: o.campaign_headline,
+        actionLabel: t.createPayment,
+        to: `/app/checkout/${o.id}`,
+      });
+    } else if (o.state === "failed") {
+      items.push({
+        key: `order:${o.id}`,
+        tone: "danger",
+        title: t.attPaymentFailed,
+        meta: o.campaign_headline,
+        actionLabel: t.retry,
+        to: `/app/checkout/${o.id}`,
+      });
+    } else if (o.state === "expired") {
+      items.push({
+        key: `order:${o.id}`,
+        tone: "warn",
+        title: t.attQuoteExpired,
+        meta: o.campaign_headline,
+        actionLabel: t.details,
+        to: `/app/campaigns/${o.campaign}`,
+      });
+    }
+  }
+  for (const c of campaigns ?? []) {
+    if (c.review_status === "draft") {
+      items.push({
+        key: `draft:${c.id}`,
+        tone: "quiet",
+        title: t.attDraft,
+        meta: c.headline,
+        actionLabel: t.continueDraft,
+        to: `/app/campaigns/${c.id}/edit`,
+      });
+    }
+  }
+  return items.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
+}
+
+const ATTENTION_LIMIT = 5;
+
+function AttentionSection({ items }: { items: AttentionItem[] }) {
+  const { t } = useI18n();
+  if (items.length === 0) return null;
+  const shown = items.slice(0, ATTENTION_LIMIT);
+  const rest = items.length - shown.length;
+  return (
+    <div className="card attention-card">
+      <div className="row-between">
+        <h2>{t.needsAttention}</h2>
+        <span className="chip orange">{items.length}</span>
+      </div>
+      <ul className="attention-list">
+        {shown.map((item) => (
+          <li key={item.key} className={`attention-item ${item.tone}`}>
+            <div className="attention-text">
+              <strong>{item.title}</strong>
+              {item.meta && <span className="muted-2">{item.meta}</span>}
+            </div>
+            <Link className="btn small" to={item.to}>
+              {item.actionLabel}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {rest > 0 && (
+        <Link to="/app/campaigns" className="muted attention-more">
+          {t.viewAll} ({rest})
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Guided setup: business → first branch → first ad (spec §16 onboarding).
+ *  Renders exactly ONE prominent next action until every step is complete;
+ *  hides itself afterwards. Never shown while data is still loading. */
+function SetupChecklist({
+  steps,
+  loading,
+  error,
+  onRetry,
+}: {
+  steps: SetupStep[];
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  const done = steps.filter((s) => s.done).length;
+  const next = steps.find((s) => !s.done);
+
+  if (done === steps.length) return null;
+
+  return (
+    <div className="card setup-card">
+      <div className="setup-head">
+        <h2 className="h-icon"><IconRocket size={20} /> {t.setupTitle}</h2>
+        {!loading && !error && (
+          <span className="setup-progress">
+            {done} / {steps.length}
+          </span>
+        )}
+      </div>
+
+      {loading && (
+        <>
+          <div className="skeleton skeleton-line w60" style={{ marginTop: 10 }} />
+          <div className="skeleton skeleton-line" />
+          <div className="skeleton skeleton-line w40" />
+        </>
+      )}
+      {!loading && error && (
+        <>
+          <p className="callout danger" role="alert" style={{ marginTop: 10 }}>
+            <IconAlert size={14} /> {t.loadError}
+          </p>
+          <button className="btn" style={{ marginTop: 10 }} onClick={onRetry}>
+            {t.retry}
+          </button>
+        </>
+      )}
+
+      {!loading && !error && next && (
+        <>
+          <div className="setup-next">
+            <div>
+              <span className="muted-2">{t.nextStep}</span>
+              <strong>{next.label}</strong>
+            </div>
+            <Link className="btn primary" to={next.href}>
+              {next.cta}
+            </Link>
+          </div>
+          <div className="setup-checklist">
+            {steps.map((step, i) => (
+              <div key={step.label} className={`check-item${step.done ? " done" : ""}`}>
+                <span className="check-num">{step.done ? <IconCheck size={14} /> : i + 1}</span>
+                <span className="check-label">
+                  {step.label}
+                  {step === next && <span className="muted-2"> · {t.nextStep}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function OverviewPage() {
   const { t, locale } = useI18n();
-  const { data: summary, isLoading } = useMeSummary(true);
-  const { data: businesses } = useBusinesses();
+  const summaryQuery = useMeSummary(true);
+  const businessesQuery = useBusinesses();
+  const business = businessesQuery.data?.[0];
+  const locationsQuery = useBusinessLocations(business?.id);
+  // Unfiltered (all own businesses): attention items and the setup checklist
+  // must match what /app/campaigns shows — an owner with several businesses
+  // must not miss a rejected campaign on another business's account.
+  const campaignsQuery = useCampaigns();
+  const ordersQuery = useOrders();
+  const renewalsQuery = useRenewals();
   const lang = locale as "ru" | "uz";
+  const summary = summaryQuery.data;
+
+  const attention = attentionItems(
+    campaignsQuery.data,
+    ordersQuery.data,
+    renewalsQuery.data,
+    t,
+  );
+
+  // A business owns every branch and campaign, so with no business the later
+  // steps are definitively incomplete — no need to wait for those queries.
+  const hasBusiness = !!businessesQuery.data && businessesQuery.data.length > 0;
+  const stepsSetupLoading =
+    businessesQuery.isLoading || (hasBusiness && (locationsQuery.isLoading || campaignsQuery.isLoading));
+  const stepsSetupError =
+    businessesQuery.isError || (hasBusiness && !businessesQuery.isLoading && (locationsQuery.isError || campaignsQuery.isError));
+
+  const steps: SetupStep[] = [
+    {
+      done: hasBusiness,
+      label: t.setupStep1,
+      href: "/app/business",
+      cta: t.createBusiness,
+    },
+    {
+      done: !hasBusiness ? false : !!locationsQuery.data?.length,
+      label: t.setupStep2,
+      href: "/app/locations",
+      cta: t.addBranch,
+    },
+    {
+      done: !hasBusiness ? false : !!campaignsQuery.data?.length,
+      label: t.setupStep3,
+      href: "/app/campaigns/new",
+      cta: t.newCampaign,
+    },
+  ];
+
+  const retrySetup = () => {
+    businessesQuery.refetch();
+    locationsQuery.refetch();
+    campaignsQuery.refetch();
+  };
 
   return (
     <section>
-      {!businesses?.length && (
-        <p className="callout">
-          ℹ️ {t.createBusinessHint} — <Link to="/app/business">{t.business}</Link>
-        </p>
-      )}
+      <SetupChecklist
+        steps={steps}
+        loading={stepsSetupLoading}
+        error={stepsSetupError}
+        onRetry={retrySetup}
+      />
 
-      {isLoading && <div className="skeleton skeleton-card" />}
+      {attention.length > 0 && (
+        <div style={{ margin: "14px 0" }}>
+          <AttentionSection items={attention} />
+        </div>
+      )}
+      {attention.length === 0 &&
+        campaignsQuery.isSuccess &&
+        ordersQuery.isSuccess &&
+        renewalsQuery.isSuccess && (
+          <p className="muted all-quiet"><IconCheck size={14} /> {t.allQuiet}</p>
+        )}
+
+      {summaryQuery.isLoading && <div className="skeleton skeleton-card" />}
+      {summaryQuery.isError && (
+        <>
+          <p className="callout danger" role="alert">
+            <IconAlert size={14} /> {t.loadError}
+          </p>
+          <button
+            className="btn"
+            style={{ marginTop: 12 }}
+            onClick={() => summaryQuery.refetch()}
+          >
+            {t.retry}
+          </button>
+        </>
+      )}
 
       {summary && (
         <>
           <div className="cards">
             <div className="stat-card">
-              <span className="icon">🟢</span>
+              <span className="icon"><IconOrb size={22} /></span>
               <span className="num">{summary.active_placements}</span>
               <span className="muted-2">{t.activePlacements}</span>
             </div>
             <div className="stat-card">
-              <span className="icon">⏳</span>
+              <span className="icon"><IconClock size={22} /></span>
               <span className="num">{summary.campaigns.submitted + summary.campaigns.under_review}</span>
               <span className="muted-2">{t.pendingReview}</span>
             </div>
             <div className="stat-card">
-              <span className="icon">💰</span>
+              <span className="icon"><IconMoney size={22} /></span>
               <span className="num" style={{ fontSize: "1.15rem" }}>
                 {formatMinor(summary.spend.total, summary.spend.currency, lang)}
               </span>
               <span className="muted-2">{t.totalSpent}</span>
             </div>
             <div className="stat-card">
-              <span className="icon">📅</span>
+              <span className="icon"><IconCalendar size={22} /></span>
               <span className="num" style={{ fontSize: "1.15rem" }}>
                 {formatMinor(summary.spend.month, summary.spend.currency, lang)}
               </span>
@@ -50,7 +359,7 @@ export function OverviewPage() {
 
           {summary.expiring_soon.length > 0 && (
             <div className="card" style={{ marginTop: 16 }}>
-              <h2>⏳ {t.expiringSoon}</h2>
+              <h2 className="h-icon"><IconClock size={20} /> {t.expiringSoon}</h2>
               <ul className="list">
                 {summary.expiring_soon.map((p) => (
                   <li key={p.id} className="row-between">
@@ -58,7 +367,7 @@ export function OverviewPage() {
                       <Link to={`/app/campaigns/${p.campaign_id}`}>
                         <strong>{p.headline}</strong>
                       </Link>
-                      <div className="muted-2">📍 {p.location}</div>
+                      <div className="muted-2"><IconPin size={12} /> {p.location}</div>
                     </div>
                     <span className="chip orange">
                       {formatDateTime(p.ends_at, lang)}
@@ -71,12 +380,12 @@ export function OverviewPage() {
 
           {summary.next_renewal && (
             <div className="card" style={{ marginTop: 12 }}>
-              <h2>🔁 {t.nextCharge}</h2>
+              <h2 className="h-icon"><IconCard size={20} /> {t.nextCharge}</h2>
               <div className="row-between">
                 <div>
                   <strong>{summary.next_renewal.campaign_headline}</strong>
                   <div className="muted-2">
-                    📍 {summary.next_renewal.locations_count} ·{" "}
+                    <IconPin size={12} /> {summary.next_renewal.locations_count} ·{" "}
                     {summary.next_renewal.charge_days} × 24{t.hoursShort}
                   </div>
                 </div>

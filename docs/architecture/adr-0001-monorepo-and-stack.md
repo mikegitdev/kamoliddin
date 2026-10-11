@@ -43,5 +43,7 @@ Solo delivery with AI agents in parallel; provider gates (CLICK recurring,
 - Map vendor swaps touch only `frontend/src/map-adapters`.
 - Migration chain and financial invariants are maintainer-owned; feature agents
   work behind those contracts.
-- Local dev requires Docker (PostGIS + Redis + MinIO) — no lightweight
+- Local dev requires Docker (PostGIS + Redis + Garage) — no lightweight
   in-memory fallback; this is deliberate.
+- Object storage: Garage replaced MinIO (ADR-0002) — single-node, private S3
+  API; public reads stay server-mediated through Django (spec §11).

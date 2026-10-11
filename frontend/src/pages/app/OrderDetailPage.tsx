@@ -2,6 +2,14 @@ import { Link, useParams } from "react-router-dom";
 import { useOrder } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import {
+  IconArrowLeft,
+  IconBulb,
+  IconCalendar,
+  IconCard,
+  IconLab,
+  IconMegaphone,
+} from "@/shared/icons";
 
 const ATTEMPT_CLASS: Record<string, string> = {
   succeeded: "green",
@@ -28,7 +36,7 @@ export function OrderDetailPage() {
       <section>
         <p className="callout">{t.notFound}</p>
         <Link className="btn" to="/app/billing">
-          ← {t.billing}
+          <IconArrowLeft size={14} /> {t.billing}
         </Link>
       </section>
     );
@@ -38,28 +46,28 @@ export function OrderDetailPage() {
     <section>
       <div className="row-between" style={{ marginBottom: 14 }}>
         <Link className="btn small" to="/app/billing">
-          ← {t.billing}
+          <IconArrowLeft size={14} /> {t.billing}
         </Link>
         <Link className="btn small" to={`/app/campaigns/${order.campaign}`}>
-          📣 {order.campaign_headline}
+          <IconMegaphone size={14} /> {order.campaign_headline}
         </Link>
       </div>
 
       <div className="cards">
         <div className="stat-card">
-          <span className="icon">💳</span>
+          <span className="icon"><IconCard size={22} /></span>
           <span className="num">{formatMinor(order.amount_total, order.currency, lang)}</span>
           <span className="muted-2">{order.state}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">🗓</span>
+          <span className="icon"><IconCalendar size={22} /></span>
           <span className="num" style={{ fontSize: "1rem" }}>
             {formatDateTime(order.interval_start_at, lang)}
           </span>
           <span className="muted-2">→ {formatDateTime(order.interval_end_at, lang)}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">🔁</span>
+          <span className="icon"><IconCard size={22} /></span>
           <span className="num" style={{ fontSize: "1rem" }}>
             {order.auto_renew ? t.renewalActive : t.renewalDisabled}
           </span>
@@ -92,12 +100,12 @@ export function OrderDetailPage() {
       </div>
 
       <h2 style={{ marginTop: 20 }}>{t.paymentHistory}</h2>
-      {order.attempts.length === 0 && <p className="callout">💡 {t.noAttempts}</p>}
+      {order.attempts.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noAttempts}</p>}
       <ul className="list">
         {order.attempts.map((a) => (
           <li key={a.id} className="row-between">
             <div>
-              <strong>{a.provider === "fake" ? "🧪 fake" : a.provider}</strong>
+              <strong>{a.provider === "fake" ? (<><IconLab size={12} /> fake</>) : a.provider}</strong>
               <div className="muted-2">
                 {formatMinor(a.amount, order.currency, lang)} ·{" "}
                 {formatDateTime(a.created_at, lang)}

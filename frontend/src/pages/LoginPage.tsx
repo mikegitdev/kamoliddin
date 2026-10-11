@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { api, ApiError } from "@/shared/api/client";
+import { IconArrowLeft, IconPin } from "@/shared/icons";
 import { requestOtp, verifyOtp } from "@/features/auth/otp";
 
 const RESEND_SECONDS = 60;
@@ -71,12 +72,12 @@ export function LoginPage() {
       <div className="login-card">
         <div className="login-top">
           <Link to="/" className="muted">
-            ← {t.toHomepage}
+            <IconArrowLeft size={14} /> {t.toHomepage}
           </Link>
           <LanguageSwitcher />
         </div>
         <div className="login-logo" aria-hidden="true">
-          📍
+          <IconPin size={52} />
         </div>
         <h1>{t.loginIntro}</h1>
         <p className="login-sub">{stage === "phone" ? t.tagline : `${t.codeSent} → ${phone}`}</p>

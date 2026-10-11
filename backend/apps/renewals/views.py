@@ -15,6 +15,8 @@ class RenewalListView(ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return RenewalAgreement.objects.none()
         return (
             RenewalAgreement.objects.filter(business__owner=self.request.user)
             .select_related("business", "campaign")

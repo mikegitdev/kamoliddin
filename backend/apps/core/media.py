@@ -1,12 +1,16 @@
 """Server-mediated media upload (spec §11): UUID object keys, type/size/magic
-validation via Pillow, stored through the default storage (MinIO when USE_S3).
+validation via Pillow, stored through the default storage (Garage when USE_S3).
 Public references remain keyed; discovery only exposes URLs for eligible ads.
 """
 import io
+import mimetypes
 import uuid
+from pathlib import Path
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.http import FileResponse
+from drf_spectacular.utils import extend_schema
 from PIL import Image
 from rest_framework import permissions
 from rest_framework.parsers import MultiPartParser
@@ -16,6 +20,8 @@ from rest_framework.views import APIView
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 ALLOWED_FORMATS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 ALLOWED_PURPOSES = {"banners", "logos"}
+ALLOWED_SERVE_PREFIXES = ("banners/", "logos/")
+ALLOWED_SERVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 class MediaUploadView(APIView):
@@ -66,3 +72,37 @@ class MediaUploadView(APIView):
         key = f"{purpose}/{uuid.uuid4().hex}.{ext}"
         saved_key = default_storage.save(key, ContentFile(header))
         return Response({"key": saved_key, "url": default_storage.url(saved_key)})
+
+
+class MediaServeView(APIView):
+    """Serve media objects through Django from default_storage (spec §11).
+
+    Production storage is Garage on the internal compose network (never
+    publicly exposed); object keys are unguessable UUIDs and are the public
+    reference. Dev storage is the local filesystem — same code path. This
+    view is what nginx `/media/` proxies to in production."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    @extend_schema(exclude=True)
+    def get(self, request, path: str):
+        if (
+            not path.startswith(ALLOWED_SERVE_PREFIXES)
+            or Path(path).suffix.lower() not in ALLOWED_SERVE_EXTENSIONS
+            or ".." in path.split("/")
+        ):
+            return Response(
+                {"error": {"code": "not_found", "message": "Not found", "fields": {}}},
+                status=404,
+            )
+        if not default_storage.exists(path):
+            return Response(
+                {"error": {"code": "not_found", "message": "Not found", "fields": {}}},
+                status=404,
+            )
+        file = default_storage.open(path, "rb")
+        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        response = FileResponse(file, content_type=content_type)
+        response["Cache-Control"] = "public, max-age=86400"
+        return response

@@ -29,3 +29,11 @@ class LocationSerializer(serializers.ModelSerializer):
         elif lon is not None or lat is not None:
             raise serializers.ValidationError({"lat": "Both lon and lat are required"})
         return attrs
+
+    def to_representation(self, instance):
+        # lon/lat are write-only above; echo them back read-only so the owner
+        # cabinet can prefill the branch edit form and pin (spec §13).
+        data = super().to_representation(instance)
+        data["lon"] = instance.point.x
+        data["lat"] = instance.point.y
+        return data

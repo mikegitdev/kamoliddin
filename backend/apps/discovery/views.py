@@ -16,7 +16,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.businesses.models import BusinessCategory
+from apps.businesses.models import Business, BusinessCategory
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
 from apps.placements.models import Placement, eligible_now_q
@@ -44,6 +44,8 @@ class PublicLocationListView(ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Location.objects.none()
         params = self.request.query_params
         bbox = params.get("bbox")
         if not bbox:
@@ -127,38 +129,61 @@ class PublicLocationDetailView(RetrieveAPIView):
 
 
 @extend_schema_view(
-    get=extend_schema(tags=["Public"],
-                      summary="Active-only ad details",
-                      description="Expired/unapproved/blocked campaigns return 404 (spec §14).")
+    get=extend_schema(
+        tags=["Public"],
+        summary="Active-only ad details with eligible branches",
+        description="Expired/unapproved/blocked campaigns return 404 (spec §14). "
+                    "Includes every currently eligible branch with address, hours "
+                    "and contacts so shared direct links work without client "
+                    "navigation state.",
+        responses=serializers.PublicCampaignDetailSerializer,
+    )
 )
 class PublicCampaignDetailView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    #: Branch list cap: a campaign can target many locations, but a shared ad
+    #: link needs actionable context, not the full placement table.
+    MAX_LOCATIONS = 20
+
     def get(self, request, id):
         now = timezone.now()
-        placement = (
+        placements = (
             Placement.objects.filter(campaign_id=id)
             .filter(eligible_now_q(now))
-            .select_related("campaign", "campaign__business")
-            .first()
+            .select_related("campaign", "campaign__business", "location", "location__business")
+            .order_by("start_at")
         )
-        if placement is None:
+        first = placements.first()
+        if first is None:
             return Response(
                 {"error": {"code": "not_found", "message": "Ad unavailable", "fields": {}}},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        campaign = placement.campaign
+        campaign = first.campaign
+        # One campaign may run several placements at the same location; the
+        # branch list is about where to find the offer, so dedupe by location.
+        seen_location_ids = set()
+        locations = []
+        for placement in placements:
+            location = placement.location
+            if location.id in seen_location_ids:
+                continue
+            seen_location_ids.add(location.id)
+            locations.append(location)
+        locations.sort(key=lambda loc: loc.name)
         payload = {
             "id": str(campaign.id),
             "headline": campaign.headline,
             "body": campaign.body,
             "banner_url": f"/media/{campaign.banner_key}",
             "business_name": campaign.business.name,
-            "starts_at": placement.start_at,
-            "ends_at": placement.end_at,
+            "starts_at": first.start_at,
+            "ends_at": first.end_at,
+            "locations": locations[: self.MAX_LOCATIONS],
         }
-        return Response(serializers.PublicCampaignSerializer(payload).data)
+        return Response(serializers.PublicCampaignDetailSerializer(payload).data)
 
 
 @extend_schema_view(
@@ -220,17 +245,20 @@ class PublicSearchView(APIView):
             locations = locations.order_by("name")
         locations = locations[:20]
 
-        campaigns = (
+        campaign_qs = (
             Campaign.objects.filter(review_status=Campaign.ReviewStatus.APPROVED)
             .filter(
                 placements__state__in=["scheduled", "active"],
                 placements__start_at__lte=now,
                 placements__end_at__gt=now,
+                placements__location__status=Location.Status.ACTIVE,
+                business__status=Business.Status.ACTIVE,
             )
             .filter(Q(headline__icontains=q) | Q(body__icontains=q))
-            .select_related("business")
-            .distinct()[:20]
         )
+        if category:
+            campaign_qs = campaign_qs.filter(business__category__slug=category)
+        campaigns = campaign_qs.select_related("business").distinct()[:20]
 
         return Response(
             {

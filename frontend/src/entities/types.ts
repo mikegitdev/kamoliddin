@@ -28,6 +28,26 @@ export interface ApiActiveAd {
   ends_at: string;
 }
 
+/** Branch context carried by the public ad detail endpoint: only locations
+ *  where the campaign is CURRENTLY eligible (spec §14). Lets a shared
+ *  /ads/:id link show address/hours/contacts without navigation state. */
+export interface ApiAdLocation {
+  id: string;
+  name: string;
+  address: string;
+  lon: number;
+  lat: number;
+  hours: Record<string, [string, string] | undefined>;
+  phone: string;
+  telegram: string;
+  whatsapp: string;
+  business_site: string;
+}
+
+export interface ApiCampaignDetail extends ApiActiveAd {
+  locations: ApiAdLocation[];
+}
+
 export interface ApiLocationDetail {
   id: string;
   name: string;
@@ -74,6 +94,8 @@ export interface ApiOwnerLocation {
   name: string;
   address: string;
   city: string;
+  lon: number;
+  lat: number;
   phone: string;
   telegram: string;
   whatsapp: string;
@@ -101,8 +123,20 @@ export interface ApiCampaign {
   banner_url: string;
   review_status: CampaignStatus;
   review_version: number;
+  /** PUBLICATION state, independent of review_status: count of placements
+   *  currently eligible (live) — approved ≠ live (spec §7). */
+  active_placements_count: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Immutable moderation decision (spec §5); reviewer identity is private. */
+export interface ApiCampaignReview {
+  id: string;
+  decision: "approved" | "rejected";
+  reason: string;
+  content_version: number;
+  created_at: string;
 }
 
 export interface ApiOrderItem {

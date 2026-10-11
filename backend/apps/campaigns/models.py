@@ -27,7 +27,7 @@ class Campaign(models.Model):
     business = models.ForeignKey(Business, on_delete=models.PROTECT, related_name="campaigns")
     headline = models.CharField(max_length=200)
     body = models.TextField(blank=True, default="")
-    banner_key = models.CharField(max_length=200)  # exactly one banner (MinIO object key)
+    banner_key = models.CharField(max_length=200)  # exactly one banner (storage object key)
     review_status = models.CharField(
         max_length=20, choices=ReviewStatus.choices, default=ReviewStatus.DRAFT
     )

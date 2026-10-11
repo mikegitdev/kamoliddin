@@ -16,7 +16,7 @@ test.describe("public map", () => {
     await expect(footer).toContainText(/Найдено|точек|nuqta/, { timeout: 20_000 });
     await page.getByPlaceholder(/Поиск|Qidirish/).fill("пицц");
     await page.waitForTimeout(900); // 400ms debounce + request + render
-    await expect(footer).toContainText(/Найдено|точек|nuqta|ничего|hech/);
+    await expect(footer).toContainText(/Найдено|точ|nuqta|ничего|hech/);
   });
 
   test("location detail shows active ads", async ({ request, page }) => {

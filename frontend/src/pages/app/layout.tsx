@@ -1,14 +1,15 @@
 import { useEffect } from "react";
 import { Link, Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { api } from "@/shared/api/client";
+import { ApiError, api } from "@/shared/api/client";
 import { useSession } from "@/shared/api/queries";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
+import { IconAlert, IconPin } from "@/shared/icons";
 
 /** Advertiser cabinet layout (/app). Auth-gated by the session query. */
 export function AdvertiserLayout() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { data: user, isLoading } = useSession();
+  const { data: user, isLoading, isError, error, refetch } = useSession();
 
   // Make sure the csrftoken cookie exists for authenticated mutations (spec §9).
   useEffect(() => {
@@ -16,6 +17,37 @@ export function AdvertiserLayout() {
   }, [user]);
 
   if (!isLoading && !user) {
+    // Only a CONFIRMED auth rejection means "not logged in". A transient
+    // network/server failure must not log the user out (useSession has
+    // retry: false), so it gets an explicit error + retry instead.
+    if (isError && !(error instanceof ApiError && [401, 403].includes(error.status))) {
+      return (
+        <div className="page app-page">
+          <header className="app-header">
+            <Link to="/" className="brand" style={{ boxShadow: "var(--shadow-xs)" }}>
+              <span className="logo" aria-hidden="true">
+                <IconPin size={30} />
+              </span>
+              <span className="brand-text">
+                {t.cabinet}
+                <small>{t.appTitle}</small>
+              </span>
+            </Link>
+          </header>
+          <main>
+            <section>
+              <h2>{t.cabinet}</h2>
+              <p className="callout danger" role="alert">
+                <IconAlert size={14} /> {t.loadError}
+              </p>
+              <button className="btn" style={{ marginTop: 12 }} onClick={() => refetch()}>
+                {t.retry}
+              </button>
+            </section>
+          </main>
+        </div>
+      );
+    }
     return <Navigate to="/login" replace />;
   }
 
@@ -34,7 +66,7 @@ export function AdvertiserLayout() {
       <header className="app-header">
         <Link to="/" className="brand" style={{ boxShadow: "var(--shadow-xs)" }}>
           <span className="logo" aria-hidden="true">
-            📍
+            <IconPin size={30} />
           </span>
           <span className="brand-text">
             {t.cabinet}
@@ -60,6 +92,7 @@ export function AdvertiserLayout() {
         <NavLink to="/app/locations">{t.branches}</NavLink>
         <NavLink to="/app/campaigns">{t.campaigns}</NavLink>
         <NavLink to="/app/billing">{t.billing}</NavLink>
+        <NavLink to="/app/account">{t.account}</NavLink>
         {user?.is_staff && <NavLink to="/staff">{t.staffTitle}</NavLink>}
       </nav>
       <main>

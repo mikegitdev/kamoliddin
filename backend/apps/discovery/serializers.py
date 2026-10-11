@@ -9,8 +9,8 @@ class PublicLocationSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
     lon = serializers.SerializerMethodField()
     lat = serializers.SerializerMethodField()
-    category = serializers.CharField(read_only=True)
-    business_name = serializers.CharField(read_only=True)
+    category = serializers.SerializerMethodField()
+    business_name = serializers.SerializerMethodField()
     active_ads_count = serializers.IntegerField(read_only=True)
 
     def get_lon(self, obj) -> float:
@@ -18,6 +18,12 @@ class PublicLocationSerializer(serializers.Serializer):
 
     def get_lat(self, obj) -> float:
         return obj.point.y
+
+    def get_category(self, obj) -> str:
+        return obj.business.category.slug
+
+    def get_business_name(self, obj) -> str:
+        return obj.business.name
 
 
 class PublicCampaignSerializer(serializers.Serializer):
@@ -28,6 +34,41 @@ class PublicCampaignSerializer(serializers.Serializer):
     business_name = serializers.CharField(read_only=True)
     starts_at = serializers.DateTimeField(read_only=True)
     ends_at = serializers.DateTimeField(read_only=True)
+
+
+class PublicAdLocationSerializer(serializers.Serializer):
+    """Branch context for a directly opened ad link (spec §14): only data of
+    locations where the campaign is CURRENTLY eligible — same visibility rules
+    as every other public endpoint. Lets a shared /ads/{id} URL show address,
+    hours and contacts without any client navigation state."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    address = serializers.CharField(read_only=True)
+    lon = serializers.SerializerMethodField()
+    lat = serializers.SerializerMethodField()
+    hours = serializers.JSONField(read_only=True)
+    phone = serializers.CharField(read_only=True)
+    telegram = serializers.CharField(read_only=True)
+    whatsapp = serializers.CharField(read_only=True)
+    business_site = serializers.SerializerMethodField()
+
+    def get_lon(self, obj) -> float:
+        return obj.point.x
+
+    def get_lat(self, obj) -> float:
+        return obj.point.y
+
+    def get_business_site(self, obj) -> str:
+        return obj.business.site
+
+
+class PublicCampaignDetailSerializer(PublicCampaignSerializer):
+    """Ad detail payload plus the currently eligible branches. starts_at/ends_at
+    still come from one selected placement and must not be presented as the
+    schedule of every branch (design guide §7.3)."""
+
+    locations = PublicAdLocationSerializer(many=True, read_only=True)
 
 
 class PublicLocationDetailSerializer(serializers.Serializer):

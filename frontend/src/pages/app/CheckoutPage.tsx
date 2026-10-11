@@ -6,6 +6,7 @@ import { ApiError } from "@/shared/api/client";
 import { checkoutOrder, completeFakePayment } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { OrderChip } from "@/shared/ui";
+import { IconArrowLeft, IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiCheckout } from "@/entities/types";
 
@@ -53,7 +54,7 @@ export function CheckoutPage() {
           {t.orderMissing}
         </div>
         <p style={{ marginTop: 14 }}>
-          <Link to="/app/campaigns">← {t.backToCampaigns}</Link>
+          <Link to="/app/campaigns"><IconArrowLeft size={14} /> {t.backToCampaigns}</Link>
         </p>
       </section>
     );
@@ -164,7 +165,7 @@ export function CheckoutPage() {
       {isPaid && (
         <div className="callout ok" role="status">
           <span>
-            ✓ {t.paymentDone}. {t.afterApprovalHint}.
+            <IconCheck size={14} /> {t.paymentDone}. {t.afterApprovalHint}.
           </span>
         </div>
       )}
@@ -179,7 +180,7 @@ export function CheckoutPage() {
         </p>
       )}
       <p>
-        <Link to="/app/campaigns">← {t.backToCampaigns}</Link>
+        <Link to="/app/campaigns"><IconArrowLeft size={14} /> {t.backToCampaigns}</Link>
       </p>
     </section>
   );

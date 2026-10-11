@@ -1,29 +1,19 @@
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useLocationDetail } from "@/shared/api/queries";
 import { plural, useI18n } from "@/shared/i18n";
-import { AdCard, ContactActions } from "@/shared/ui";
+import {
+  AdCard,
+  BackLink,
+  ContactActions,
+  HoursList,
+  ShareButton,
+  StickyContactActions,
+  directionsUrl,
+} from "@/shared/ui";
 
-function HoursList({ hours }: { hours: Record<string, [string, string] | undefined> }) {
-  const { t } = useI18n();
-  const entries = Object.entries(hours ?? {}).filter(([, v]) => Array.isArray(v));
-  if (entries.length === 0) return null;
-  return (
-    <div className="info-card">
-      <div className="label">{t.hours}</div>
-      <div className="value hours-list">
-        {entries.map(([day, range]) => (
-          <div key={day} className="hours-row">
-            <span>{day}</span>
-            <span>
-              {range![0]}–{range![1]}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
+/** Public location page. One hierarchy everywhere — map sheet, this page and
+ *  the ad page: business identity → offer (active ads) → address/hours →
+ *  contact actions. */
 export function LocationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useI18n();
@@ -33,7 +23,7 @@ export function LocationDetailPage() {
     return (
       <div className="page">
         <nav>
-          <Link to="/">← {t.toHomepage}</Link>
+          <BackLink fallbackTo="/" />
         </nav>
         <div className="skeleton" style={{ height: 200, borderRadius: 18 }} />
         <div style={{ marginTop: 18, maxWidth: 420 }}>
@@ -51,23 +41,23 @@ export function LocationDetailPage() {
           {isError ? t.loadError : t.notFound}
         </div>
         <p style={{ marginTop: 14 }}>
-          <Link className="btn" to="/">
-            {t.toHomepage}
-          </Link>
+          <BackLink fallbackTo="/" fallbackLabel={t.toHomepage} />
         </p>
       </div>
     );
   }
 
   const ads = location.active_ads;
-  const directionsUrl = `https://2gis.uz/directions/center/${location.lon},${location.lat}`;
+  const dirUrl = directionsUrl(location.lon, location.lat);
 
   return (
-    <div className="page">
-      <nav>
-        <Link to="/">← {t.toHomepage}</Link>
+    <div className="page with-sticky">
+      <nav className="row-between">
+        <BackLink fallbackTo="/" />
+        <ShareButton title={location.business_name} />
       </nav>
 
+      {/* 1. Business identity */}
       <div className="detail-head">
         <div style={{ minWidth: 0 }}>
           <h1>{location.business_name}</h1>
@@ -80,31 +70,7 @@ export function LocationDetailPage() {
         )}
       </div>
 
-      <ContactActions
-        directionsUrl={directionsUrl}
-        phone={location.phone}
-        telegram={location.telegram}
-        whatsapp={location.whatsapp}
-        site={location.business_site}
-      />
-
-      <div className="info-grid">
-        <div className="info-card">
-          <div className="label">{t.address}</div>
-          <div className="value">{location.address}</div>
-        </div>
-        <HoursList hours={location.hours} />
-        {location.phone && (
-          <div className="info-card">
-            <div className="label">{t.contacts}</div>
-            <div className="value">
-              <a href={`tel:${location.phone.replace(/[^\d+]/g, "")}`}>{location.phone}</a>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <hr className="divider" />
+      {/* 2. Offer: what is being advertised here right now */}
       <h2>{t.activeAdsTitle}</h2>
       {ads.length === 0 && <p className="muted">{t.noAdsHere}</p>}
       <div className="ad-cards">
@@ -112,6 +78,33 @@ export function LocationDetailPage() {
           <AdCard key={ad.id} ad={ad} fromLocationId={location.id} />
         ))}
       </div>
+
+      {/* 3. Address / hours */}
+      <div className="info-grid">
+        <div className="info-card">
+          <div className="label">{t.address}</div>
+          <div className="value">{location.address}</div>
+        </div>
+        <HoursList hours={location.hours} />
+      </div>
+
+      {/* 4. Contact */}
+      <h2>{t.contacts}</h2>
+      <ContactActions
+        directionsUrl={dirUrl}
+        phone={location.phone}
+        telegram={location.telegram}
+        whatsapp={location.whatsapp}
+        site={location.business_site}
+      />
+
+      <StickyContactActions
+        directionsUrl={dirUrl}
+        phone={location.phone}
+        telegram={location.telegram}
+        whatsapp={location.whatsapp}
+        site={location.business_site}
+      />
     </div>
   );
 }

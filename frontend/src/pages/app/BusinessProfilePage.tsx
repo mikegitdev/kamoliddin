@@ -4,6 +4,7 @@ import { useBusinesses, useCategories } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { saveBusiness } from "@/features/advertiser/api";
 import { useI18n } from "@/shared/i18n";
+import { IconCheck } from "@/shared/icons";
 
 export function BusinessProfilePage() {
   const { t, locale } = useI18n();
@@ -150,7 +151,7 @@ export function BusinessProfilePage() {
         >
           {mutation.isPending ? t.saving : t.save}
         </button>
-        {mutation.isSuccess && !error && <span className="ok">✓ {t.saved}</span>}
+        {mutation.isSuccess && !error && <span className="ok"><IconCheck size={12} /> {t.saved}</span>}
       </div>
       {error && (
         <p className="error" role="alert">
