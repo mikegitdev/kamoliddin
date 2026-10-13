@@ -1,0 +1,116 @@
+# CI (spec §17 [C]): lint, typecheck, tests on every PR.
+# Backend tests run against a real PostgreSQL+PostGIS service container —
+# never SQLite. The financial-core mypy gate covers billing/payments/
+# placements/renewals (ADR-0005 scope); whole-repo mypy is tracked debt.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: localads
+          POSTGRES_USER: localads
+          POSTGRES_PASSWORD: localads
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U localads -d localads"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_DEBUG: "False"
+      DATABASE_URL: postgis://localads:localads@localhost:5432/localads
+      SMS_PROVIDER: fake
+      PAYMENT_PROVIDER: fake
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Typecheck financial core (mypy)
+        run: uv run mypy apps/billing apps/payments apps/placements apps/renewals
+      - name: Migration drift check
+        run: uv run python manage.py makemigrations --check --dry-run
+      - name: Tests (pytest, real PostGIS)
+        run: uv run python -m pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  api-contract:
+    # OpenAPI schema + generated TS client must match the committed artifacts
+    # (spec §12: generated client, no silent drift).
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: localads
+          POSTGRES_USER: localads
+          POSTGRES_PASSWORD: localads
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U localads -d localads"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret
+      DATABASE_URL: postgis://localads:localads@localhost:5432/localads
+      SMS_PROVIDER: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Regenerate OpenAPI schema
+        working-directory: backend
+        run: |
+          uv sync --frozen
+          uv run python manage.py spectacular --file ../frontend/openapi.json
+      - name: Regenerate TS client
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run gen:api
+      - name: Fail on drift
+        run: |
+          git diff --exit-code frontend/openapi.json frontend/src/shared/api/schema.d.ts \
+            || { echo "::error::API schema or generated client is stale — run 'manage.py spectacular' + 'npm run gen:api' and commit"; exit 1; }

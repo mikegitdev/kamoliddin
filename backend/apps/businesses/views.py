@@ -12,6 +12,8 @@ class BusinessListCreateView(ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Business.objects.none()
         return (
             Business.objects.filter(owner=self.request.user)
             .select_related("owner", "category")

@@ -1,16 +1,38 @@
 # Production stack (spec §15): one VPS, manual reproducible deployment.
-# Copy to the server, create .env.prod next to it (never committed), then:
-#   docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.prod up -d
-# Only the proxy publishes ports; DB/Redis/MinIO stay on the internal network.
+#
+# Prerequisites (see docs/runbooks/deploy.md):
+#   1. cp infra/docker/.env.prod.example infra/docker/.env.prod  # fill secrets
+#   2. Obtain TLS certs into infra/nginx/certs/ (certbot) — nginx needs them
+#      on first start (443 is always enabled; port 80 only redirects/ACME).
+#   3. Deploy via infra/scripts/deploy.sh (builds frontend, migrates,
+#      collectstatic, runs garage-init.sh, health-gates the rollout).
+#
+# Only the proxy publishes ports; DB/Redis/Garage stay on the internal network.
+# NOTE: relative build/mount paths resolve from THIS file's directory.
 name: local-ads-prod
+
+# Shared log policy (spec §15): bounded json-file logs so a single VPS cannot
+# fill its disk with container stdout.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 x-web-env: &web-env
   DJANGO_SETTINGS_MODULE: config.settings.prod
   USE_S3: "true"
-  S3_ENDPOINT_URL: http://minio:9000
-  S3_ACCESS_KEY: ${MINIO_ROOT_USER}
-  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  S3_ENDPOINT_URL: http://garage:3900
+  # Least-privilege bucket-scoped credentials imported by garage-init.sh —
+  # never the Garage bootstrap key.
+  S3_ACCESS_KEY: ${GARAGE_APP_ACCESS_KEY}
+  S3_SECRET_KEY: ${GARAGE_APP_SECRET_KEY}
   S3_BUCKET_NAME: localads-media
+  S3_REGION: garage
+  # Media URLs point at the server-mediated /media route (spec §11),
+  # e.g. "ads.example.uz/media" (https is the protocol default in settings).
+  S3_PUBLIC_DOMAIN: ${MEDIA_PUBLIC_DOMAIN}
   REDIS_URL: redis://redis:6379/1
   CELERY_BROKER_URL: redis://redis:6379/0
   DATABASE_URL: postgis://localads:${POSTGRES_PASSWORD}@db:5432/localads
@@ -21,14 +43,18 @@ services:
     depends_on: [web]
     ports:
       - "80:80"
-      # - "443:443"  # enable after TLS certs exist
+      - "443:443"
     volumes:
       - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../../../frontend/dist:/var/www/frontend:ro
+      - ../nginx/certs:/etc/nginx/certs:ro
+      - ../nginx/certbot:/var/www/certbot:ro
+      - ../../frontend/dist:/var/www/frontend:ro
     networks: [frontend_net]
+    restart: unless-stopped
+    <<: *logging
 
   web:
-    build: ../../../backend
+    build: ../../backend
     image: localads-backend:${TAG:-latest}
     env_file: ${ENV_FILE:-.env.prod}
     environment: *web-env
@@ -39,6 +65,7 @@ services:
       - backend_static:/app/staticfiles
     networks: [frontend_net, backend_net]
     restart: unless-stopped
+    <<: *logging
 
   worker:
     image: localads-backend:${TAG:-latest}
@@ -48,6 +75,7 @@ services:
     depends_on: [web]
     networks: [backend_net]
     restart: unless-stopped
+    <<: *logging
 
   beat:
     image: localads-backend:${TAG:-latest}
@@ -59,6 +87,7 @@ services:
       - beat_schedule:/data
     networks: [backend_net]
     restart: unless-stopped
+    <<: *logging
 
   db:
     image: postgis/postgis:16-3.4
@@ -75,6 +104,7 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    <<: *logging
 
   redis:
     image: redis:7-alpine
@@ -85,17 +115,32 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    <<: *logging
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  garage:
+    # S3-compatible storage, fully private (spec §11; ADR-0002). Public media
+    # reads go through Django's MediaServeView, never Garage directly.
+    # --single-node assigns the layout; --default-bucket creates
+    # localads-media + the bootstrap key on first start (idempotent).
+    # The app uses the least-privilege key imported by garage-init.sh.
+    # garage.prod.toml is generated on the server — see docs/runbooks/deploy.md.
+    image: ${GARAGE_IMAGE:-dxflrs/garage:v2.4.1}
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      GARAGE_DEFAULT_ACCESS_KEY: ${GARAGE_DEFAULT_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${GARAGE_DEFAULT_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: localads-media
     volumes:
-      - minio_data:/data
+      - garage_data:/var/lib/garage
+      - ./garage.prod.toml:/etc/garage.toml:ro
     networks: [backend_net]
+    healthcheck:
+      test: ["CMD", "/garage", "-c", "/etc/garage.toml", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
+    <<: *logging
 
 networks:
   frontend_net:
@@ -103,6 +148,6 @@ networks:
 
 volumes:
   pgdata:
-  minio_data:
+  garage_data:
   beat_schedule:
   backend_static:

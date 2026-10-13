@@ -10,6 +10,12 @@ import type { LatLngBounds, MapAdapter, MapMarker } from "../types";
 export class MapLibreAdapter implements MapAdapter {
   private map: maplibregl.Map | null = null;
   private clickCallback: ((id: string) => void) | null = null;
+  private pickMarker: maplibregl.Marker | null = null;
+  private pickChangeCallback: ((lng: number, lat: number) => void) | null = null;
+  private ready = false;
+  private readyCallbacks: (() => void)[] = [];
+  private selectedId: string | null = null;
+  private userMarker: maplibregl.Marker | null = null;
 
   // Style with a raster tile source; replaced by a licensed provider in prod.
   private static style(tilesUrl: string): maplibregl.StyleSpecification {
@@ -43,8 +49,95 @@ export class MapLibreAdapter implements MapAdapter {
     this.map.addControl(new maplibregl.NavigationControl(), "top-right");
   }
 
+  getBounds(): LatLngBounds | null {
+    const b = this.map?.getBounds();
+    if (!b) return null;
+    return {
+      west: b.getWest(),
+      south: b.getSouth(),
+      east: b.getEast(),
+      north: b.getNorth(),
+    };
+  }
+
+  getCenterZoom(): { center: [number, number]; zoom: number } | null {
+    if (!this.map) return null;
+    const c = this.map.getCenter();
+    return { center: [c.lng, c.lat], zoom: this.map.getZoom() };
+  }
+
+  onReady(cb: () => void): void {
+    if (this.ready) cb();
+    else this.readyCallbacks.push(cb);
+  }
+
+  private markReady(): void {
+    if (this.ready) return;
+    this.ready = true;
+    for (const cb of this.readyCallbacks) cb();
+    this.readyCallbacks = [];
+  }
+
   setCenterZoom(center: [number, number], zoom: number): void {
     this.map?.jumpTo({ center, zoom });
+  }
+
+  flyTo(center: [number, number], zoom?: number, offset?: [number, number]): void {
+    if (!this.map) return;
+    const target = this.map.getZoom();
+    this.map.flyTo({
+      center,
+      zoom: zoom !== undefined ? Math.max(zoom, target) : target,
+      offset: offset ?? [0, 0],
+      essential: true,
+    });
+  }
+
+  setSelected(id: string | null): void {
+    this.selectedId = id;
+    const map = this.map;
+    if (!map || !map.getLayer("pin-selected")) return;
+    map.setFilter("pin-selected", id ? ["==", ["get", "id"], id] : ["==", ["get", "id"], "__none__"]);
+  }
+
+  setUserLocation(lng: number, lat: number): void {
+    const map = this.map;
+    if (!map) return;
+    if (!this.userMarker) {
+      const el = document.createElement("div");
+      el.className = "user-dot";
+      el.setAttribute("role", "img");
+      this.userMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+      return;
+    }
+    this.userMarker.setLngLat([lng, lat]);
+  }
+
+  setPickMarker(
+    point: { lng: number; lat: number } | null,
+    onChange?: (lng: number, lat: number) => void,
+  ): void {
+    if (!point) {
+      this.pickChangeCallback = null;
+      this.pickMarker?.remove();
+      this.pickMarker = null;
+      return;
+    }
+    this.pickChangeCallback = onChange ?? null;
+    if (this.pickMarker) {
+      this.pickMarker.setLngLat([point.lng, point.lat]);
+      return;
+    }
+    const el = document.createElement("div");
+    el.className = "pick-marker";
+    el.setAttribute("role", "img");
+    this.pickMarker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat([point.lng, point.lat])
+      .addTo(this.map!);
+    this.pickMarker.on("dragend", () => {
+      const ll = this.pickMarker!.getLngLat();
+      this.pickChangeCallback?.(ll.lng, ll.lat);
+    });
   }
 
   setMarkers(markers: MapMarker[]): void {
@@ -65,6 +158,7 @@ export class MapLibreAdapter implements MapAdapter {
 
     if (map.getSource("pins")) {
       (map.getSource("pins") as maplibregl.GeoJSONSource).setData(this.toGeoJson(markers));
+      this.markReady();
       return;
     }
 
@@ -133,6 +227,21 @@ export class MapLibreAdapter implements MapAdapter {
         "text-halo-width": 1.5,
       },
     });
+    // Selection halo: kept in sync with setSelected() (results panel sync).
+    map.addLayer({
+      id: "pin-selected",
+      type: "circle",
+      source: "pins",
+      filter: ["==", ["get", "id"], "__none__"],
+      paint: {
+        "circle-color": "#2563eb",
+        "circle-opacity": 0.22,
+        "circle-radius": 18,
+        "circle-stroke-width": 2.5,
+        "circle-stroke-color": "#2563eb",
+      },
+    });
+    if (this.selectedId) this.setSelected(this.selectedId);
 
     // Cluster tap/keyboard drill-down: expand to member locations.
     map.on("click", "clusters", (e) => {
@@ -166,6 +275,8 @@ export class MapLibreAdapter implements MapAdapter {
     map.on("mouseleave", "pins", () => {
       map.getCanvas().style.cursor = "";
     });
+
+    this.markReady();
   }
 
   private toGeoJson(markers: MapMarker[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
@@ -204,6 +315,10 @@ export class MapLibreAdapter implements MapAdapter {
   }
 
   destroy(): void {
+    this.pickMarker?.remove();
+    this.pickMarker = null;
+    this.userMarker?.remove();
+    this.userMarker = null;
     this.map?.remove();
     this.map = null;
   }

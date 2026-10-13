@@ -27,6 +27,8 @@ class CampaignPlacementListView(ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Placement.objects.none()
         return Placement.objects.filter(
             campaign_id=self.kwargs["id"],
             campaign__business__owner=self.request.user,

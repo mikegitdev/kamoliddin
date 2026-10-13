@@ -1,11 +1,14 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation as useRouterLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "@/shared/i18n";
 import type { Dict } from "@/shared/i18n/ru";
 import type { ApiActiveAd, CampaignStatus, OrderState } from "@/entities/types";
 import {
+  IconArrowLeft,
   IconDirections,
   IconGlobe,
   IconPhone,
+  IconShare,
   IconTelegram,
   IconWhatsapp,
 } from "@/shared/icons";
@@ -60,6 +63,23 @@ export function OrderChip({ state }: { state: OrderState }) {
 
 /* ---------- Contact actions: shared by map sheet and location page ---------- */
 
+/** Directions deep link to the branch coordinates (2GIS directions API,
+ *  the map provider used across the public UI). */
+export function directionsUrl(lon: number, lat: number): string {
+  return `https://2gis.uz/directions/center/${lon},${lat}`;
+}
+
+export interface ContactActionsProps {
+  directionsUrl?: string;
+  phone?: string | null;
+  telegram?: string | null;
+  whatsapp?: string | null;
+  site?: string | null;
+  compact?: boolean;
+  /** Compact label for the directions action ("Маршрут"), used where the
+   *  full "Проложить маршрут" does not fit — e.g. the mobile sticky bar. */
+  shortDirections?: boolean;
+}
 function withProtocol(value: string): string {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
@@ -80,20 +100,19 @@ export function ContactActions({
   whatsapp,
   site,
   compact = false,
-}: {
-  directionsUrl?: string;
-  phone?: string | null;
-  telegram?: string | null;
-  whatsapp?: string | null;
-  site?: string | null;
-  compact?: boolean;
-}) {
+  shortDirections = false,
+}: ContactActionsProps) {
   const { t } = useI18n();
   const size = compact ? "btn small" : "btn";
   const links: { href: string; label: string; icon: React.ReactNode; primary?: boolean }[] = [];
 
   if (directionsUrl) {
-    links.push({ href: directionsUrl, label: t.directions, icon: <IconDirections />, primary: true });
+    links.push({
+      href: directionsUrl,
+      label: shortDirections ? t.directionsShort : t.directions,
+      icon: <IconDirections />,
+      primary: true,
+    });
   }
   if (phone) {
     links.push({ href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: t.call, icon: <IconPhone /> });
@@ -119,6 +138,102 @@ export function ContactActions({
         </a>
       ))}
     </div>
+  );
+}
+
+/** Same actions pinned above the safe area on phones (hidden on desktop), so
+ *  directions/call/messaging stay reachable anywhere on the page. */
+export function StickyContactActions(props: Omit<ContactActionsProps, "compact" | "shortDirections">) {
+  return (
+    <div className="sticky-actions">
+      <ContactActions {...props} compact shortDirections />
+    </div>
+  );
+}
+
+/* ---------- Opening hours: shared by location page and ad branch card ---------- */
+
+export function HoursList({ hours }: { hours: Record<string, [string, string] | undefined> }) {
+  const { t } = useI18n();
+  const entries = Object.entries(hours ?? {}).filter(([, v]) => Array.isArray(v));
+  if (entries.length === 0) return null;
+  return (
+    <div className="info-card">
+      <div className="label">{t.hours}</div>
+      <div className="value hours-list">
+        {entries.map(([day, range]) => (
+          <div key={day} className="hours-row">
+            <span>{day}</span>
+            <span>
+              {range![0]}–{range![1]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Share: URL is server-driven, so shared links keep context ---------- */
+
+export function ShareButton({ title }: { title?: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const onShare = async () => {
+    const url = window.location.href;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: title ?? document.title, url });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return; // dismissed
+        // other failures (e.g. no share handler): fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      /* clipboard unavailable (insecure context): silently keep the URL visible */
+    }
+  };
+
+  return (
+    <button type="button" className="btn subtle small" onClick={onShare}>
+      <IconShare /> {copied ? t.linkCopied : t.share}
+    </button>
+  );
+}
+
+/* ---------- Back: return to the previous results, share-safe ---------- */
+
+/** In-app history exists ("location.key !== 'default'") when the visitor
+ *  navigated here from the map/list; a direct/shared link opens with the
+ *  default key, so we fall back to an explicit destination instead of a
+ *  dead history.back(). */
+export function BackLink({ fallbackTo, fallbackLabel }: { fallbackTo: string; fallbackLabel?: string }) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const { key } = useRouterLocation();
+
+  if (key === "default") {
+    return (
+      <Link to={fallbackTo}>
+        <IconArrowLeft size={14} /> {fallbackLabel ?? t.toHomepage}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" className="link-button" onClick={() => navigate(-1)}>
+      <IconArrowLeft size={14} /> {t.back}
+    </button>
   );
 }
 

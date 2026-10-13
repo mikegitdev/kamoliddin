@@ -1,0 +1,13 @@
+# Never bake secrets, local state or caches into the image (audit finding).
+.env
+.env.*
+!.env.example
+.venv
+media/
+staticfiles/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+db.sqlite3

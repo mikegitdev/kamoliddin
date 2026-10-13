@@ -175,7 +175,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STORAGES = {
+STORAGES: dict[str, dict[str, object]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
@@ -190,6 +190,15 @@ if env("USE_S3"):
             "access_key": env("S3_ACCESS_KEY"),
             "secret_key": env("S3_SECRET_KEY"),
             "bucket_name": env("S3_BUCKET_NAME"),
+            # Garage validates the sigv4 credential region against s3_region
+            # (region mismatch => 400 on every S3 call); default matches
+            # infra/docker/garage.toml.
+            "region_name": env("S3_REGION", default="garage"),
+            # Storage is never publicly exposed: public media URLs point at
+            # the server-mediated /media route (apps/core/media.py, spec §11).
+            # e.g. "localhost:8000/media" in dev, "ads.example.uz/media" in prod.
+            "custom_domain": env("S3_PUBLIC_DOMAIN", default=None),
+            "url_protocol": env("S3_URL_PROTOCOL", default="https:"),
             "file_overwrite": False,  # UUID object keys anyway (spec §11)
         },
     }
@@ -201,6 +210,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SMS_PROVIDER = env("SMS_PROVIDER")
 # fake | click (click raises until merchant verification, spec §19 [E])
 PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="fake")
+
+# Eskiz SMS gateway credentials (ADR-0006). Empty by default: selecting
+# SMS_PROVIDER=eskiz without credentials fails fast in the adapter.
+ESKIZ_EMAIL = env("ESKIZ_EMAIL", default="")
+ESKIZ_PASSWORD = env("ESKIZ_PASSWORD", default="")
+ESKIZ_FROM = env("ESKIZ_FROM", default="4546")
+ESKIZ_BASE_URL = env("ESKIZ_BASE_URL", default="https://notify.eskiz.uz")
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True
@@ -214,6 +230,10 @@ OTP_CODE_TTL_SECONDS = 300
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_AFTER_SECONDS = 60
 OTP_CODE_LENGTH = 6
+
+# After a phone change or account deletion, the abandoned number cannot
+# register a new account for this many days (recycled-SIM takeover guard).
+PHONE_RECLAIM_BLOCK_DAYS = 30
 
 # Campaign/placement policy defaults; the admin-editable source of truth is
 # PlatformSetting (spec §5), seeded with max_active_ads_per_location=5.

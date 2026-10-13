@@ -1,0 +1,33 @@
+# Garage node config for LOCAL DEV ONLY (docker-compose.yml at the repo root).
+# Fixed dev secrets are intentional here — this file never leaves a laptop.
+# For production, generate a fresh config on the server — see
+# docs/runbooks/deploy.md (rpc_secret / admin_token / metrics_token).
+#
+# Verified against dxflrs/garage:v2.4.1:
+#  - The S3 API (:3900) is fully private — public media reads are served by
+#    Django's MediaServeView (apps/core/media.py), never by Garage directly.
+#  - Garage validates the sigv4 credential region against s3_region — clients
+#    must sign with region "garage" (S3_REGION in backend/.env.example).
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "4e00f0b0f68fddb85dc06d0787e49a26b9c09b7f57578ab8b34d3908bd8b00f8"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.localhost"
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.localhost"
+index = "index.html"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "devadmin-28a2a1233636bf2be798c5b117c84431"
+metrics_token = "devmetrics-28a2a1233636bf2be798c5b117c84431"

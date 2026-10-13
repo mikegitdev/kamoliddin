@@ -21,8 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY . .
 
-RUN python manage.py collectstatic --noinput --settings=config.settings.prod || true
-
 EXPOSE 8000
 
 # No automatic migrations on startup (spec §15): run `manage.py migrate`

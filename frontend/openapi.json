@@ -1,0 +1,2584 @@
+openapi: 3.0.3
+info:
+  title: Local Advertising Map Platform API
+  version: 1.0.0
+  description: Public map/advertising API v1. Money is integer minor units (tiyin,
+    UZS).
+paths:
+  /api/v1/admin/activity:
+    get:
+      operationId: api_v1_admin_activity_list
+      description: GET /admin/activity — immutable audit trail tail.
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Activity'
+          description: ''
+  /api/v1/admin/campaigns:
+    get:
+      operationId: api_v1_admin_campaigns_list
+      description: GET /admin/campaigns?q=&status= — searchable oversight list.
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminCampaign'
+          description: ''
+  /api/v1/admin/campaigns/{id}/review:
+    post:
+      operationId: api_v1_admin_campaigns_review_create
+      summary: Approve/reject a campaign version
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Review'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Review'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Review'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/campaigns/{id}/suspend:
+    post:
+      operationId: api_v1_admin_campaigns_suspend_create
+      summary: Suspend (takedown) an approved campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignSuspend'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CampaignSuspend'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CampaignSuspend'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/campaigns/{id}/unsuspend:
+    post:
+      operationId: api_v1_admin_campaigns_unsuspend_create
+      summary: Restore a suspended campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/grants:
+    get:
+      operationId: api_v1_admin_grants_retrieve
+      summary: Options for the grant form
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_admin_grants_create
+      summary: Issue a zero-charge placement grant
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Grant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Grant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Grant'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/orders:
+    get:
+      operationId: api_v1_admin_orders_list
+      description: GET /admin/orders — recent platform orders (read-only oversight).
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminOrder'
+          description: ''
+  /api/v1/admin/overview:
+    get:
+      operationId: api_v1_admin_overview_retrieve
+      description: GET /admin/overview — moderation dashboard counters.
+      summary: Platform moderation overview
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/refunds:
+    get:
+      operationId: api_v1_admin_refunds_list
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Refund'
+          description: ''
+  /api/v1/admin/refunds/{id}/process:
+    post:
+      operationId: api_v1_admin_refunds_process_create
+      summary: Manually process a refund request
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundProcess'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefundProcess'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefundProcess'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/reports:
+    get:
+      operationId: api_v1_admin_reports_list
+      description: GET /admin/reports?state=open — the complaints work queue.
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Report'
+          description: ''
+  /api/v1/admin/reports/{id}/process:
+    post:
+      operationId: api_v1_admin_reports_process_create
+      summary: Resolve or dismiss a report
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportProcess'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReportProcess'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReportProcess'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/admin/review-queue:
+    get:
+      operationId: api_v1_admin_review_queue_list
+      description: GET /admin/review-queue — campaigns submitted/under_review, oldest
+        first.
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QueueCampaign'
+          description: ''
+  /api/v1/admin/settings/ad-limit:
+    get:
+      operationId: api_v1_admin_settings_ad_limit_retrieve
+      summary: Current max simultaneous ads per location
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_admin_settings_ad_limit_partial_update
+      summary: Change max simultaneous ads per location
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdLimit'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdLimit'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdLimit'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/auth/csrf:
+    get:
+      operationId: api_v1_auth_csrf_retrieve
+      description: |-
+        GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
+        X-CSRFToken on authenticated mutations (spec §9).
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/auth/logout:
+    post:
+      operationId: api_v1_auth_logout_create
+      summary: Terminate the current session
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me:
+    get:
+      operationId: api_v1_auth_me_retrieve
+      summary: Current session user
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionUser'
+          description: ''
+    delete:
+      operationId: api_v1_auth_me_destroy
+      description: Anonymizes the phone, disables owned businesses and auto-renewals;
+        financial records are retained (spec §14). Terminates the session.
+      summary: Delete own account (soft)
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me/summary:
+    get:
+      operationId: api_v1_auth_me_summary_retrieve
+      summary: Owner dashboard summary
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/auth/otp/request:
+    post:
+      operationId: api_v1_auth_otp_request_create
+      description: Rate-limited. Always returns the same shape whether or not the
+        phone number is known (anti-enumeration).
+      summary: Request a phone OTP
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '202':
+          description: No response body
+  /api/v1/auth/otp/verify:
+    post:
+      operationId: api_v1_auth_otp_verify_create
+      summary: Verify OTP and open a session
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionUser'
+          description: ''
+  /api/v1/auth/phone/change/request:
+    post:
+      operationId: api_v1_auth_phone_change_request_create
+      description: Rate-limited. Always returns the same shape whether or not the
+        new phone is available (anti-enumeration, spec §9).
+      summary: Request a phone-change code (sent to the NEW phone)
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '202':
+          description: No response body
+  /api/v1/auth/phone/change/verify:
+    post:
+      operationId: api_v1_auth_phone_change_verify_create
+      summary: Verify phone-change code and switch phone
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionUser'
+          description: ''
+  /api/v1/businesses:
+    get:
+      operationId: api_v1_businesses_list
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Business'
+          description: ''
+    post:
+      operationId: api_v1_businesses_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Business'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Business'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Business'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+          description: ''
+  /api/v1/businesses/{business_id}/locations:
+    get:
+      operationId: api_v1_businesses_locations_list
+      summary: List branches of own business
+      parameters:
+      - in: path
+        name: business_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Locations
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+          description: ''
+    post:
+      operationId: api_v1_businesses_locations_create
+      summary: Add a branch
+      parameters:
+      - in: path
+        name: business_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Locations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Location'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Location'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Location'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+          description: ''
+  /api/v1/businesses/{id}:
+    get:
+      operationId: api_v1_businesses_retrieve
+      summary: Own business profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Businesses
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+          description: ''
+    patch:
+      operationId: api_v1_businesses_partial_update
+      summary: Edit own business
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Businesses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBusiness'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBusiness'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBusiness'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+          description: ''
+  /api/v1/campaigns:
+    get:
+      operationId: api_v1_campaigns_list
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Campaign'
+          description: ''
+    post:
+      operationId: api_v1_campaigns_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Campaign'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Campaign'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Campaign'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+  /api/v1/campaigns/{id}:
+    get:
+      operationId: api_v1_campaigns_retrieve
+      summary: Own campaign details
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+    patch:
+      operationId: api_v1_campaigns_partial_update
+      summary: Edit draft/rejected campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCampaign'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCampaign'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCampaign'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+  /api/v1/campaigns/{id}/placements:
+    get:
+      operationId: api_v1_campaigns_placements_list
+      summary: Placements of an own campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Placement'
+          description: ''
+  /api/v1/campaigns/{id}/reviews:
+    get:
+      operationId: api_v1_campaigns_reviews_list
+      description: Immutable review history (spec §5); newest first. Rejection reasons
+        drive the correction/resubmission flow.
+      summary: Moderation decisions for an own campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignReview'
+          description: ''
+  /api/v1/campaigns/{id}/submit:
+    post:
+      operationId: api_v1_campaigns_submit_create
+      description: draft/rejected -> submitted. Payment happens separately via /orders/quote
+        + /orders/{id}/checkout.
+      summary: Submit campaign for moderation
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/locations/{id}:
+    get:
+      operationId: api_v1_locations_retrieve
+      summary: Own branch details
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Locations
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+          description: ''
+    patch:
+      operationId: api_v1_locations_partial_update
+      summary: Edit own branch
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Locations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLocation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedLocation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLocation'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+          description: ''
+  /api/v1/media/upload:
+    post:
+      operationId: api_v1_media_upload_create
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/orders:
+    get:
+      operationId: api_v1_orders_list
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+          description: ''
+  /api/v1/orders/{id}:
+    get:
+      operationId: api_v1_orders_retrieve
+      summary: Own order/payment status
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Orders
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+          description: ''
+  /api/v1/orders/{id}/checkout:
+    post:
+      operationId: api_v1_orders_checkout_create
+      summary: Create idempotent provider checkout
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Orders
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/orders/{id}/refund-request:
+    post:
+      operationId: api_v1_orders_refund_request_create
+      summary: Request a refund for a rejected/suspended paid order
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Orders
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/orders/quote:
+    post:
+      operationId: api_v1_orders_quote_create
+      description: Server-side pricing with immutable snapshot (spec §6, §12). Response
+        is the draft quote order; the frontend never sets prices.
+      summary: Price quote for dates and branches
+      tags:
+      - Orders
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/payments/{provider}/webhook:
+    post:
+      operationId: api_v1_payments_webhook_create
+      description: POST /api/v1/payments/{provider}/webhook — provider-initiated callbacks.
+      parameters:
+      - in: path
+        name: provider
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/public/campaigns/{id}:
+    get:
+      operationId: api_v1_public_campaigns_retrieve
+      description: Expired/unapproved/blocked campaigns return 404 (spec §14). Includes
+        every currently eligible branch with address, hours and contacts so shared
+        direct links work without client navigation state.
+      summary: Active-only ad details with eligible branches
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicCampaignDetail'
+          description: ''
+  /api/v1/public/categories:
+    get:
+      operationId: api_v1_public_categories_list
+      summary: Business categories
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+          description: ''
+  /api/v1/public/locations:
+    get:
+      operationId: api_v1_public_locations_list
+      description: Returns id/coords/active-ads-count per location. Filter by category
+        and free-text query; bounded limit.
+      summary: 'Map pins: active locations in a bbox'
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicLocation'
+          description: ''
+  /api/v1/public/locations/{id}:
+    get:
+      operationId: api_v1_public_locations_retrieve
+      summary: Location detail with active ads
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicLocationDetail'
+          description: ''
+  /api/v1/public/reports:
+    post:
+      operationId: api_v1_public_reports_create
+      summary: Report a suspicious business/ad
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/public/search:
+    get:
+      operationId: api_v1_public_search_retrieve
+      description: Relevance first (name/business/ad headline match), then distance
+        from the optional lat/lon.
+      summary: Search locations and campaigns
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/renewals:
+    get:
+      operationId: api_v1_renewals_list
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RenewalAgreement'
+          description: ''
+  /api/v1/renewals/{id}/cancel:
+    post:
+      operationId: api_v1_renewals_cancel_create
+      summary: Disable future charge attempts (paid time remains)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Renewals
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/renewals/enable:
+    post:
+      operationId: api_v1_renewals_enable_create
+      summary: Re-enable explicit recurrence
+      tags:
+      - Renewals
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /health:
+    get:
+      operationId: health_probe
+      description: Same probe on the no-slash path (strict probes); distinct operationId.
+      tags:
+      - health
+      responses:
+        '200':
+          description: No response body
+        '503':
+          description: No response body
+  /health/:
+    get:
+      operationId: health
+      description: |-
+        Liveness/readiness probe: checks DB connectivity.
+
+        Returns HTTP 503 (not 200) when the database is unreachable, so
+        `curl -f` deploy gates and uptime monitors register the outage.
+      tags:
+      - health
+      responses:
+        '200':
+          description: No response body
+        '503':
+          description: No response body
+components:
+  schemas:
+    Activity:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        action:
+          type: string
+          maxLength: 100
+        entity:
+          type: string
+          maxLength: 60
+        entity_id:
+          type: string
+          maxLength: 64
+        actor_phone:
+          type: string
+          readOnly: true
+        metadata: {}
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - actor_phone
+      - created_at
+      - entity
+      - entity_id
+      - id
+    AdminCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          maxLength: 200
+        review_status:
+          $ref: '#/components/schemas/ReviewStatusEnum'
+        review_version:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        business_name:
+          type: string
+          readOnly: true
+        owner_phone:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - banner_url
+      - business_name
+      - headline
+      - id
+      - owner_phone
+      - updated_at
+    AdminOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        amount_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        currency:
+          type: string
+          maxLength: 3
+        state:
+          $ref: '#/components/schemas/State16aEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount_total
+      - business_name
+      - campaign_headline
+      - created_at
+      - id
+    Business:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        category:
+          type: string
+        owner_phone:
+          type: string
+          readOnly: true
+        logo_key:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        phone:
+          type: string
+          maxLength: 24
+        telegram:
+          type: string
+          maxLength: 120
+        whatsapp:
+          type: string
+          maxLength: 120
+        site:
+          type: string
+          format: uri
+          maxLength: 200
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status6daEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - category
+      - created_at
+      - id
+      - name
+      - owner_phone
+      - slug
+      - status
+      - updated_at
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+          readOnly: true
+        headline:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+        banner_key:
+          type: string
+          maxLength: 200
+        banner_url:
+          type: string
+          readOnly: true
+        review_status:
+          allOf:
+          - $ref: '#/components/schemas/ReviewStatusEnum'
+          readOnly: true
+        review_version:
+          type: integer
+          readOnly: true
+        active_placements_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - active_placements_count
+      - banner_key
+      - banner_url
+      - business
+      - business_name
+      - created_at
+      - headline
+      - id
+      - review_status
+      - review_version
+      - updated_at
+    CampaignReview:
+      type: object
+      description: |-
+        Read-only moderation decisions shown to the advertiser (spec §5):
+        immutable rows, no reviewer identity exposed.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        decision:
+          allOf:
+          - $ref: '#/components/schemas/CampaignReviewDecisionEnum'
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        content_version:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - content_version
+      - created_at
+      - decision
+      - id
+      - reason
+    CampaignReviewDecisionEnum:
+      enum:
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `approved` - Approved
+        * `rejected` - Rejected
+    CampaignSuspend:
+      type: object
+      properties:
+        reason:
+          type: string
+      required:
+      - reason
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        slug:
+          type: string
+          readOnly: true
+        name_ru:
+          type: string
+          readOnly: true
+        name_uz:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - name_ru
+      - name_uz
+      - slug
+    Decision55fEnum:
+      enum:
+      - approve
+      - reject
+      type: string
+      description: |-
+        * `approve` - approve
+        * `reject` - reject
+    EntityEnum:
+      enum:
+      - location
+      - campaign
+      type: string
+      description: |-
+        * `location` - Location
+        * `campaign` - Campaign
+    Grant:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        location_id:
+          type: string
+          format: uuid
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+      required:
+      - campaign_id
+      - end_at
+      - location_id
+      - reason
+      - start_at
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        address:
+          type: string
+          maxLength: 300
+        city:
+          type: string
+          maxLength: 100
+        lon:
+          type: number
+          format: double
+          writeOnly: true
+        lat:
+          type: number
+          format: double
+          writeOnly: true
+        phone:
+          type: string
+          maxLength: 24
+        telegram:
+          type: string
+          maxLength: 120
+        whatsapp:
+          type: string
+          maxLength: 120
+        hours: {}
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status6daEnum'
+          readOnly: true
+        risk_flags:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - address
+      - business
+      - business_name
+      - created_at
+      - id
+      - lat
+      - lon
+      - name
+      - risk_flags
+      - status
+      - updated_at
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        campaign_status:
+          type: string
+          readOnly: true
+        amount_total:
+          type: integer
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/State16aEnum'
+          readOnly: true
+        quote_expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        interval_start_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval start (quote snapshot)
+        interval_end_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval end (quote snapshot)
+        auto_renew:
+          type: boolean
+          readOnly: true
+          description: Advertiser consent to auto-renewal captured at quote time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount_total
+      - auto_renew
+      - business
+      - business_name
+      - campaign
+      - campaign_headline
+      - campaign_status
+      - created_at
+      - currency
+      - id
+      - interval_end_at
+      - interval_start_at
+      - items
+      - quote_expires_at
+      - state
+      - updated_at
+    OrderDetail:
+      type: object
+      description: 'Detail payload: adds the payment timeline and refund state (spec
+        §5).'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        campaign_status:
+          type: string
+          readOnly: true
+        amount_total:
+          type: integer
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/State16aEnum'
+          readOnly: true
+        quote_expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        interval_start_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval start (quote snapshot)
+        interval_end_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval end (quote snapshot)
+        auto_renew:
+          type: boolean
+          readOnly: true
+          description: Advertiser consent to auto-renewal captured at quote time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentAttempt'
+          readOnly: true
+        refund:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+      required:
+      - amount_total
+      - attempts
+      - auto_renew
+      - business
+      - business_name
+      - campaign
+      - campaign_headline
+      - campaign_status
+      - created_at
+      - currency
+      - id
+      - interval_end_at
+      - interval_start_at
+      - items
+      - quote_expires_at
+      - refund
+      - state
+      - updated_at
+    OrderItem:
+      type: object
+      properties:
+        location:
+          type: string
+          format: uuid
+        location_name:
+          type: string
+          readOnly: true
+        unit_rate_snapshot:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description: Tariff minor units at quote time
+        charge_days:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        line_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+      required:
+      - charge_days
+      - line_total
+      - location
+      - location_name
+      - unit_rate_snapshot
+    PatchedAdLimit:
+      type: object
+      properties:
+        value:
+          type: integer
+          maximum: 50
+          minimum: 1
+    PatchedBusiness:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        category:
+          type: string
+        owner_phone:
+          type: string
+          readOnly: true
+        logo_key:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        phone:
+          type: string
+          maxLength: 24
+        telegram:
+          type: string
+          maxLength: 120
+        whatsapp:
+          type: string
+          maxLength: 120
+        site:
+          type: string
+          format: uri
+          maxLength: 200
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status6daEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+          readOnly: true
+        headline:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+        banner_key:
+          type: string
+          maxLength: 200
+        banner_url:
+          type: string
+          readOnly: true
+        review_status:
+          allOf:
+          - $ref: '#/components/schemas/ReviewStatusEnum'
+          readOnly: true
+        review_version:
+          type: integer
+          readOnly: true
+        active_placements_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedLocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        address:
+          type: string
+          maxLength: 300
+        city:
+          type: string
+          maxLength: 100
+        lon:
+          type: number
+          format: double
+          writeOnly: true
+        lat:
+          type: number
+          format: double
+          writeOnly: true
+        phone:
+          type: string
+          maxLength: 24
+        telegram:
+          type: string
+          maxLength: 120
+        whatsapp:
+          type: string
+          maxLength: 120
+        hours: {}
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status6daEnum'
+          readOnly: true
+        risk_flags:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PaymentAttempt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        provider:
+          type: string
+          readOnly: true
+        provider_payment_id:
+          type: string
+          readOnly: true
+          default: ''
+        amount:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PaymentAttemptStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - created_at
+      - id
+      - provider
+      - provider_payment_id
+      - status
+    PaymentAttemptStatusEnum:
+      enum:
+      - pending
+      - succeeded
+      - failed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `succeeded` - Succeeded
+        * `failed` - Failed
+    Placement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        location:
+          type: string
+          format: uuid
+          readOnly: true
+        location_name:
+          type: string
+          readOnly: true
+        location_business:
+          type: string
+          readOnly: true
+        start_at:
+          type: string
+          format: date-time
+          readOnly: true
+        end_at:
+          type: string
+          format: date-time
+          readOnly: true
+        actual_start_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        actual_end_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/PlacementStateEnum'
+          readOnly: true
+        source_type:
+          allOf:
+          - $ref: '#/components/schemas/SourceTypeEnum'
+          readOnly: true
+        charge_days:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actual_end_at
+      - actual_start_at
+      - charge_days
+      - created_at
+      - end_at
+      - id
+      - location
+      - location_business
+      - location_name
+      - source_type
+      - start_at
+      - state
+    PlacementStateEnum:
+      enum:
+      - pending
+      - scheduled
+      - active
+      - expired
+      - blocked
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - Pending payment/approval
+        * `scheduled` - Scheduled
+        * `active` - Active
+        * `expired` - Expired
+        * `blocked` - Blocked (risk/ban)
+        * `cancelled` - Cancelled
+    PublicAdLocation:
+      type: object
+      description: |-
+        Branch context for a directly opened ad link (spec §14): only data of
+        locations where the campaign is CURRENTLY eligible — same visibility rules
+        as every other public endpoint. Lets a shared /ads/{id} URL show address,
+        hours and contacts without any client navigation state.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        address:
+          type: string
+          readOnly: true
+        lon:
+          type: number
+          format: double
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+        hours:
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        telegram:
+          type: string
+          readOnly: true
+        whatsapp:
+          type: string
+          readOnly: true
+        business_site:
+          type: string
+          readOnly: true
+      required:
+      - address
+      - business_site
+      - hours
+      - id
+      - lat
+      - lon
+      - name
+      - phone
+      - telegram
+      - whatsapp
+    PublicCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        starts_at:
+          type: string
+          format: date-time
+          readOnly: true
+        ends_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - banner_url
+      - body
+      - business_name
+      - ends_at
+      - headline
+      - id
+      - starts_at
+    PublicCampaignDetail:
+      type: object
+      description: |-
+        Ad detail payload plus the currently eligible branches. starts_at/ends_at
+        still come from one selected placement and must not be presented as the
+        schedule of every branch (design guide §7.3).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        starts_at:
+          type: string
+          format: date-time
+          readOnly: true
+        ends_at:
+          type: string
+          format: date-time
+          readOnly: true
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicAdLocation'
+          readOnly: true
+      required:
+      - banner_url
+      - body
+      - business_name
+      - ends_at
+      - headline
+      - id
+      - locations
+      - starts_at
+    PublicLocation:
+      type: object
+      description: |-
+        Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
+        (spec §10) — not historical ones.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        lon:
+          type: number
+          format: double
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        active_ads_count:
+          type: integer
+          readOnly: true
+      required:
+      - active_ads_count
+      - business_name
+      - category
+      - id
+      - lat
+      - lon
+      - name
+    PublicLocationDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        address:
+          type: string
+          readOnly: true
+        lon:
+          type: number
+          format: double
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+        hours:
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        telegram:
+          type: string
+          readOnly: true
+        whatsapp:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        business_site:
+          type: string
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+        active_ads:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicCampaign'
+          readOnly: true
+      required:
+      - active_ads
+      - address
+      - business_name
+      - business_site
+      - category
+      - hours
+      - id
+      - lat
+      - lon
+      - name
+      - phone
+      - telegram
+      - whatsapp
+    QueueCampaign:
+      type: object
+      description: Campaign awaiting review, with the context a moderator needs (spec
+        §12).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+        banner_url:
+          type: string
+          readOnly: true
+        review_status:
+          $ref: '#/components/schemas/ReviewStatusEnum'
+        review_version:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        business_name:
+          type: string
+          readOnly: true
+        owner_phone:
+          type: string
+          readOnly: true
+        locations:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - banner_url
+      - business_name
+      - headline
+      - id
+      - locations
+      - owner_phone
+      - updated_at
+    Refund:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        order:
+          type: string
+          format: uuid
+        order_number:
+          type: string
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        amount:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        reason:
+          type: string
+        state:
+          $ref: '#/components/schemas/RefundStateEnum'
+        provider_ref:
+          type: string
+          maxLength: 200
+        operator:
+          type: string
+          format: uuid
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - business_name
+      - campaign_headline
+      - created_at
+      - id
+      - order
+      - order_number
+    RefundProcess:
+      type: object
+      properties:
+        decision:
+          $ref: '#/components/schemas/Decision55fEnum'
+        provider_ref:
+          type: string
+          default: ''
+        amount:
+          type: integer
+          minimum: 0
+      required:
+      - decision
+    RefundStateEnum:
+      enum:
+      - refund_requested
+      - admin_review
+      - provider_refund_processing
+      - refunded
+      - refund_failed
+      type: string
+      description: |-
+        * `refund_requested` - Refund requested
+        * `admin_review` - Admin review
+        * `provider_refund_processing` - Provider refund processing
+        * `refunded` - Refunded
+        * `refund_failed` - Refund failed
+    RenewalAgreement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        locations_snapshot:
+          readOnly: true
+          description: Frozen location id list for renewal
+        locations_count:
+          type: integer
+          readOnly: true
+        charge_days:
+          type: integer
+          readOnly: true
+        duration_seconds:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RenewalAgreementStatusEnum'
+          readOnly: true
+          description: |-
+            pending_token agreements never charge — no verified provider token (ADR-0005)
+
+            * `active` - Active
+            * `alert` - Alert (last charge failed)
+            * `disabled` - Disabled (cancelled by advertiser)
+            * `pending_token` - Awaiting provider token (no verified adapter)
+        price_policy:
+          type: string
+          readOnly: true
+          description: current_tariff | locked_price — must be shown and consented
+            to (spec §8 [O])
+        consent_at:
+          type: string
+          format: date-time
+          readOnly: true
+        next_run_at:
+          type: string
+          format: date-time
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - business
+      - business_name
+      - campaign
+      - campaign_headline
+      - charge_days
+      - consent_at
+      - created_at
+      - duration_seconds
+      - id
+      - locations_count
+      - locations_snapshot
+      - next_run_at
+      - price_policy
+      - status
+      - updated_at
+    RenewalAgreementStatusEnum:
+      enum:
+      - active
+      - alert
+      - disabled
+      - pending_token
+      type: string
+      description: |-
+        * `active` - Active
+        * `alert` - Alert (last charge failed)
+        * `disabled` - Disabled (cancelled by advertiser)
+        * `pending_token` - Awaiting provider token (no verified adapter)
+    Report:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entity:
+          allOf:
+          - $ref: '#/components/schemas/EntityEnum'
+          readOnly: true
+        entity_id:
+          type: string
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/ReportStateEnum'
+          readOnly: true
+        resolution_note:
+          type: string
+          readOnly: true
+        resolved_by_phone:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        resolved_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - entity
+      - entity_id
+      - id
+      - reason
+      - resolution_note
+      - resolved_at
+      - resolved_by_phone
+      - state
+    ReportProcess:
+      type: object
+      properties:
+        decision:
+          $ref: '#/components/schemas/ReportProcessDecisionEnum'
+        note:
+          type: string
+          default: ''
+      required:
+      - decision
+    ReportProcessDecisionEnum:
+      enum:
+      - resolve
+      - dismiss
+      type: string
+      description: |-
+        * `resolve` - resolve
+        * `dismiss` - dismiss
+    ReportStateEnum:
+      enum:
+      - open
+      - resolved
+      - dismissed
+      type: string
+      description: |-
+        * `open` - Open
+        * `resolved` - Resolved (action taken)
+        * `dismissed` - Dismissed (no violation)
+    Review:
+      type: object
+      properties:
+        decision:
+          $ref: '#/components/schemas/Decision55fEnum'
+        reason:
+          type: string
+          default: ''
+      required:
+      - decision
+    ReviewStatusEnum:
+      enum:
+      - draft
+      - submitted
+      - under_review
+      - approved
+      - rejected
+      - suspended
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `submitted` - Submitted
+        * `under_review` - Under review
+        * `approved` - Approved
+        * `rejected` - Rejected
+        * `suspended` - Suspended (admin takedown)
+    SessionUser:
+      type: object
+      description: Response payload describing the authenticated user.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        phone_e164:
+          type: string
+          readOnly: true
+        is_staff:
+          type: boolean
+          readOnly: true
+      required:
+      - id
+      - is_staff
+      - phone_e164
+    SourceTypeEnum:
+      enum:
+      - paid
+      - grant
+      type: string
+      description: |-
+        * `paid` - Paid
+        * `grant` - Free grant
+    State16aEnum:
+      enum:
+      - draft_quote
+      - awaiting_payment
+      - payment_processing
+      - paid
+      - failed
+      - expired
+      type: string
+      description: |-
+        * `draft_quote` - Draft quote
+        * `awaiting_payment` - Awaiting payment
+        * `payment_processing` - Payment processing
+        * `paid` - Paid
+        * `failed` - Failed
+        * `expired` - Expired
+    Status6daEnum:
+      enum:
+      - active
+      - under_review
+      - disabled
+      type: string
+      description: |-
+        * `active` - Active
+        * `under_review` - Under review
+        * `disabled` - Disabled
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

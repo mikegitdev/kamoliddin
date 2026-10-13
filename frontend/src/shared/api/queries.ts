@@ -3,6 +3,7 @@ import { api } from "./client";
 import type {
   ApiBusiness,
   ApiCampaign,
+  ApiCampaignReview,
   ApiCategory,
   ApiLocationDetail,
   ApiLocationPin,
@@ -16,6 +17,17 @@ export interface LocationFilters {
   bbox: string;
   category?: string;
   q?: string;
+}
+
+export interface ApiSearchAd {
+  id: string;
+  headline: string;
+  business_name: string;
+}
+
+export interface ApiSearchResult {
+  locations: ApiLocationPin[];
+  campaigns: ApiSearchAd[];
 }
 
 export function useCategories() {
@@ -47,6 +59,33 @@ export function useLocationDetail(id: string | undefined) {
   });
 }
 
+export interface SearchFilters {
+  q: string;
+  category?: string;
+  /** Optional origin for distance ordering (map center or user location). */
+  lat?: number;
+  lon?: number;
+}
+
+/** Global relevance search (not bbox-bound): lets visitors find a business
+ *  anywhere in the city without navigating the map manually. */
+export function usePublicSearch(filters: SearchFilters | null) {
+  return useQuery({
+    queryKey: ["public-search", filters],
+    queryFn: () => {
+      const params = new URLSearchParams({ q: filters!.q.trim() });
+      if (filters!.category) params.set("category", filters!.category);
+      if (filters!.lat !== undefined && filters!.lon !== undefined) {
+        params.set("lat", String(filters!.lat));
+        params.set("lon", String(filters!.lon));
+      }
+      return api<ApiSearchResult>(`/api/v1/public/search?${params.toString()}`);
+    },
+    enabled: !!filters && filters.q.trim().length >= 2,
+    staleTime: 30_000,
+  });
+}
+
 export function useSession() {
   return useQuery({
     queryKey: ["session"],
@@ -61,6 +100,14 @@ export function useCampaign(id: string | undefined) {
   return useQuery({
     queryKey: ["campaign", id],
     queryFn: () => api<ApiCampaign>(`/api/v1/campaigns/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCampaignReviews(id: string | undefined) {
+  return useQuery({
+    queryKey: ["campaign-reviews", id],
+    queryFn: () => api<ApiCampaignReview[]>(`/api/v1/campaigns/${id}/reviews`),
     enabled: !!id,
   });
 }

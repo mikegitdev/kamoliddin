@@ -1,27 +1,81 @@
 # Deploy runbook (single VPS, manual — spec §15)
 
-> Skeleton. Fill in real host names, backup targets, and alert endpoints
-> before launch. The scripted version is `infra/scripts/deploy.sh`.
+> Fill in real host names, backup targets, and alert endpoints before launch.
+> The scripted version is `infra/scripts/deploy.sh`.
+
+## Prerequisites (once per VPS)
+
+1. **Env file** — `cp infra/docker/.env.prod.example infra/docker/.env.prod` and
+   fill every value (Postgres, Garage bootstrap + least-privilege app keys,
+   media domain). Never commit it.
+2. **Garage config** — generate `infra/docker/garage.prod.toml` on the server
+   (never committed) with fresh secrets; the admin API stays internal and is
+   used by `garage-init.sh`:
+   ```bash
+   umask 077
+   cat > infra/docker/garage.prod.toml <<EOF
+   metadata_dir = "/var/lib/garage/meta"
+   data_dir = "/var/lib/garage/data"
+   db_engine = "sqlite"
+   replication_factor = 1
+   rpc_bind_addr = "[::]:3901"
+   rpc_public_addr = "127.0.0.1:3901"
+   rpc_secret = "$(openssl rand -hex 32)"
+
+   [s3_api]
+   s3_region = "garage"
+   api_bind_addr = "[::]:3900"
+   root_domain = ".s3.internal"
+
+   [s3_web]
+   bind_addr = "[::]:3902"
+   root_domain = ".web.internal"
+
+   [admin]
+   api_bind_addr = "[::]:3903"
+   admin_token = "$(openssl rand -hex 16)"
+   metrics_token = "$(openssl rand -hex 16)"
+   EOF
+   ```
+3. **TLS certificates** — before the first `up -d` (nginx always listens on
+   443 and refuses to start without certs):
+   ```bash
+   sudo certbot certonly --standalone -d ads.example.uz   # port 80 must be free
+   cp /etc/letsencrypt/live/ads.example.uz/fullchain.pem infra/nginx/certs/
+   cp /etc/letsencrypt/live/ads.example.uz/privkey.pem  infra/nginx/certs/
+   ```
+   Renewals: `certbot renew --webroot -w infra/nginx/certbot` (port 80 serves
+   `/.well-known/acme-challenge/` and redirects everything else to HTTPS),
+   then copy the refreshed files and `docker compose ... restart proxy`.
+4. **Tooling** — docker (compose plugin), git, Node 22+ (the SPA is built on
+   the VPS during deploy).
 
 ## Topology
 
 nginx (infra/nginx/nginx.conf) -> web (gunicorn, backend/Dockerfile)
-workers: celery worker + beat; state: PostgreSQL/PostGIS, Redis, MinIO.
-Only the proxy exposes public ports; DB/Redis/MinIO stay on the internal
-compose network.
+workers: celery worker + beat; state: PostgreSQL/PostGIS, Redis, Garage.
+Only the proxy exposes public ports; DB/Redis/Garage stay on the internal
+compose network. Media objects live in Garage (private S3 API, ADR-0002) and
+are served publicly only through Django's `/media/` route (spec §11).
 
-## Steps
+## Steps (deploy.sh automates 1–9)
 
-1. **Preflight** — verify `.env` on the server (never committed), image tags
-   pinned, disk space.
-2. **Backups (off-server)** — `pg_dump` + `mc mirror` of the media bucket to
-   the external target; record timestamps.
-3. **Build/pull** tagged images; record the release SHA (`.last-release-sha`).
-4. **Migrate** — `manage.py makemigrations --check` must be clean, then
-   `manage.py migrate`. Migrations never run automatically at container start.
-5. **Start** — `docker compose up -d`; verify `/health/` returns `{"status":"ok"}`.
-6. **Reconcile** — run payment/renewal reconciliation job (once implemented).
-7. **Verify** — anonymous map page, advertiser login, admin login.
+1. **Preflight** — verify `.env.prod`, TLS certs, Node, pinned image tags,
+   disk space.
+2. **Backups (off-server)** — `pg_dump` + Garage media sync to the external
+   target; record timestamps.
+3. **Build frontend** — `npm ci && npm run build` → `frontend/dist` (mounted
+   read-only into nginx).
+4. **Build/pull** tagged images; record the release SHA (`.last-release-sha`).
+5. **Migrate + collectstatic** — `manage.py makemigrations --check` must be
+   clean, then `migrate` and `collectstatic --noinput` (explicit, fail-fast;
+   never run automatically at container start).
+6. **Garage init** — `infra/scripts/garage-init.sh` imports the bucket-scoped
+   app key (read/write only; idempotent; the app never uses the bootstrap key).
+7. **Start** — `docker compose up -d`; `/health/` must return 200/`ok`
+   (DB failure returns 503 and fails the gate).
+8. **Reconcile** — run payment/renewal reconciliation job.
+9. **Verify** — `https://<domain>/` map page, advertiser login, admin login.
 
 ## Rollback
 
@@ -30,6 +84,24 @@ compose network.
   compatible with the new schema before deploying it.
 - Data incident: restore from off-server backup into a clean environment and
   cut over (restore drill is a launch gate, spec §17 item 22).
+
+### Restore drill (prod-shaped: Garage media + Postgres)
+
+`infra/scripts/backup.sh` output is self-contained per timestamp:
+`db-<stamp>.sql.gz`, `media-<stamp>/` (mirrored bucket objects),
+`SHA256SUMS-<stamp>`. To drill a restore into a clean environment:
+
+1. Start a fresh `postgis/postgis:16-3.4` + Garage stack (`garage-init.sh`
+   against it).
+2. `gunzip -c db-<stamp>.sql.gz | psql` (PostGIS template "already exists"
+   errors are expected and harmless) — see the dev drill below for details.
+3. `aws s3 sync media-<stamp>/ s3://localads-media --endpoint-url ...` (same
+   aws-cli invocation as `backup.sh`, with source and target swapped).
+4. Verify: `manage.py migrate --check`, `/health/` 200, public map API returns
+   pins/ads, `/media/banners/...` serves 200 (through Django), spot-check search.
+
+A production-shaped drill (off-server backup → clean VPS) is a launch gate
+(spec §17 item 22); the dev-data drill below is the inner loop.
 
 ### Restore drill (verified 2026-10-09, dev data)
 
@@ -48,7 +120,8 @@ placements restored, migrations consistent, live API + banners serving.
 ## Monitoring checklist
 
 - `/health/` endpoint (DB check), Celery heartbeat + queue backlog, payment
-  failure/reconciliation queue depth, disk usage, MinIO usage, DB backup
+  failure/reconciliation queue depth, disk usage, Garage storage usage
+  (admin API `:3903/v2/GetClusterStatus`), DB backup
   freshness, TLS expiry, OTP error rate.
 
 ## Load checkpoint (2026-09-10, dev runserver + DEBUG, single worker)
@@ -59,3 +132,37 @@ placements restored, migrations consistent, live API + banners serving.
   protects the map API from a single abusive client.
 - Prod runs gunicorn (multi-worker) behind nginx, so treat these as a floor.
   Re-run against prod-shaped infra before launch sign-off.
+
+## Daily ops report (spec §15 monitoring minimum)
+
+Cron on the VPS (07:00 local, output goes to cron mail; non-zero exit alerts):
+
+```
+0 7 * * * cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
+  exec -T web python manage.py ops_report || echo "OPS CRITICAL — check report above"
+```
+
+The report covers: renewal reconciliation/failure counts, pending-token
+agreements, succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
+placements, disk usage, and the Celery worker heartbeat. Set
+`OPS_TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID` in `.env.prod` to mirror it
+to Telegram. For backup freshness, mount/copy the `~/.localads-last-backup`
+stamp into the container and set `OPS_LAST_BACKUP_FILE`.
+
+Weekly media hygiene (ADR-0004):
+
+```
+0 4 * * 0 cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
+  exec -T web python manage.py prune_orphan_media
+```
+
+## Encrypted backups
+
+`backup.sh` encrypts every artifact at rest when `BACKUP_ENCRYPTION_KEY` is
+exported (AES-256-CBC + PBKDF2). Store the key OUTSIDE the backup host.
+Decrypt a database dump during a restore:
+
+```
+openssl enc -d -aes-256-cbc -pbkdf2 -in db-<stamp>.sql.gz.enc \
+  -pass env:BACKUP_ENCRYPTION_KEY | gunzip | psql -U localads localads
+```

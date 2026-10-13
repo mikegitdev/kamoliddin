@@ -4,6 +4,7 @@ import { useCampaigns } from "@/shared/api/queries";
 import { CampaignChip } from "@/shared/ui";
 import { formatDate } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { IconBulb, IconPencil } from "@/shared/icons";
 import type { CampaignStatus } from "@/entities/types";
 
 type Filter = "all" | "draft" | "review" | "approved" | "rejected";
@@ -20,6 +21,9 @@ export function CampaignsPage() {
   const { t, locale } = useI18n();
   const { data: campaigns, isLoading } = useCampaigns();
   const [filter, setFilter] = useState<Filter>("all");
+
+  const countFor = (key: Filter) =>
+    (campaigns ?? []).filter((c) => MATCHER[key](c.review_status)).length;
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: t.statusAll },
@@ -48,7 +52,7 @@ export function CampaignsPage() {
             aria-pressed={filter === key}
             onClick={() => setFilter(key)}
           >
-            {label}
+            {label} <span className="filter-count">{countFor(key)}</span>
           </button>
         ))}
       </div>
@@ -61,7 +65,7 @@ export function CampaignsPage() {
       )}
       {campaigns && campaigns.length === 0 && (
         <p className="callout" style={{ marginTop: 14 }}>
-          💡 {t.newCampaignHint}
+          <IconBulb size={16} /> {t.newCampaignHint}
         </p>
       )}
       {campaigns && campaigns.length > 0 && visible.length === 0 && (
@@ -69,27 +73,35 @@ export function CampaignsPage() {
           {t.emptyTitle}
         </p>
       )}
-      <ul className="list">
+      <ul className="campaign-list">
         {visible.map((c) => (
-          <li key={c.id} className="row-between">
-            <div className="row" style={{ minWidth: 0 }}>
-              <img className="thumb" src={c.banner_url} alt="" loading="lazy" />
-              <div style={{ minWidth: 0 }}>
-                <Link to={`/app/campaigns/${c.id}`} style={{ fontWeight: 700, color: "inherit" }}>
-                  {c.headline}
-                </Link>
-                <div className="muted-2">
-                  {c.business_name} · {formatDate(c.created_at, locale)}
-                </div>
-              </div>
+          <li key={c.id} className="campaign-card">
+            <img className="thumb" src={c.banner_url} alt="" loading="lazy" />
+            <div className="cc-main">
+              <Link
+                to={`/app/campaigns/${c.id}`}
+                className="cc-title"
+              >
+                {c.headline}
+              </Link>
+              <span className="muted-2">
+                {c.business_name} · {formatDate(c.created_at, locale)}
+              </span>
             </div>
-            <div className="row">
-              {(c.review_status === "draft" || c.review_status === "rejected") && (
-                <Link className="btn small" to={`/app/campaigns/${c.id}/edit`}>
-                  ✏️ {t.editCampaign}
-                </Link>
+            <div className="cc-side">
+              {/* Publication state — deliberately separate from the
+                  moderation chip above it: approved ≠ live (spec §7). */}
+              {c.active_placements_count > 0 && (
+                <span className="chip green">
+                  {t.showingNow}: {c.active_placements_count}
+                </span>
               )}
               <CampaignChip status={c.review_status} />
+              {(c.review_status === "draft" || c.review_status === "rejected") && (
+                <Link className="btn small" to={`/app/campaigns/${c.id}/edit`}>
+                  <IconPencil size={12} /> {c.review_status === "rejected" ? t.rejectionFixBtn : t.continueDraft}
+                </Link>
+              )}
             </div>
           </li>
         ))}

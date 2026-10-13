@@ -1,9 +1,12 @@
+from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.accounts.models import User
 
 from .models import Order
 from .serializers import (
@@ -21,14 +24,24 @@ from .services import (
 )
 
 
+def _owner(request) -> User:
+    """IsAuthenticated views: narrow request.user to User for queryset lookups
+    (mypy; AnonymousUser is impossible behind the permission class)."""
+    user = request.user
+    assert not isinstance(user, AnonymousUser)
+    return user
+
+
 class OrderListView(ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Order.objects.none()
         return (
-            Order.objects.filter(business__owner=self.request.user)
+            Order.objects.filter(business__owner=_owner(self.request))
             .select_related("business", "campaign")
             .prefetch_related("items__location")
             .order_by("-created_at")
@@ -45,7 +58,7 @@ class OrderDetailView(RetrieveAPIView):
 
     def get_queryset(self):
         return (
-            Order.objects.filter(business__owner=self.request.user)
+            Order.objects.filter(business__owner=_owner(self.request))
             .select_related("business", "campaign")
             .prefetch_related("items__location", "attempts", "refunds")
         )

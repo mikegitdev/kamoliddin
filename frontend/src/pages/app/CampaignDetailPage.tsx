@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useCampaign,
   useCampaignPlacements,
+  useCampaignReviews,
   useOrders,
   useRenewals,
 } from "@/shared/api/queries";
@@ -11,6 +12,19 @@ import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
 import { CampaignChip } from "@/shared/ui";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import {
+  IconAlert,
+  IconArrowLeft,
+  IconBag,
+  IconBulb,
+  IconCard,
+  IconClock,
+  IconExternal,
+  IconGift,
+  IconOrb,
+  IconPencil,
+  IconPin,
+} from "@/shared/icons";
 
 /** "2 дня 3 ч" / "45 мин" remaining for an active placement. */
 function remainingLabel(endIso: string, t: { daysShort: string; hoursShort: string; minutesShort: string }): string {
@@ -45,6 +59,10 @@ export function CampaignDetailPage() {
   const { data: placements } = useCampaignPlacements(id);
   const { data: orders } = useOrders();
   const { data: renewals } = useRenewals();
+  const { data: reviews } = useCampaignReviews(
+    campaign?.review_status === "rejected" ? id : undefined,
+  );
+  const latestRejection = reviews?.find((r) => r.decision === "rejected");
   const lang = locale as "ru" | "uz";
   const agreement = (renewals ?? []).find((r) => r.campaign === id);
   const [busy, setBusy] = useState(false);
@@ -76,7 +94,7 @@ export function CampaignDetailPage() {
       <section>
         <p className="callout">{t.notFound}</p>
         <Link className="btn" to="/app/campaigns">
-          ← {t.campaigns}
+          <IconArrowLeft size={14} /> {t.campaigns}
         </Link>
       </section>
     );
@@ -90,21 +108,38 @@ export function CampaignDetailPage() {
     <section>
       <div className="row-between" style={{ marginBottom: 14 }}>
         <Link className="btn small" to="/app/campaigns">
-          ← {t.campaigns}
+          <IconArrowLeft size={14} /> {t.campaigns}
         </Link>
         <div className="row">
           {campaign.review_status === "approved" && (
             <Link className="btn small" to={`/ads/${campaign.id}`}>
-              🔗 {t.openAd}
+              <IconExternal size={12} /> {t.openAd}
             </Link>
           )}
           {editable && (
             <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>
-              ✏️ {t.editCampaign}
+              <IconPencil size={12} /> {t.editCampaign}
             </Link>
           )}
         </div>
       </div>
+
+      {campaign.review_status === "rejected" && (
+        <div className="rejection-card" role="alert">
+          <strong><IconAlert size={14} /> {t.rejectionTitle}</strong>
+          <div className="rejection-reason">
+            {reviews
+              ? latestRejection?.reason || t.rejectionNoReason
+              : t.loading}
+          </div>
+          <span className="muted-2">{t.rejectionHint}</span>
+          <div className="row">
+            <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>
+              {t.rejectionFixBtn}
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="review-card">
         <img className="review-banner" src={campaign.banner_url} alt="" />
@@ -119,17 +154,17 @@ export function CampaignDetailPage() {
             </p>
           )}
           <div className="muted-2">
-            🏪 {campaign.business_name} · v{campaign.review_version} ·{" "}
+            <IconBag size={12} /> {campaign.business_name} · v{campaign.review_version} ·{" "}
             {formatDateTime(campaign.created_at, lang)}
           </div>
           {activePlacements.length > 0 && (
-            <div className="chip green">🟢 {t.activeNow}: {activePlacements.length}</div>
+            <div className="chip green"><IconOrb size={14} /> {t.activeNow}: {activePlacements.length}</div>
           )}
         </div>
       </div>
 
       <h2 style={{ marginTop: 22 }}>{t.whereShown}</h2>
-      {placements?.length === 0 && <p className="callout">💡 {t.noPlacements}</p>}
+      {placements?.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noPlacements}</p>}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -154,7 +189,7 @@ export function CampaignDetailPage() {
                     {formatDateTime(start, lang)} → {formatDateTime(end, lang)}
                     {p.state === "active" && (
                       <div className="chip green" style={{ marginTop: 4 }}>
-                        ⏳ {remainingLabel(end, t)} {t.left}
+                        <IconClock size={14} /> {remainingLabel(end, t)} {t.left}
                       </div>
                     )}
                   </td>
@@ -164,7 +199,7 @@ export function CampaignDetailPage() {
                     </span>
                     {p.source_type === "grant" && (
                       <span className="chip orange" style={{ marginLeft: 4 }}>
-                        🎁 {t.grantLabel}
+                        <IconGift size={14} /> {t.grantLabel}
                       </span>
                     )}
                   </td>
@@ -182,9 +217,9 @@ export function CampaignDetailPage() {
         <div className="card" style={{ marginTop: 22 }}>
           <div className="row-between">
             <div>
-              <h2>🔁 {t.secRenewal}</h2>
+              <h2 className="h-icon"><IconCard size={20} /> {t.secRenewal}</h2>
               <div className="muted-2">
-                📍 {agreement.locations_count} · {agreement.charge_days} × 24{t.hoursShort}
+                <IconPin size={12} /> {agreement.locations_count} · {agreement.charge_days} × 24{t.hoursShort}
               </div>
               {agreement.status === "active" && agreement.next_run_at && (
                 <div className="chip blue" style={{ marginTop: 6 }}>
@@ -193,7 +228,7 @@ export function CampaignDetailPage() {
               )}
               {agreement.status === "alert" && (
                 <div className="chip red" style={{ marginTop: 6 }}>
-                  ⚠️ {t.renewalAlert}
+                  <IconAlert size={14} /> {t.renewalAlert}
                 </div>
               )}
             </div>
@@ -214,7 +249,7 @@ export function CampaignDetailPage() {
       )}
 
       <h2 style={{ marginTop: 22 }}>{t.ordersSection}</h2>
-      {campaignOrders.length === 0 && <p className="callout">💡 {t.noOrders}</p>}
+      {campaignOrders.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noOrders}</p>}
       <div className="table-wrap">
         <table className="table">
           <thead>

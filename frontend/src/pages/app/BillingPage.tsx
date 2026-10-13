@@ -5,6 +5,7 @@ import { ApiError } from "@/shared/api/client";
 import { cancelRenewal, enableRenewal, requestRefund } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { OrderChip } from "@/shared/ui";
+import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiRenewal } from "@/entities/types";
 
@@ -133,7 +134,7 @@ export function BillingPage() {
                       </button>
                     )}
                     {refund.isSuccess && refund.variables?.orderId === order.id && (
-                      <span className="ok">✓ {t.refundSent}</span>
+                      <span className="ok"><IconCheck size={12} /> {t.refundSent}</span>
                     )}
                     {refund.isError && refund.variables?.orderId === order.id && (
                       <span className="error">

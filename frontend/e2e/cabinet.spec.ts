@@ -20,7 +20,7 @@ test.describe("advertiser cabinet", () => {
   test("campaign detail shows placement timeline", async () => {
     const page = await session.open();
     await page.goto("/app/campaigns");
-    const firstHeadline = page.locator(".list li a[href*='/app/campaigns/']").first();
+    const firstHeadline = page.locator(".campaign-card .cc-title").first();
     await expect(firstHeadline).toBeVisible({ timeout: 15_000 });
     await firstHeadline.click();
     await expect(page).toHaveURL(/\/app\/campaigns\/[0-9a-f-]+$/, { timeout: 15_000 });

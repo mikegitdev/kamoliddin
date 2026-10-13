@@ -40,7 +40,7 @@ class Business(models.Model):
     category = models.ForeignKey(
         BusinessCategory, on_delete=models.PROTECT, related_name="businesses"
     )
-    logo_key = models.CharField(max_length=200, blank=True, default="")  # MinIO object key
+    logo_key = models.CharField(max_length=200, blank=True, default="")  # storage object key
     description = models.TextField(blank=True, default="")
     phone = models.CharField(max_length=24, blank=True, default="")
     telegram = models.CharField(max_length=120, blank=True, default="")

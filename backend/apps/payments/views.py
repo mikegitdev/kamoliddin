@@ -18,6 +18,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.billing.models import Order
+
 from .gateways import WebhookResult, get_payment_gateway
 from .models import PaymentAttempt, PaymentEvent
 from .settlement import settle_payment_attempt
@@ -61,6 +63,16 @@ def _apply_verified_event(provider: str, result: WebhookResult) -> Response:
         )
         attempt.response_digest = result.raw_digest
         attempt.save(update_fields=["status", "response_digest", "updated_at"])
+
+        if attempt.status == PaymentAttempt.Status.FAILED:
+            # Spec §7.2: a permanently failed payment fails the order and
+            # releases its capacity reservations (ADR-0003) — no squatting.
+            order = attempt.order
+            order.state = Order.State.FAILED
+            order.save(update_fields=["state", "updated_at"])
+            from apps.placements.services import release_order_reservations
+
+            release_order_reservations(order)
 
     if attempt.status == PaymentAttempt.Status.SUCCEEDED:
         order_state = settle_payment_attempt(attempt.id)

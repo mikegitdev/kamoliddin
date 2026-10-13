@@ -10,6 +10,15 @@ class OTPVerifySerializer(serializers.Serializer):
     code = serializers.CharField(max_length=8)
 
 
+class PhoneChangeRequestSerializer(serializers.Serializer):
+    new_phone = serializers.CharField(max_length=24)
+
+
+class PhoneChangeVerifySerializer(serializers.Serializer):
+    new_phone = serializers.CharField(max_length=24)
+    code = serializers.CharField(max_length=8)
+
+
 class SessionUserSerializer(serializers.Serializer):
     """Response payload describing the authenticated user."""
 

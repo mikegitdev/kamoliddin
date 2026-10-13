@@ -1,6 +1,6 @@
 /** Advertiser cabinet mutations (spec §12 owner endpoints). */
 import { api } from "@/shared/api/client";
-import type { ApiBusiness, ApiCampaign, ApiCheckout, ApiOrder } from "@/entities/types";
+import type { ApiBusiness, ApiCampaign, ApiCheckout, ApiOrder, ApiOwnerLocation } from "@/entities/types";
 
 export interface BusinessInput {
   name: string;
@@ -27,11 +27,20 @@ export interface LocationInput {
   lat: number;
 }
 
-export function createLocation(businessId: string, input: LocationInput) {
+export function createLocation(
+  businessId: string,
+  input: LocationInput,
+): Promise<ApiOwnerLocation> {
   return api(`/api/v1/businesses/${businessId}/locations`, {
     method: "POST",
     json: input,
   });
+}
+
+/** Edit an own branch (owner endpoint, spec §12). Coordinates are optional:
+ *  omitting lon/lat keeps the existing pin. */
+export function updateLocation(id: string, input: Partial<LocationInput>): Promise<ApiOwnerLocation> {
+  return api(`/api/v1/locations/${id}`, { method: "PATCH", json: input });
 }
 
 export interface CampaignInput {

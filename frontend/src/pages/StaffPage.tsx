@@ -16,6 +16,23 @@ import {
 } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
+import {
+  IconArrowLeft,
+  IconBag,
+  IconBlock,
+  IconCheck,
+  IconClock,
+  IconFlag,
+  IconMegaphone,
+  IconMoney,
+  IconOrb,
+  IconPhone,
+  IconPin,
+  IconReject,
+  IconScale,
+  IconShield,
+  IconUsers,
+} from "@/shared/icons";
 
 type Tab =
   | "overview"
@@ -61,7 +78,9 @@ export function StaffPage() {
     <div className="page app-page">
       <header className="app-header">
         <Link to="/" className="brand" style={{ boxShadow: "var(--shadow-xs)" }}>
-          <span className="logo">🛡️</span>
+          <span className="logo">
+            <IconShield size={30} />
+          </span>
           <span>
             {t.staffTitle}
             <small>{t.appTitle}</small>
@@ -74,7 +93,7 @@ export function StaffPage() {
           </span>
           <LanguageSwitcher />
           <button className="btn small" onClick={() => navigate("/")}>
-            ← {t.back}
+            <IconArrowLeft size={14} /> {t.back}
           </button>
         </div>
       </header>
@@ -143,7 +162,7 @@ function QueueTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
-      {queue?.length === 0 && <p className="callout">✅ {t.queueEmpty}</p>}
+      {queue?.length === 0 && <p className="callout"><IconCheck size={16} /> {t.queueEmpty}</p>}
       <div className="review-list">
         {queue?.map((c) => (
           <article key={c.id} className="review-card">
@@ -157,13 +176,13 @@ function QueueTab({
                 {c.body}
               </p>
               <div className="muted-2">
-                🏪 {c.business_name} · 📞 {c.owner_phone}
+                <IconBag size={14} /> {c.business_name} · <IconPhone size={14} /> {c.owner_phone}
               </div>
               <div className="muted-2">
-                📍 {c.locations.length ? c.locations.join(", ") : t.noLocations}
+                <IconPin size={12} /> {c.locations.length ? c.locations.join(", ") : t.noLocations}
               </div>
               <div className="muted-2">
-                ⏱ {formatDateTime(c.updated_at, locale as "ru" | "uz")}
+                <IconClock size={12} /> {formatDateTime(c.updated_at, locale as "ru" | "uz")}
               </div>
               {rejecting === c.id ? (
                 <div className="stack">
@@ -199,14 +218,14 @@ function QueueTab({
                     disabled={busy}
                     onClick={() => review(c.id, "approve")}
                   >
-                    ✓ {t.approve}
+                    <IconCheck size={12} /> {t.approve}
                   </button>
                   <button
                     className="btn danger small"
                     disabled={busy}
                     onClick={() => setRejecting(c.id)}
                   >
-                    ✕ {t.reject}
+                    <IconReject size={12} /> {t.reject}
                   </button>
                 </div>
               )}
@@ -249,7 +268,7 @@ function RefundsTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
-      {refunds?.length === 0 && <p className="callout">✅ {t.noRefunds}</p>}
+      {refunds?.length === 0 && <p className="callout"><IconCheck size={16} /> {t.noRefunds}</p>}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -282,14 +301,14 @@ function RefundsTab({
                         disabled={busy === r.id}
                         onClick={() => process(r.id, "approve")}
                       >
-                        ✓ {t.approve}
+                        <IconCheck size={12} /> {t.approve}
                       </button>
                       <button
                         className="btn danger small"
                         disabled={busy === r.id}
                         onClick={() => process(r.id, "reject")}
                       >
-                        ✕ {t.reject}
+                        <IconReject size={12} /> {t.reject}
                       </button>
                     </div>
                   )}
@@ -350,7 +369,7 @@ function GrantsTab({ onError }: { onError: (e: string | null) => void }) {
     <section className="card" style={{ maxWidth: 560 }}>
       <h2>{t.issueGrant}</h2>
       <p className="muted-2">{t.grantHint}</p>
-      {ok && <p className="callout ok">✅ {t.grantIssued}</p>}
+      {ok && <p className="callout ok"><IconCheck size={16} /> {t.grantIssued}</p>}
       <label>{t.campaign}</label>
       <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
         <option value="">—</option>
@@ -419,7 +438,7 @@ function SettingsTab({ onError }: { onError: (e: string | null) => void }) {
   return (
     <section className="card" style={{ maxWidth: 560 }}>
       <h2>{t.settings}</h2>
-      {ok && <p className="callout ok">✅ {t.saved}</p>}
+      {ok && <p className="callout ok"><IconCheck size={16} /> {t.saved}</p>}
       <label>{t.adLimit}</label>
       <input
         type="number"
@@ -446,34 +465,34 @@ function AdminOverviewTab() {
     <section>
       <div className="cards">
         <div className="stat-card">
-          <span className="icon">⏳</span>
+          <span className="icon"><IconClock size={22} /></span>
           <span className="num">{data.queue_depth}</span>
           <span className="muted-2">{t.pendingReview}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">🚩</span>
+          <span className="icon"><IconFlag size={22} /></span>
           <span className="num">{data.open_reports}</span>
           <span className="muted-2">{t.openReports}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">💵</span>
+          <span className="icon"><IconMoney size={22} /></span>
           <span className="num">{data.refunds_requested}</span>
           <span className="muted-2">{t.refundsPending}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">🟢</span>
+          <span className="icon"><IconOrb size={22} /></span>
           <span className="num">{data.active_placements}</span>
           <span className="muted-2">{t.activePlacements}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">💰</span>
+          <span className="icon"><IconMoney size={22} /></span>
           <span className="num" style={{ fontSize: "1.1rem" }}>
             {formatMinor(data.revenue.month, "UZS", lang)}
           </span>
           <span className="muted-2">{t.thisMonth}</span>
         </div>
         <div className="stat-card">
-          <span className="icon">👥</span>
+          <span className="icon"><IconUsers size={22} /></span>
           <span className="num">{data.owners}</span>
           <span className="muted-2">{t.ownersCount}</span>
         </div>
@@ -521,14 +540,14 @@ function ReportsTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
-      {reports?.length === 0 && <p className="callout">✅ {t.noReports}</p>}
+      {reports?.length === 0 && <p className="callout"><IconCheck size={16} /> {t.noReports}</p>}
       <div className="review-list">
         {reports?.map((r) => (
           <article key={r.id} className="review-card">
             <div className="review-body">
               <div className="row-between">
                 <strong>
-                  {r.entity === "campaign" ? "📣" : "📍"} {r.entity} · …
+                  {r.entity === "campaign" ? <IconMegaphone size={12} /> : <IconPin size={12} />} {r.entity} · …
                   {r.entity_id.slice(0, 8)}
                 </strong>
                 <span
@@ -538,7 +557,7 @@ function ReportsTab({
                 </span>
               </div>
               <p className="muted-2">{r.reason}</p>
-              <div className="muted-2">⏱ {formatDateTime(r.created_at, lang)}</div>
+              <div className="muted-2"><IconClock size={12} /> {formatDateTime(r.created_at, lang)}</div>
               {r.state !== "open" && (
                 <div className="muted-2">
                   {r.resolved_by_phone} · {formatDateTime(r.resolved_at, lang)}
@@ -560,7 +579,7 @@ function ReportsTab({
                         disabled={busy}
                         onClick={() => process(r.id, "resolve")}
                       >
-                        ✓ {t.resolve}
+                        <IconCheck size={12} /> {t.resolve}
                       </button>
                       <button
                         className="btn small"
@@ -585,7 +604,7 @@ function ReportsTab({
                     className="btn small"
                     onClick={() => setProcessing(r.id)}
                   >
-                    ⚖️ {t.process}
+                    <IconScale size={12} /> {t.process}
                   </button>
                 ))}
             </div>
@@ -635,7 +654,7 @@ function CampaignsTab({
     <section>
       <div className="row" style={{ marginBottom: 14 }}>
         <input
-          placeholder={`🔍 ${t.search}…`}
+          placeholder={`${t.search}…`}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           style={{ maxWidth: 280 }}
@@ -695,7 +714,7 @@ function CampaignsTab({
                             disabled={busy}
                             onClick={() => act(c.id, "suspend")}
                           >
-                            ⛔ {t.suspend}
+                            <IconBlock size={12} /> {t.suspend}
                           </button>
                           <button
                             className="btn small"
@@ -710,7 +729,7 @@ function CampaignsTab({
                         className="btn danger small"
                         onClick={() => setSuspending(c.id)}
                       >
-                        ⛔ {t.suspend}
+                        <IconBlock size={12} /> {t.suspend}
                       </button>
                     ))}
                   {c.review_status === "suspended" && (
@@ -719,7 +738,7 @@ function CampaignsTab({
                       disabled={busy}
                       onClick={() => act(c.id, "unsuspend")}
                     >
-                      ✅ {t.unsuspend}
+                      <IconCheck size={12} /> {t.unsuspend}
                     </button>
                   )}
                 </td>

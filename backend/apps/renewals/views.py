@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.generics import ListAPIView
@@ -15,8 +16,12 @@ class RenewalListView(ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return RenewalAgreement.objects.none()
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return (
-            RenewalAgreement.objects.filter(business__owner=self.request.user)
+            RenewalAgreement.objects.filter(business__owner=user)
             .select_related("business", "campaign")
             .order_by("-created_at")
         )

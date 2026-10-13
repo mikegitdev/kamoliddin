@@ -28,6 +28,8 @@ class BusinessLocationsView(ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Location.objects.none()
         business = _owned_business(self.request.user, self.kwargs["business_id"])
         return Location.objects.filter(business=business).select_related(
             "business"

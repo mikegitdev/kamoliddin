@@ -54,6 +54,13 @@ class PaymentGateway(Protocol):
         """Merchant-initiated charge on a stored token reference (no PAN/CVV here)."""
         ...
 
+    def refund_charge(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> str:
+        """Refund a succeeded charge; return the provider refund reference.
+        Idempotent per idempotency_key (retrying must not double-refund)."""
+        ...
+
 
 class FakePaymentGateway:
     """Dev/test gateway. Simulates successful checkout so the happy path is
@@ -94,6 +101,11 @@ class FakePaymentGateway:
             provider_payment_id=f"fake-recurring-{idempotency_key}", succeeded=True
         )
 
+    def refund_charge(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> str:
+        return f"fake-refund-{idempotency_key}"
+
 
 class ClickPaymentGateway:
     """CLICK adapter — placeholder until recurring capability is proven (spec §19).
@@ -110,6 +122,14 @@ class ClickPaymentGateway:
             "Do not fabricate provider behavior."
         )
 
+    def refund_charge(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> str:
+        raise NotImplementedError(
+            "CLICK refund pending merchant verification (spec §19 [E]); "
+            "staff may supply a provider-console reference instead."
+        )
+
 
 _REGISTRY: dict[str, type] = {
     FakePaymentGateway.slug: FakePaymentGateway,
@@ -121,4 +141,4 @@ def get_payment_gateway(provider_slug: str) -> PaymentGateway:
     gateway_cls = _REGISTRY.get(provider_slug)
     if gateway_cls is None:
         raise LookupError(f"No payment gateway registered for {provider_slug!r}")
-    return gateway_cls()  # type: ignore[return-value]
+    return gateway_cls()

@@ -1,13 +1,30 @@
+from django.db.models import Count
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.moderation.services import ModerationError, submit_for_review
+from apps.placements.models import eligible_now_q
 
-from .models import Campaign
-from .serializers import CampaignSerializer
+from .models import Campaign, CampaignReview
+from .serializers import CampaignReviewSerializer, CampaignSerializer
+
+
+def with_live_annotation(qs):
+    """Annotate the count of CURRENTLY eligible placements so the cabinet can
+    show publication state (live or not) separately from review status
+    (spec §7: approved ≠ live)."""
+    now = timezone.now()
+    return qs.annotate(
+        active_placements_count=Count(
+            "placements",
+            filter=eligible_now_q(now, prefix="placements__"),
+            distinct=True,
+        )
+    )
 
 
 class CampaignListCreateView(ListCreateAPIView):
@@ -16,6 +33,8 @@ class CampaignListCreateView(ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return Campaign.objects.none()
         qs = (
             Campaign.objects.filter(business__owner=self.request.user)
             .select_related("business", "business__category")
@@ -24,7 +43,7 @@ class CampaignListCreateView(ListCreateAPIView):
         business_id = self.request.query_params.get("business")
         if business_id:
             qs = qs.filter(business_id=business_id)
-        return qs
+        return with_live_annotation(qs)
 
 
 @extend_schema_view(
@@ -38,8 +57,10 @@ class CampaignDetailView(RetrieveUpdateAPIView):
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
-        return Campaign.objects.filter(business__owner=self.request.user).select_related(
-            "business"
+        return with_live_annotation(
+            Campaign.objects.filter(business__owner=self.request.user).select_related(
+                "business"
+            )
         )
 
 
@@ -69,3 +90,26 @@ class CampaignSubmitView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(CampaignSerializer(campaign).data)
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Campaigns"], summary="Moderation decisions for an own campaign",
+                      description="Immutable review history (spec §5); newest first. "
+                                  "Rejection reasons drive the correction/resubmission flow.")
+)
+class CampaignReviewListView(ListAPIView):
+    serializer_class = CampaignReviewSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # schema generation
+            return CampaignReview.objects.none()
+        return (
+            CampaignReview.objects.filter(
+                campaign__id=self.kwargs["id"],
+                campaign__business__owner=self.request.user,
+            )
+            .select_related("campaign")
+            .order_by("-created_at")[:20]
+        )

@@ -11,7 +11,7 @@ MVP engineering baseline: [`Local_Advertising_Engineering_Spec_v1_EN.md`](./Loca
 | Backend | Django 5.2 LTS modular monolith + Django REST Framework |
 | Database | PostgreSQL + PostGIS (GeoDjango, SRID 4326) |
 | Jobs | Celery worker + Beat + Redis |
-| Storage | MinIO (S3-compatible) |
+| Storage | Garage (S3-compatible, single-node) |
 | Payments | CLICK-first via `PaymentGateway` contract; fake adapter for dev |
 | SMS | Provider-neutral adapter; fake adapter for dev (Eskiz / Play Mobile TBD) |
 
@@ -30,7 +30,7 @@ docs/       architecture ADRs, runbooks
 Prereqs: Docker, uv (or pip), Node LTS (22+).
 
 ```bash
-# 1. Infrastructure (PostGIS + Redis + MinIO)
+# 1. Infrastructure (PostGIS + Redis + Garage)
 docker compose up -d
 
 # 2. Backend
@@ -55,7 +55,9 @@ Useful URLs:
 - Swagger UI: `http://localhost:8000/api/docs/`
 - Django admin: `http://localhost:8000/admin/`
 - Health: `http://localhost:8000/health/`
-- MinIO console: `http://localhost:9001` (minioadmin / minioadmin)
+- Media (public read, served by Django): `http://localhost:8000/media/...`
+  — objects live in Garage (S3-compatible, fully private; spec §11). Admin via
+  `docker compose exec garage /garage -c /etc/garage.toml ...` (no web console).
 
 Dev SMS provider is `fake`: OTP codes are printed to the server log (never do this in prod).
 

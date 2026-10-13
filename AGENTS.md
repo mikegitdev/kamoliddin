@@ -35,7 +35,7 @@ Spec status markers: **[C]** confirmed decision (never change silently),
 
 ```text
 frontend/   React + Vite + TypeScript (map-first UI, RU/UZ)
-backend/    Django 5.2 modular monolith (DRF, PostGIS, Celery, MinIO)
+backend/    Django 5.2 modular monolith (DRF, PostGIS, Celery, Garage)
 infra/      nginx, docker, deploy scripts, backups
 docs/       product, architecture/ADR, runbooks, acceptance
 ```

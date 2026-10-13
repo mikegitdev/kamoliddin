@@ -33,7 +33,7 @@
 | Map | 2GIS if commercially acceptable; licensed OSM stack otherwise | [C]/[E] |
 | Payments | CLICK preferred; provider fallback mandatory if CLICK lacks recurring support | [C]/[E] |
 | SMS | Provider-neutral integration; benchmark Eskiz and Play Mobile | [C]/[E] |
-| Object storage | Self-hosted MinIO, S3-compatible | [C] |
+| Object storage | Self-hosted Garage, S3-compatible | [C] |
 | Hosting | One VPS, Docker Compose, external backups | [C] |
 | Deployment | Documented manual Docker deployment initially | [C] |
 | Background jobs | Celery worker + Celery Beat + Redis | [R] |
@@ -173,7 +173,7 @@ Admin may issue placement grant with effective term and a reason, creating zero-
 
 ## 11. Media, security and privacy
 
-**[C]** One banner per campaign; logos for businesses; self-hosted MinIO/S3-compatible storage.
+**[C]** One banner per campaign; logos for businesses; self-hosted Garage/S3-compatible storage.
 
 **[R]** Upload flow: authenticated user requests signed upload or server-mediated temporary upload -> type/size/magic-byte validation -> optional image re-encoding/metadata stripping -> public reference only for approved campaigns. Use UUID object keys; never trust original filename, prevent SVG/script injection by policy, set cache headers and image variants. Ensure expired campaign details are inaccessible through public API even if an old public image URL remains cached.
 
@@ -263,11 +263,11 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 
 ## 15. DevOps: single VPS Docker Compose
 
-**[C]** One production VPS, manual reproducible deployment, off-server backups. **[R]** Compose services: reverse proxy/static frontend; Django web (Gunicorn or compatible WSGI runner); Celery worker; Celery scheduler; PostgreSQL/PostGIS; Redis; MinIO. Separate internal service network; only proxy ports publicly open, MinIO admin private, DB private. Use named volumes, separate storage paths and off-server snapshots.
+**[C]** One production VPS, manual reproducible deployment, off-server backups. **[R]** Compose services: reverse proxy/static frontend; Django web (Gunicorn or compatible WSGI runner); Celery worker; Celery scheduler; PostgreSQL/PostGIS; Redis; Garage. Separate internal service network; only proxy ports publicly open, Garage admin private, DB private. Use named volumes, separate storage paths and off-server snapshots.
 
 **[R]** Deployment script: (1) verify environment and image tags; (2) off-server DB backup and object backup; (3) pull/build tagged images; (4) run migration checks and `migrate`; (5) start services; (6) health check frontend/API/worker; (7) reconcile jobs/payments; (8) record release SHA; (9) documented rollback including forward-only schema migration caveats. No automatic destructive migration during startup. Protect prod .env/secrets with server permissions, no git commits.
 
-**[R]** Monitoring: structured application and HTTP logs, payment failures and reconciliation queue, Celery heartbeat and backlog, disk capacity, MinIO usage, DB backup freshness, TLS expiry, OTP errors. Export backup snapshots off the VPS. Perform at least one restore drill before launch.
+**[R]** Monitoring: structured application and HTTP logs, payment failures and reconciliation queue, Celery heartbeat and backlog, disk capacity, Garage storage usage, DB backup freshness, TLS expiry, OTP errors. Export backup snapshots off the VPS. Perform at least one restore drill before launch.
 
 ## 16. AI-agent development operating model
 
@@ -290,7 +290,7 @@ local-ads/
 
 **[R] Parallel batches:**
 - Batch A: auth/SMS adapter, categories/businesses/locations, map adapter, frontend design system; agreed contracts first.
-- Batch B: campaign editor, public map/search, admin moderation, MinIO upload pipeline.
+- Batch B: campaign editor, public map/search, admin moderation, Garage upload pipeline.
 - Batch C: payment provider integration and recurrence module (single-owner module), frontend checkout, monitoring and QA.
 
 ## 17. Testing and release gates
@@ -331,7 +331,7 @@ local-ads/
 |---|---|---|
 | 1 | Monorepo, API conventions, Docker dev environment, initial schema, CLICK recurring and 2GIS/OTP POCs | Merchant recurring feasibility known; major vendor blockers documented |
 | 2 | OTP, user/business/location modules, GeoDjango query, admin bootstrap | Auth, ownership and map coordinates tested |
-| 3 | Campaign editor, MinIO image flow, location assignment, category UI | Complete draft workflow works |
+| 3 | Campaign editor, Garage image flow, location assignment, category UI | Complete draft workflow works |
 | 4 | Tariffs, immutable quotes, CLICK checkout, order/attempt/event states, moderation | Paid pending campaign never public; idempotency green |
 | 5 | Renewal agreements, scheduler/worker, cancellation, retry/reconciliation, manual refund queue | Renewal concurrency and failure tests green |
 | 6 | Public map, 2GIS markers and clustering, search, location cards, fallback adapter interface | Anonymous visitor journey and map tests green |

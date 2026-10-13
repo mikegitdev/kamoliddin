@@ -54,6 +54,13 @@ class Placement(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     campaign = models.ForeignKey(Campaign, on_delete=models.PROTECT, related_name="placements")
     location = models.ForeignKey(Location, on_delete=models.PROTECT, related_name="placements")
+    # Paid placements link to the order that purchased them (ADR-0003):
+    # exact refund/matching semantics regardless of late-moderation interval
+    # shifts; grant placements stay null.
+    order = models.ForeignKey(
+        "billing.Order", on_delete=models.PROTECT, related_name="placements",
+        null=True, blank=True,
+    )
     start_at = models.DateTimeField()          # requested interval start
     end_at = models.DateTimeField()            # requested interval end
     actual_start_at = models.DateTimeField(null=True, blank=True)   # shifted on late moderation
@@ -62,6 +69,10 @@ class Placement(models.Model):
     source_type = models.CharField(max_length=8, choices=SourceType.choices,
                                    default=SourceType.PAID)
     charge_days = models.PositiveSmallIntegerField()  # ceil(duration/24h), >= 1 (spec §6)
+    block_reason = models.CharField(
+        max_length=40, blank=True, default="",
+        help_text="Why a BLOCKED placement was blocked (e.g. capacity_conflict)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -69,6 +80,16 @@ class Placement(models.Model):
         indexes = [
             models.Index(fields=["location", "state"]),
             models.Index(fields=["campaign", "state"]),
+            models.Index(fields=["order"]),
+        ]
+        constraints = [
+            # One placement per (order, location): checkout reservations are
+            # idempotent under concurrent settlement (ADR-0003).
+            models.UniqueConstraint(
+                fields=["order", "location"],
+                name="uniq_placement_order_location",
+                condition=Q(order__isnull=False),
+            ),
         ]
 
     def __str__(self) -> str:
