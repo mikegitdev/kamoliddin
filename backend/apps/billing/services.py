@@ -18,9 +18,15 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.businesses.models import Business
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
-from apps.moderation.models import ActivityEvent, PlatformSetting
+from apps.moderation.models import ActivityEvent
 from apps.payments.gateways import get_payment_gateway
 from apps.payments.models import PaymentAttempt
+from apps.placements.services import (
+    CapacityExhausted,
+    assert_capacity,
+    cancel_order_placements,
+    reserve_order_capacity,
+)
 
 from .models import Order, Refund, quote_order_lines
 
@@ -29,13 +35,6 @@ QUOTE_TTL = timedelta(hours=1)
 
 class CheckoutError(Exception):
     pass
-
-
-def _max_active_ads() -> int:
-    setting = PlatformSetting.objects.filter(key="max_active_ads_per_location").first()
-    if setting is None:
-        return settings.MAX_ACTIVE_ADS_PER_LOCATION
-    return int(setting.value_json)
 
 
 def _owned_business(*, user, business_id) -> Business:
@@ -58,8 +57,6 @@ def create_quote(
     requested_end_at,
     auto_renew: bool = False,
 ) -> Order:
-    from apps.placements.models import Placement
-
     business = _owned_business(user=user, business_id=business_id)
     campaign = Campaign.objects.filter(pk=campaign_id, business=business).first()
     if campaign is None:
@@ -84,26 +81,22 @@ def create_quote(
     if len(locations) != len(set(location_ids)):
         raise ValidationError({"location_ids": "Some locations are missing or inactive"})
 
-    # Prospective capacity check per location (spec §14: sixth ad cannot activate).
-    max_ads = _max_active_ads()
-    now = timezone.now()
+    # Prospective capacity check per location (spec §14: sixth ad cannot
+    # activate). Shared predicate with checkout/renewals/activation (ADR-0003):
+    # PENDING reservations count; own non-overlapping terms never collide with
+    # the overlap filter, so renewals/extensions of the same campaign work.
     for location in locations:
-        overlapping = Placement.objects.filter(
-            location=location,
-            state__in=[Placement.State.SCHEDULED, Placement.State.ACTIVE],
-            start_at__lt=requested_end_at,
-            end_at__gt=requested_start_at,
-        ).count()
-        if overlapping >= max_ads:
-            raise ValidationError(
-                {
-                    "location_ids": (
-                        f"Location {location.name!r} reached the limit of "
-                        f"{max_ads} simultaneous active ads for this interval"
-                    )
-                }
+        try:
+            assert_capacity(
+                location,
+                start_at=requested_start_at,
+                end_at=requested_end_at,
+                lock=True,
             )
+        except CapacityExhausted as exc:
+            raise ValidationError({"location_ids": str(exc)})
 
+    now = timezone.now()
     items, total, tariff = quote_order_lines(
         campaign=campaign,
         locations=locations,
@@ -143,9 +136,20 @@ def create_checkout(*, user, order_id, return_url: str = "") -> tuple[PaymentAtt
     if order.state not in (Order.State.DRAFT_QUOTE, Order.State.AWAITING_PAYMENT):
         raise CheckoutError(f"Order cannot be checked out in state {order.state!r}")
     if order.quote_expires_at and order.quote_expires_at < timezone.now():
+        from apps.placements.services import release_order_reservations
+
+        release_order_reservations(order)
         order.state = Order.State.EXPIRED
         order.save(update_fields=["state", "updated_at"])
         raise CheckoutError("Quote expired; request a new quote")
+
+    # Capacity is RESERVED before the provider session exists (ADR-0003):
+    # under the per-location advisory lock, exhaustion here refuses checkout
+    # while no money has moved — the real purchasable race window.
+    try:
+        reserve_order_capacity(order)
+    except CapacityExhausted as exc:
+        raise CheckoutError(str(exc))
 
     gateway = get_payment_gateway(settings.PAYMENT_PROVIDER)
     idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"checkout:{order.id}"))
@@ -226,8 +230,18 @@ def process_refund(
     provider_ref: str = "",
     amount: int | None = None,
 ) -> Refund:
-    """Admin decision: 'approve' -> provider processing -> refunded (fake
-    provider settles instantly); 'reject' -> refund_failed."""
+    """Admin decision on a refund request (spec §7.2, ADR-0003).
+
+    'reject' -> refund_failed. 'approve' -> PROVIDER_REFUND_PROCESSING only
+    once a REAL provider reference exists:
+      * fake provider (dev/test): the fake gateway executes the refund and
+        returns its reference;
+      * real providers: either the verified gateway adapter executes it, or
+        the staff member supplies the provider console's transaction ref —
+        provider outcomes are never fabricated (repo rule 4).
+    The order's not-yet-expired placements are cancelled via the exact
+    Placement->order link, so late-moderation interval shifts cannot let a
+    refunded placement keep displaying. Payment records are never erased."""
     refund = (
         Refund.objects.select_for_update()
         .select_related("order", "order__campaign", "order__business")
@@ -257,26 +271,45 @@ def process_refund(
         )
         return refund
 
-    refund.state = Refund.State.PROVIDER_REFUND_PROCESSING
-    refund.save(update_fields=["state", "operator", "amount"])
+    order = refund.order
+    if settings.PAYMENT_PROVIDER == "fake":
+        gateway = get_payment_gateway(settings.PAYMENT_PROVIDER)
+        idem_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"refund:{refund.id}"))
+        succeeded_attempt = order.attempts.filter(
+            status=PaymentAttempt.Status.SUCCEEDED
+        ).first()
+        refund.provider_ref = gateway.refund_charge(
+            provider_payment_id=(
+                succeeded_attempt.provider_payment_id if succeeded_attempt else ""
+            ),
+            amount_minor=refund.amount,
+            idempotency_key=idem_key,
+        )
+    elif provider_ref:
+        # Staff executed the refund in the provider console and pasted the
+        # reference — accepted as manual evidence, never fabricated. The
+        # unverified gateway is deliberately NOT instantiated (it raises).
+        refund.provider_ref = provider_ref
+    else:
+        # No verified adapter and no manual reference: do NOT transition.
+        raise RefundError(
+            f"Provider {settings.PAYMENT_PROVIDER!r} refund adapter is not verified; "
+            "supply the provider transaction reference from the provider "
+            "console (provider_ref) to complete this refund."
+        )
 
-    # Fake provider settles instantly; a real adapter performs the provider call
-    # here and records its reference (never fabricate a CLICK outcome).
-    gateway = get_payment_gateway(settings.PAYMENT_PROVIDER)
-    refund.provider_ref = provider_ref or f"{gateway.slug}-refund-{refund.id}"
+    refund.state = Refund.State.PROVIDER_REFUND_PROCESSING
+    refund.save(update_fields=["state", "operator", "amount", "provider_ref"])
+
+    # Fake provider settles instantly; a real adapter performs the provider
+    # call above and records its reference (never fabricate a CLICK outcome).
     refund.state = Refund.State.REFUNDED
     refund.completed_at = timezone.now()
-    refund.save(update_fields=["provider_ref", "state", "completed_at"])
+    refund.save(update_fields=["state", "completed_at"])
 
-    # Refunded entitlements stop displaying; accounting rows remain intact.
-    from apps.placements.models import Placement
-
-    order = refund.order
-    Placement.objects.filter(
-        campaign=order.campaign,
-        start_at=order.interval_start_at,
-        source_type=Placement.SourceType.PAID,
-    ).update(state=Placement.State.CANCELLED)
+    # Refunded entitlements stop displaying (exact order link — ADR-0003);
+    # accounting rows remain intact.
+    cancel_order_placements(order)
 
     # Refunded order no longer renews.
     from apps.renewals.models import RenewalAgreement
@@ -288,6 +321,7 @@ def process_refund(
     ActivityEvent.objects.create(
         actor=staff, action="refund.completed", entity="order",
         entity_id=str(order.id),
-        metadata={"refund": str(refund.id), "amount": refund.amount},
+        metadata={"refund": str(refund.id), "amount": refund.amount,
+                  "provider_ref": refund.provider_ref},
     )
     return refund

@@ -52,8 +52,10 @@ def test_quote_total_is_rate_times_days_times_locations(owner, tariff, business,
         requested_start_at=start,
         requested_end_at=end,
     )
-    assert order.items.first().charge_days == 2
-    assert order.items.first().unit_rate_snapshot == tariff.amount_per_24h
+    item = order.items.first()
+    assert item is not None
+    assert item.charge_days == 2
+    assert item.unit_rate_snapshot == tariff.amount_per_24h
     assert order.amount_total == tariff.amount_per_24h * 2
 
 

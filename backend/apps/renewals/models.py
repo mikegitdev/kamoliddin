@@ -23,6 +23,7 @@ class RenewalAgreement(models.Model):
         ACTIVE = "active", "Active"
         ALERT = "alert", "Alert (last charge failed)"
         DISABLED = "disabled", "Disabled (cancelled by advertiser)"
+        PENDING_TOKEN = "pending_token", "Awaiting provider token (no verified adapter)"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(
@@ -36,13 +37,20 @@ class RenewalAgreement(models.Model):
     content_version_hash = models.CharField(
         max_length=64, help_text="Hash of approved content+banner; changes force re-review"
     )
-    token_ref = models.CharField(max_length=200, help_text="Provider payment token reference")
+    token_ref = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Provider payment token reference — empty while no verified "
+                  "provider adapter exists (status=pending_token, ADR-0005)",
+    )
     consent_at = models.DateTimeField()
     price_policy = models.CharField(
         max_length=20, default="current_tariff",
         help_text="current_tariff | locked_price — must be shown and consented to (spec §8 [O])",
     )
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ACTIVE,
+        help_text="pending_token agreements never charge — no verified provider token (ADR-0005)",
+    )
     next_run_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

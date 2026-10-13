@@ -22,10 +22,11 @@ from django.utils import timezone
 from apps.billing.models import Order, OrderItem, Tariff
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
-from apps.moderation.models import ActivityEvent, PlatformSetting
+from apps.moderation.models import ActivityEvent
 from apps.payments.gateways import get_payment_gateway
 from apps.payments.models import PaymentAttempt
 from apps.placements.models import Placement
+from apps.placements.services import CapacityExhausted, assert_capacity
 
 from .models import RenewalAgreement, RenewalAttempt
 
@@ -43,32 +44,89 @@ def content_hash(campaign: Campaign) -> str:
 
 @transaction.atomic
 def ensure_agreement_for_order(order: Order) -> RenewalAgreement | None:
-    """Create (once) the renewal agreement consented to at quote time."""
-    if not order.auto_renew or order.interval_end_at is None:
+    """Create (once) or re-consent the renewal agreement consented to at quote time.
+
+    Provider token truthfulness (ADR-0005): a token reference exists ONLY for
+    the fake dev/test gateway. With an unverified real provider the agreement
+    is created as PENDING_TOKEN with an empty token_ref — the worker never
+    charges such agreements, so no garbage token ever reaches a real gateway.
+
+    Re-consent (ADR-0003): a NEW paid order with auto_renew=True is the latest
+    explicit consent — its locations/duration snapshot wins and re-activates a
+    previously disabled/alerted agreement, with an audit event."""
+    if not order.auto_renew or order.interval_start_at is None or order.interval_end_at is None:
         return None
-    existing = RenewalAgreement.objects.filter(campaign=order.campaign).first()
-    if existing is not None:
-        return existing
-    location_ids = list(order.items.values_list("location_id", flat=True))
+    location_ids = sorted(order.items.values_list("location_id", flat=True))
+    snapshot = [str(pk) for pk in location_ids]
     charge_days = max(order.items.values_list("charge_days", flat=True))
+    duration_seconds = int(
+        (order.interval_end_at - order.interval_start_at).total_seconds()
+    )
+
+    existing = RenewalAgreement.objects.select_for_update().filter(
+        campaign=order.campaign
+    ).first()
+    if existing is not None:
+        if existing.status == RenewalAgreement.Status.PENDING_TOKEN and not existing.token_ref:
+            # Token still absent; keep awaiting, but refresh the consent snapshot.
+            pass
+        changed = (
+            existing.locations_snapshot != snapshot
+            or existing.charge_days != charge_days
+            or existing.duration_seconds != duration_seconds
+        )
+        resumed = existing.status in (
+            RenewalAgreement.Status.DISABLED,
+            RenewalAgreement.Status.ALERT,
+        )
+        if changed or resumed:
+            existing.locations_snapshot = snapshot
+            existing.charge_days = charge_days
+            existing.duration_seconds = duration_seconds
+            existing.content_version_hash = content_hash(order.campaign)
+            existing.consent_at = timezone.now()
+            existing.next_run_at = order.interval_end_at - RENEWAL_BUFFER
+            if existing.status != RenewalAgreement.Status.PENDING_TOKEN:
+                existing.status = RenewalAgreement.Status.ACTIVE
+            existing.save(update_fields=[
+                "locations_snapshot", "charge_days", "duration_seconds",
+                "content_version_hash", "consent_at", "next_run_at", "status",
+                "updated_at",
+            ])
+            ActivityEvent.objects.create(
+                action="renewal.consent_refreshed",
+                entity="renewal_agreement",
+                entity_id=str(existing.id),
+                metadata={
+                    "order": str(order.id), "locations": len(snapshot),
+                    "snapshot_changed": changed, "resumed": resumed,
+                },
+            )
+        return existing
+
+    fake_provider = settings.PAYMENT_PROVIDER == "fake"
     agreement = RenewalAgreement.objects.create(
         business=order.business,
         campaign=order.campaign,
-        locations_snapshot=[str(pk) for pk in location_ids],
-        duration_seconds=(order.interval_end_at - order.interval_start_at).total_seconds(),
+        locations_snapshot=snapshot,
+        duration_seconds=duration_seconds,
         charge_days=charge_days,
         content_version_hash=content_hash(order.campaign),
-        token_ref=f"fake-token-{order.campaign_id}",  # opaque provider reference
+        token_ref=f"fake-token-{order.campaign_id}" if fake_provider else "",
         consent_at=timezone.now(),
         price_policy="current_tariff",
-        status=RenewalAgreement.Status.ACTIVE,
+        status=RenewalAgreement.Status.ACTIVE if fake_provider
+        else RenewalAgreement.Status.PENDING_TOKEN,
         next_run_at=order.interval_end_at - RENEWAL_BUFFER,
     )
     ActivityEvent.objects.create(
         action="renewal.agreement_created",
         entity="renewal_agreement",
         entity_id=str(agreement.id),
-        metadata={"order": str(order.id), "locations": len(location_ids)},
+        metadata={
+            "order": str(order.id), "locations": len(snapshot),
+            "status": agreement.status,
+        },
     )
     return agreement
 
@@ -90,11 +148,6 @@ def _paid_term_boundary(agreement: RenewalAgreement):
         # Agreement implies a paid order; fallback keeps the worker safe anyway.
         return agreement.next_run_at + RENEWAL_BUFFER
     return last_end
-
-
-def _max_active_ads() -> int:
-    setting = PlatformSetting.objects.filter(key="max_active_ads_per_location").first()
-    return int(setting.value_json) if setting else settings.MAX_ACTIVE_ADS_PER_LOCATION
 
 
 class RenewalFailure(Exception):
@@ -122,15 +175,19 @@ def _check_and_charge(agreement: RenewalAgreement, attempt: RenewalAttempt, boun
         raise RenewalFailure("locations_inactive")
 
     term_end = boundary + timedelta(days=agreement.charge_days)
-    max_ads = _max_active_ads()
     for location in locations:
-        overlapping = Placement.objects.filter(
-            location=location,
-            state__in=[Placement.State.SCHEDULED, Placement.State.ACTIVE],
-            start_at__lt=term_end,
-            end_at__gt=boundary,
-        ).exclude(campaign=campaign).count()
-        if overlapping >= max_ads:
+        # Shared capacity predicate (ADR-0003): advisory lock per location;
+        # PENDING reservations count. The agreement's current term ends AT the
+        # boundary, so the overlap filter never counts the campaign's own
+        # expiring ads — no self-exclusion needed (stacking still costs a slot).
+        try:
+            assert_capacity(
+                location,
+                start_at=boundary,
+                end_at=term_end,
+                lock=True,
+            )
+        except CapacityExhausted:
             raise RenewalFailure(f"capacity_exhausted:{location.id}")
 
     tariff = Tariff.current()
@@ -213,6 +270,8 @@ def process_agreement(agreement: RenewalAgreement) -> dict:
             .first()
         )
         if locked is None or locked.status != RenewalAgreement.Status.ACTIVE:
+            if locked is not None and locked.status == RenewalAgreement.Status.PENDING_TOKEN:
+                return {"agreement": str(agreement.id), "result": "skipped_pending_token"}
             return {"agreement": str(agreement.id), "result": "skipped_not_active"}
         if locked.next_run_at > timezone.now():
             return {"agreement": str(locked.id), "result": "skipped_not_due"}
@@ -241,7 +300,9 @@ def process_agreement(agreement: RenewalAgreement) -> dict:
 
             attempt.state = RenewalAttempt.State.SUCCEEDED
             attempt.save(update_fields=["state"])
-            locked.next_run_at = order.interval_end_at - RENEWAL_BUFFER
+            interval_end = order.interval_end_at
+            assert interval_end is not None
+            locked.next_run_at = interval_end - RENEWAL_BUFFER
             locked.save(update_fields=["next_run_at", "updated_at"])
             ActivityEvent.objects.create(
                 action="renewal.succeeded",
@@ -326,6 +387,13 @@ def enable_agreement(*, user, agreement_id) -> RenewalAgreement:
     )
     if agreement is None:
         raise LookupError("Renewal agreement not found")
+    if agreement.status == RenewalAgreement.Status.PENDING_TOKEN:
+        # No verified provider token yet — enabling would promise a charge that
+        # cannot happen (ADR-0005).
+        raise ValueError(
+            "Auto-renewal is not available yet: recurring payments are pending "
+            "provider verification. Your paid advertising is unaffected."
+        )
     if agreement.status == RenewalAgreement.Status.ACTIVE:
         return agreement
     agreement.status = RenewalAgreement.Status.ACTIVE

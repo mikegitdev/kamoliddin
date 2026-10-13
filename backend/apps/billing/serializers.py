@@ -47,7 +47,7 @@ class OrderDetailSerializer(OrderSerializer):
     refund = serializers.SerializerMethodField()
 
     class Meta(OrderSerializer.Meta):
-        fields = OrderSerializer.Meta.fields + ("attempts", "refund")
+        fields = OrderSerializer.Meta.fields + ("attempts", "refund")  # type: ignore[assignment]
 
     def get_refund(self, obj) -> dict | None:
         refund = obj.refunds.order_by("-created_at").first()
