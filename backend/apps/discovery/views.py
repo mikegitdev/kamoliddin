@@ -29,6 +29,38 @@ MAX_LIMIT = 200
 DEFAULT_LIMIT = 100
 
 
+def _relevance_annotation(q: str):
+    """Tiered relevance (spec §10, acceptance #12): location name match (3)
+    beats business name match (2), which beats an approved campaign headline
+    match (1). Unapproved campaign copy never contributes (spec §14: paid but
+    unapproved content must not appear anywhere public)."""
+    from django.db.models import Case, IntegerField, Value, When
+
+    return Case(
+        When(name__icontains=q, then=Value(3)),
+        When(business__name__icontains=q, then=Value(2)),
+        When(
+            business__campaigns__headline__icontains=q,
+            business__campaigns__review_status=Campaign.ReviewStatus.APPROVED,
+            then=Value(1),
+        ),
+        default=Value(0),
+        output_field=IntegerField(),
+    )
+
+
+def _text_match_q(q: str):
+    """Text filter across location/business/approved-campaign headline."""
+    return (
+        Q(name__icontains=q)
+        | Q(business__name__icontains=q)
+        | Q(
+            business__campaigns__headline__icontains=q,
+            business__campaigns__review_status=Campaign.ReviewStatus.APPROVED,
+        )
+    )
+
+
 @extend_schema_view(
     get=extend_schema(
         tags=["Public"],
@@ -76,11 +108,13 @@ class PublicLocationListView(ListAPIView):
             qs = qs.filter(business__category__slug=category)
         q = params.get("q")
         if q:
-            qs = qs.filter(
-                Q(name__icontains=q)
-                | Q(business__name__icontains=q)
-                | Q(business__campaigns__headline__icontains=q)
+            # Relevance first (tiered), then name for a stable secondary order
+            # (acceptance #12); unapproved campaign headlines never match.
+            qs = qs.filter(_text_match_q(q)).annotate(relevance=_relevance_annotation(q)).order_by(
+                "-relevance", "name"
             ).distinct()
+        else:
+            qs = qs.order_by("name")
         try:
             limit = int(params.get("limit", DEFAULT_LIMIT))
         except ValueError:
@@ -100,7 +134,7 @@ class PublicLocationDetailView(RetrieveAPIView):
     def get_queryset(self):
         return (
             Location.objects.filter(status=Location.Status.ACTIVE)
-            .filter(business__status="active")
+            .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
         )
 
@@ -218,18 +252,17 @@ class PublicSearchView(APIView):
 
         locations = (
             Location.objects.filter(status=Location.Status.ACTIVE)
-            .filter(business__status="active")
+            .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
             .annotate(
                 active_ads_count=Count(
                     "placements", filter=eligible_now_q(now, prefix="placements__")
                 )
             )
-            .filter(
-                Q(name__icontains=q)
-                | Q(business__name__icontains=q)
-                | Q(business__campaigns__headline__icontains=q)
-            )
+            .filter(_text_match_q(q))
+            # Relevance first, then distance when an origin is given,
+            # otherwise name (spec §10, acceptance #12).
+            .annotate(relevance=_relevance_annotation(q))
             .distinct()
         )
         if category:
@@ -239,26 +272,22 @@ class PublicSearchView(APIView):
             lon = float(request.query_params.get("lon"))
             origin = GisPoint(lon, lat, srid=4326)
             locations = locations.annotate(distance=GisDistance("point", origin)).order_by(
-                "distance"
+                "-relevance", "distance"
             )
         except (TypeError, ValueError):
-            locations = locations.order_by("name")
+            locations = locations.order_by("-relevance", "name")
         locations = locations[:20]
 
+        # One eligibility source of truth: the same live predicate used by
+        # pins, location detail and ad detail (no hand-rolled drift).
         campaign_qs = (
-            Campaign.objects.filter(review_status=Campaign.ReviewStatus.APPROVED)
-            .filter(
-                placements__state__in=["scheduled", "active"],
-                placements__start_at__lte=now,
-                placements__end_at__gt=now,
-                placements__location__status=Location.Status.ACTIVE,
-                business__status=Business.Status.ACTIVE,
-            )
+            Campaign.objects.filter(eligible_now_q(now, prefix="placements__"))
             .filter(Q(headline__icontains=q) | Q(body__icontains=q))
+            .distinct()
         )
         if category:
             campaign_qs = campaign_qs.filter(business__category__slug=category)
-        campaigns = campaign_qs.select_related("business").distinct()[:20]
+        campaigns = campaign_qs.select_related("business")[:20]
 
         return Response(
             {
@@ -285,7 +314,7 @@ class PublicReportView(APIView):
 
     def post(self, request):
         entity = request.data.get("entity", "")
-        entity_id = request.data.get("entity_id", "")
+        entity_id = str(request.data.get("entity_id", ""))
         reason = (request.data.get("reason") or "").strip()
         if entity not in {"location", "campaign"} or not entity_id or not reason:
             return Response(
@@ -294,16 +323,27 @@ class PublicReportView(APIView):
                            "fields": {}}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        from apps.moderation.models import ActivityEvent, Report
+        from apps.moderation.models import Report
 
-        ActivityEvent.objects.create(
-            actor=None,
-            action="public.report",
-            entity=entity,
-            entity_id=str(entity_id),
-            metadata={"reason": reason[:2000]},
-        )
+        # The referenced entity must exist — otherwise the public endpoint is a
+        # spam sink (spec §12 rate-limited, but still garbage-in).
+        try:
+            if entity == "location":
+                if not Location.objects.filter(pk=entity_id).exists():
+                    raise LookupError
+            elif not Campaign.objects.filter(pk=entity_id).exists():
+                raise LookupError
+        except (LookupError, ValueError, TypeError):
+            return Response(
+                {"error": {"code": "validation_error",
+                           "message": "Unknown entity_id for this entity type",
+                           "fields": {"entity_id": "Not found"}}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Anonymous reports go to the moderation queue ONLY. ActivityEvent is
+        # an append-only audit trail for privileged actions — public input must
+        # not write into it (audit-log pollution / unbounded growth).
         Report.objects.create(
-            entity=entity, entity_id=str(entity_id), reason=reason[:2000]
+            entity=entity, entity_id=entity_id, reason=reason[:2000]
         )
         return Response({"detail": "Report received"}, status=status.HTTP_202_ACCEPTED)
