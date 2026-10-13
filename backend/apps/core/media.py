@@ -1,5 +1,6 @@
 """Server-mediated media upload (spec §11): UUID object keys, type/size/magic
-validation via Pillow, stored through the default storage (Garage when USE_S3).
+validation via Pillow, lossless-clean re-encode that strips ALL metadata
+(including GPS EXIF), stored through the default storage (Garage when USE_S3).
 Public references remain keyed; discovery only exposes URLs for eligible ads.
 """
 import io
@@ -11,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.http import FileResponse
 from drf_spectacular.utils import extend_schema
-from PIL import Image
+from PIL import Image, ImageOps
 from rest_framework import permissions
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -22,6 +23,49 @@ ALLOWED_FORMATS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 ALLOWED_PURPOSES = {"banners", "logos"}
 ALLOWED_SERVE_PREFIXES = ("banners/", "logos/")
 ALLOWED_SERVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+# Dimension policy (ADR-0004): re-encode caps the long edge (aspect kept);
+# minimums keep banners legible on the map card. [O] product may tighten.
+MAX_DIMENSION = {"banners": 2048, "logos": 512}
+MIN_DIMENSION = {"banners": (600, 300), "logos": (128, 128)}
+
+
+def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
+    """Validate by magic bytes, strip metadata, enforce dimensions.
+
+    Returns (format, cleaned_bytes). The re-save through Pillow drops EXIF
+    (incl. GPS), ICC, XMP and any trailing payloads — the stored object is a
+    fresh encode of the pixel data, never the original bytes (spec §11).
+    Raises ValueError with a user-facing message on policy violation."""
+    try:
+        image = Image.open(io.BytesIO(data))
+    except OSError as exc:  # includes PIL.UnidentifiedImageError
+        raise ValueError("Not a recognizable image") from exc
+    if image.format not in ALLOWED_FORMATS:
+        raise ValueError(f"Unsupported image format {image.format!r}")
+    fmt = image.format
+    image.load()
+    # Honor EXIF orientation before the EXIF is discarded.
+    image = ImageOps.exif_transpose(image)
+
+    min_w, min_h = MIN_DIMENSION[purpose]
+    if image.width < min_w or image.height < min_h:
+        raise ValueError(
+            f"{purpose[:-1].capitalize()} must be at least {min_w}x{min_h} pixels "
+            f"(got {image.width}x{image.height})"
+        )
+    long_edge = MAX_DIMENSION[purpose]
+    if max(image.size) > long_edge:
+        image.thumbnail((long_edge, long_edge), Image.Resampling.LANCZOS)
+
+    if fmt == "JPEG" and image.mode not in ("RGB", "L"):
+        image = image.convert("RGB")
+    buf = io.BytesIO()
+    save_kwargs = {"optimize": True}
+    if fmt in ("JPEG", "WEBP"):
+        save_kwargs["quality"] = 88
+    image.save(buf, format=fmt, **save_kwargs)
+    return fmt, buf.getvalue()
 
 
 class MediaUploadView(APIView):
@@ -51,26 +95,22 @@ class MediaUploadView(APIView):
                 status=400,
             )
 
-        # Magic-byte validation: Pillow must recognize the real format
-        # (never trust the content type or original filename — spec §11).
+        # Magic-byte validation + metadata-stripping re-encode (never trust
+        # the content type or original filename — spec §11, ADR-0004).
+        raw = upload.read()
         try:
-            header = upload.read()
-            image = Image.open(io.BytesIO(header))
-            image_format = image.format
-            if image_format not in ALLOWED_FORMATS:
-                raise ValueError(image_format)
-            image.verify()
-        except Exception:
+            fmt, cleaned = _reencode(raw, purpose)
+        except (ValueError, OSError):
             return Response(
                 {"error": {"code": "validation_error",
-                           "message": "Only JPG, PNG or WEBP images are accepted",
+                           "message": "Only valid JPG, PNG or WEBP images are accepted",
                            "fields": {}}},
                 status=400,
             )
 
-        ext = ALLOWED_FORMATS[image_format]
+        ext = ALLOWED_FORMATS[fmt]
         key = f"{purpose}/{uuid.uuid4().hex}.{ext}"
-        saved_key = default_storage.save(key, ContentFile(header))
+        saved_key = default_storage.save(key, ContentFile(cleaned))
         return Response({"key": saved_key, "url": default_storage.url(saved_key)})
 
 
