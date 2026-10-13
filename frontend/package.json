@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "gen:api": "openapi-typescript ./openapi.json -o src/shared/api/schema.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
@@ -27,6 +28,7 @@
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
+    "openapi-typescript": "7.13.0",
     "typescript": "~5.7.0",
     "typescript-eslint": "^8.18.0",
     "vite": "^6.0.0"

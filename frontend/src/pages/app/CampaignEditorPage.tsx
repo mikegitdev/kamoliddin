@@ -420,10 +420,15 @@ export function CampaignEditorPage() {
     );
   }
 
-  const canSave = !locked && headline.trim().length > 2;
   const canSubmit =
     !locked && !approved && headline.trim().length > 2 && !!bannerKey &&
     (!saved || ["draft", "rejected"].includes(saved.review_status));
+  // An APPROVED campaign stays editable: saving content bumps review_version
+  // and returns it to moderation (backend CampaignSerializer) — the confirm
+  // dialog makes the "ads go dark until re-approval" consequence explicit.
+  const canSave =
+    !locked && headline.trim().length > 2 && !!bannerKey &&
+    (!saved || ["draft", "rejected", "approved"].includes(saved.review_status));
   const canQuote =
     !!saved &&
     ["submitted", "under_review", "approved"].includes(saved.review_status) &&
@@ -432,11 +437,22 @@ export function CampaignEditorPage() {
 
   const stages = [t.stepContent, t.stepPlacement, t.stepPreview];
 
+  // Editing APPROVED content re-enters moderation (spec §7.1 [R]) and takes
+  // every live placement of this campaign off the public map until
+  // re-approval; auto-renewal pauses as well (content hash mismatch, §8).
+  // The user must confirm that consciously — no silent going-dark.
+  const confirmApprovedEdit = (): boolean => {
+    if (saved?.review_status !== "approved") return true;
+    return window.confirm(t.editorApprovedEditWarning);
+  };
+
   const saveButton = locked ? null : (
     <button
       className="btn"
       disabled={!canSave || saveDraft.isPending}
-      onClick={() => saveDraft.mutate()}
+      onClick={() => {
+        if (confirmApprovedEdit()) saveDraft.mutate();
+      }}
     >
       {saveDraft.isPending ? t.saving : t.saveDraft}
     </button>

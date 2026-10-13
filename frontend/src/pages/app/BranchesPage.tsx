@@ -14,7 +14,7 @@ import {
   IconPencil,
   IconPin,
 } from "@/shared/icons";
-import { ContactActions } from "@/shared/ui";
+import { ContactActions, directionsUrl } from "@/shared/ui";
 import type { ApiBusiness, ApiOwnerLocation } from "@/entities/types";
 
 /* ---------- Map picker: click to place, drag to fine-tune (spec §13) ---------- */
@@ -37,7 +37,9 @@ function MapPicker({
   useEffect(() => {
     if (!containerRef.current) return;
     const adapter = new MapLibreAdapter();
-    adapter.initialize(containerRef.current);
+    adapter.initialize(containerRef.current, {
+      tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
+    });
     adapter.onMapClick((lng, lat) => onPickRef.current(lng, lat));
     adapterRef.current = adapter;
     return () => {
@@ -73,8 +75,8 @@ function PublicPreview({
   form: BranchForm;
 }) {
   const { t } = useI18n();
-  const directionsUrl = form.point
-    ? `https://2gis.uz/directions/center/${form.point.lng},${form.point.lat}`
+  const previewDirectionsUrl = form.point
+    ? directionsUrl(form.point.lng, form.point.lat)
     : undefined;
 
   return (
@@ -94,7 +96,7 @@ function PublicPreview({
         </div>
       </div>
       <ContactActions
-        directionsUrl={directionsUrl}
+        directionsUrl={previewDirectionsUrl}
         phone={form.phone || null}
         site={business?.site || null}
       />

@@ -76,6 +76,7 @@ export const uz: Dict = {
   submitReview: "Moderatsiyaga yuborish",
   getQuoteAndPay: "Hisoblash va to'lash",
   campaignSaved: "Qoralama saqlandi",
+  editorApprovedEditWarning: "Bu reklama tasdiqlangan va eʼlon qilingan. Oʻzgartirishlar uni qayta tekshirishga yuboradi: yangi tasdiqlanmaguncha xaritadagi koʻrsatilish va avtomatik uzaytirish toʻxtatiladi. Davom etasizmi?",
   campaignSubmitted: "Moderatsiyaga yuborildi",
   createPayment: "To'lovga o'tish",
   simulatePayment: "To'lash (test provayder)",

@@ -94,8 +94,14 @@ export function MapHomePage() {
 
   useEffect(() => {
     if (!containerRef.current) return;
+    // Tile source is configuration, not code: dev defaults to public OSM
+    // (development ONLY); production MUST set VITE_MAP_TILES_URL to a licensed
+    // provider (2GIS tiles or a paid/self-hosted OSM stack) — spec §10 [E],
+    // ADR-0004/open-questions gate 2.
     const adapter = new MapLibreAdapter();
-    adapter.initialize(containerRef.current);
+    adapter.initialize(containerRef.current, {
+      tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
+    });
     // Restore the saved camera (session persistence); otherwise seed the first
     // request from the REAL viewport, clipped to the API's area guard.
     if (restored?.center && restored.zoom != null) {

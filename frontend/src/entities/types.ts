@@ -174,6 +174,13 @@ export interface ApiOrder {
   updated_at: string;
 }
 
+// Generated API contract (spec §12): the OpenAPI schema is the source of
+// truth — `npm run gen:api` regenerates schema.d.ts from backend/openapi
+// (drift fails CI). SchemaOrder mirrors the hand-rolled ApiOrder above; new
+// money DTOs should derive from the schema instead of hand-maintaining.
+import type { components } from "@/shared/api/schema";
+export type SchemaOrder = components["schemas"]["Order"];
+
 export interface ApiCheckout {
   order_id: string;
   provider: string;
