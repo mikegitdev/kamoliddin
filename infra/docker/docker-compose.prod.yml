@@ -11,6 +11,15 @@
 # NOTE: relative build/mount paths resolve from THIS file's directory.
 name: local-ads-prod
 
+# Shared log policy (spec §15): bounded json-file logs so a single VPS cannot
+# fill its disk with container stdout.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 x-web-env: &web-env
   DJANGO_SETTINGS_MODULE: config.settings.prod
   USE_S3: "true"
@@ -42,6 +51,7 @@ services:
       - ../../frontend/dist:/var/www/frontend:ro
     networks: [frontend_net]
     restart: unless-stopped
+    <<: *logging
 
   web:
     build: ../../backend
@@ -55,6 +65,7 @@ services:
       - backend_static:/app/staticfiles
     networks: [frontend_net, backend_net]
     restart: unless-stopped
+    <<: *logging
 
   worker:
     image: localads-backend:${TAG:-latest}
@@ -64,6 +75,7 @@ services:
     depends_on: [web]
     networks: [backend_net]
     restart: unless-stopped
+    <<: *logging
 
   beat:
     image: localads-backend:${TAG:-latest}
@@ -75,6 +87,7 @@ services:
       - beat_schedule:/data
     networks: [backend_net]
     restart: unless-stopped
+    <<: *logging
 
   db:
     image: postgis/postgis:16-3.4
@@ -91,6 +104,7 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    <<: *logging
 
   redis:
     image: redis:7-alpine
@@ -101,6 +115,7 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    <<: *logging
 
   garage:
     # S3-compatible storage, fully private (spec §11; ADR-0002). Public media
@@ -125,6 +140,7 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    <<: *logging
 
 networks:
   frontend_net:

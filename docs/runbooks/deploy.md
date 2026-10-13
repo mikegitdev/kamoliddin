@@ -132,3 +132,37 @@ placements restored, migrations consistent, live API + banners serving.
   protects the map API from a single abusive client.
 - Prod runs gunicorn (multi-worker) behind nginx, so treat these as a floor.
   Re-run against prod-shaped infra before launch sign-off.
+
+## Daily ops report (spec §15 monitoring minimum)
+
+Cron on the VPS (07:00 local, output goes to cron mail; non-zero exit alerts):
+
+```
+0 7 * * * cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
+  exec -T web python manage.py ops_report || echo "OPS CRITICAL — check report above"
+```
+
+The report covers: renewal reconciliation/failure counts, pending-token
+agreements, succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
+placements, disk usage, and the Celery worker heartbeat. Set
+`OPS_TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID` in `.env.prod` to mirror it
+to Telegram. For backup freshness, mount/copy the `~/.localads-last-backup`
+stamp into the container and set `OPS_LAST_BACKUP_FILE`.
+
+Weekly media hygiene (ADR-0004):
+
+```
+0 4 * * 0 cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
+  exec -T web python manage.py prune_orphan_media
+```
+
+## Encrypted backups
+
+`backup.sh` encrypts every artifact at rest when `BACKUP_ENCRYPTION_KEY` is
+exported (AES-256-CBC + PBKDF2). Store the key OUTSIDE the backup host.
+Decrypt a database dump during a restore:
+
+```
+openssl enc -d -aes-256-cbc -pbkdf2 -in db-<stamp>.sql.gz.enc \
+  -pass env:BACKUP_ENCRYPTION_KEY | gunzip | psql -U localads localads
+```
