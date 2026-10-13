@@ -1,4 +1,5 @@
 import uuid
+from typing import ClassVar
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
@@ -13,6 +14,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone_e164 = models.CharField("phone (E.164)", max_length=16, unique=True)
+    # AbstractBaseUser.is_active is a plain `True` attribute, not a field —
+    # every concrete user model must declare the field itself.
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(
@@ -25,7 +28,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = "phone_e164"
-    REQUIRED_FIELDS: list[str] = []
+    REQUIRED_FIELDS: ClassVar[list[str]] = []
 
     def __str__(self) -> str:
         return self.phone_e164

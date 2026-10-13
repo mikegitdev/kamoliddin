@@ -5,8 +5,8 @@ anonymizes PII while retaining financial records (spec §14)."""
 import hashlib
 import hmac
 import logging
-import random
 import re
+import secrets
 import uuid
 from datetime import timedelta
 
@@ -78,7 +78,7 @@ def _issue_challenge(phone: str, purpose: str) -> OTPChallenge:
     if last and last.resend_after > now:
         raise OTPError("The previous code was sent recently. Please wait.")
 
-    code = f"{random.randrange(10 ** settings.OTP_CODE_LENGTH):0{settings.OTP_CODE_LENGTH}d}"
+    code = f"{secrets.randbelow(10 ** settings.OTP_CODE_LENGTH):0{settings.OTP_CODE_LENGTH}d}"
     challenge = OTPChallenge.objects.create(
         phone_e164=phone,
         phone_hash=_hash(phone),
@@ -102,8 +102,11 @@ def _issue_challenge(phone: str, purpose: str) -> OTPChallenge:
     return challenge
 
 
-def request_otp(raw_phone: str, *, ip: str = "") -> OTPChallenge:
-    """Create a login OTP challenge for a phone, enforcing throttling."""
+def request_otp(raw_phone: str) -> OTPChallenge:
+    """Create a login OTP challenge for a phone, enforcing throttling.
+
+    IP-level throttling is applied by the DRF scoped anon throttle on the
+    view (5/min per IP); phone-level throttling and quotas live here."""
     phone = normalize_phone(raw_phone)
     if _old_phone_block(phone):
         # Recently abandoned via phone change/deletion: no send, no new account.

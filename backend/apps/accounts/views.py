@@ -52,8 +52,7 @@ class OTPRequestView(APIView):
         serializer = OTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            ip = request.META.get("REMOTE_ADDR", "")
-            challenge = request_otp(serializer.validated_data["phone"], ip=ip)
+            challenge = request_otp(serializer.validated_data["phone"])
         except (OTPError, ValueError):
             # Generic response; never reveal phone existence or throttle internals.
             return _accepted_response(

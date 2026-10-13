@@ -175,7 +175,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STORAGES = {
+STORAGES: dict[str, dict[str, object]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
@@ -210,6 +210,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SMS_PROVIDER = env("SMS_PROVIDER")
 # fake | click (click raises until merchant verification, spec §19 [E])
 PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="fake")
+
+# Eskiz SMS gateway credentials (ADR-0006). Empty by default: selecting
+# SMS_PROVIDER=eskiz without credentials fails fast in the adapter.
+ESKIZ_EMAIL = env("ESKIZ_EMAIL", default="")
+ESKIZ_PASSWORD = env("ESKIZ_PASSWORD", default="")
+ESKIZ_FROM = env("ESKIZ_FROM", default="4546")
+ESKIZ_BASE_URL = env("ESKIZ_BASE_URL", default="https://notify.eskiz.uz")
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True

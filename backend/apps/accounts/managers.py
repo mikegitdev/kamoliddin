@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING, cast
+
 from django.contrib.auth.base_user import BaseUserManager
+
+if TYPE_CHECKING:
+    from .models import User
 
 
 class UserManager(BaseUserManager):
@@ -7,10 +12,10 @@ class UserManager(BaseUserManager):
 
     use_in_migrations = True
 
-    def _create(self, phone_e164: str, password: str | None, **extra):
+    def _create(self, phone_e164: str, password: str | None, **extra) -> "User":
         if not phone_e164:
             raise ValueError("phone_e164 is required")
-        user = self.model(phone_e164=phone_e164, **extra)
+        user = cast("User", self.model(phone_e164=phone_e164, **extra))
         if password:
             user.set_password(password)
         else:
