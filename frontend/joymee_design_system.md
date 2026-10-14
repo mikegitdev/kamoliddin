@@ -6,10 +6,12 @@ properties read from the live site in Chromium (desktop 1440×900, mobile
 390×844), 2026-10-14. Joymee is built on Mantine; its theme variables are
 quoted below verbatim.
 
-We copy Joymee's **design language** (one loud brand color on black and white,
-borderless gray fills, 16px radius, pill chips, flat surfaces). We do **not**
-copy its brand: no yellow `#FEE02A`, no Gotham, no logo or imagery. Joymee is a
-known brand in the same city, so a yellow-and-black clone would read as theirs.
+We copy Joymee's design language **and its colors**: brand yellow `#FEE02A`
+with black labels, black ink, borderless gray fills, 16px radius, pill chips,
+flat surfaces. We do **not** copy its typeface (Gotham is commercial;
+Montserrat stands in), logo, name or imagery. Two deliberate deviations:
+muted text stays darker than Joymee's `#9E9E9E` to pass WCAG AA, and the
+content is our own (local business advertisements).
 
 Implementation: `src/index.css` (`:root` tokens), `src/shared/icons.tsx`,
 `src/map-adapters/maplibre/adapter.ts` (map paint mirrors the tokens).
@@ -39,14 +41,15 @@ Implementation: `src/index.css` (`:root` tokens), `src/shared/icons.tsx`,
 
 | Token | Value | Notes |
 |---|---|---|
-| `--brand` | `#C6F432` lime | Fill only (CTA, selected chip/tab, logo tile, map clusters). Never text on white. |
-| `--on-brand` | `#000000` | 16:1 on `--brand` |
+| `--brand` | `#FEE02A` (Joymee yellow) | Fill only (CTA, selected chip/tab, logo tile, map clusters). Never text on white. |
+| `--on-brand` | `#000000` | 15:1 on `--brand` |
+| `--brand-hover` | `#F5D30F` | |
 | `--ink` / `--primary` | `#000000` | Text, links, focus rings, selected outlines |
 | `--muted` | `#5C5C5C` | Joymee's `#9E9E9E` fails WCAG AA (2.7:1); we keep ≥ 4.5:1 |
 | `--muted-2` | `#6B6B6B` | Meta text, placeholders |
 | `--bg` / `--surface` | `#FFFFFF` | |
 | `--surface-subtle` | `#FAFAFA` | |
-| `--fill` | `#F2F3F4` | Default button, inputs, chips, stat tiles, segmented track |
+| `--fill` | `#F3F4F5` (Joymee chip `rgba(135,143,151,.1)` on white) | Default button, inputs, chips, stat tiles, segmented track |
 | `--fill-hover` | `#E8EAEC` | |
 | `--border` / `--border-2` | `#EEEEEE` / `#E0E0E0` | Used sparingly |
 | `--radius` | 16px | Surfaces and buttons |
@@ -76,9 +79,17 @@ Semantic colors (`--success`, `--danger`, `--warn`, `--accent` and their
 - **Icons:** one set — 24px Lucide-style line glyphs, `stroke: currentColor`.
   No 3D renders, no gradient badges.
 - **Labels:** sentence case. No uppercase tracking.
-- **Map:** markers with ads = black circle with brand-colored count; no ads =
-  gray dot; clusters = brand circle with black count; selected = brand halo
-  with black outline.
+- **Motion:** transform/opacity only. Entrances use `--ease-out` (header →
+  search → chips staggered by `--i` → floating controls); small "pops" use
+  `--ease-pop`; pressables scale to ~0.96 on `:active`. Lists stagger by
+  ~30ms per item (capped). The selected map pin has a sonar pulse that runs
+  only while something is selected. Everything collapses under
+  `prefers-reduced-motion`.
+- **Map:** every location with ads = brand count badge (white ring, soft
+  shadow), always drawn, never hidden by collision; its name rides above in a
+  white tag when there's room (tags yield to badges, more ads = higher
+  priority). No ads = gray dot. Clusters = brand circle with black count.
+  Selected = black badge + black tag with brand text, plus a sonar pulse.
 
 ## 4. Layout
 

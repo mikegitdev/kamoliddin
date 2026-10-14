@@ -207,18 +207,24 @@ export function ContactActions({
 }: ContactActionsProps) {
   const { t } = useI18n();
   const size = compact ? "btn small" : "btn";
-  const links: { href: string; label: string; icon: React.ReactNode; primary?: boolean }[] = [];
+  // Joymee pairing: brand-filled route + solid black call; the rest stay quiet.
+  const links: { href: string; label: string; icon: React.ReactNode; tone?: "primary" | "dark" }[] = [];
 
   if (directionsUrl) {
     links.push({
       href: directionsUrl,
       label: shortDirections ? t.directionsShort : t.directions,
       icon: <IconDirections />,
-      primary: true,
+      tone: "primary",
     });
   }
   if (phone) {
-    links.push({ href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: t.call, icon: <IconPhone /> });
+    links.push({
+      href: `tel:${phone.replace(/[^\d+]/g, "")}`,
+      label: t.call,
+      icon: <IconPhone />,
+      tone: "dark",
+    });
   }
   const tg = telegram ? messagingUrl("telegram", telegram) : "";
   if (tg) links.push({ href: tg, label: "Telegram", icon: <IconTelegram /> });
@@ -229,10 +235,10 @@ export function ContactActions({
   if (links.length === 0) return null;
   return (
     <div className={hiddenOnMobile ? "contact-actions hide-mobile" : "contact-actions"}>
-      {links.map(({ href, label, icon, primary }) => (
+      {links.map(({ href, label, icon, tone }) => (
         <a
           key={label}
-          className={primary ? `${size} primary` : size}
+          className={tone ? `${size} ${tone}` : size}
           href={href}
           target="_blank"
           rel="noreferrer"

@@ -9,7 +9,7 @@ import { formatDistanceM } from "@/shared/format";
 import { useLocationDetail, type ApiSearchAd } from "@/shared/api/queries";
 import type { ApiLocationPin } from "@/entities/types";
 import type { SheetState } from "./mapSession";
-import { IconBack, IconChevronDown, IconChevronUp, IconClose } from "@/shared/icons";
+import { IconBack, IconChevronDown, IconChevronUp, IconClose, IconMegaphone } from "@/shared/icons";
 import { ContactActions, directionsUrl, FallImg } from "@/shared/ui";
 import { PINS_LIMIT } from "@/shared/api/queries";
 
@@ -17,16 +17,20 @@ import { PINS_LIMIT } from "@/shared/api/queries";
 
 function ResultCard({
   pin,
+  index,
   selected,
   onSelect,
 }: {
   pin: ApiLocationPin;
+  /** Position in the list; drives the staggered entrance (capped in CSS). */
+  index: number;
   selected: boolean;
   onSelect: (id: string) => void;
 }) {
   const { locale } = useI18n();
+  const hasAds = pin.active_ads_count > 0;
   return (
-    <li>
+    <li style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
       <button
         type="button"
         className={selected ? "result-card selected" : "result-card"}
@@ -34,23 +38,24 @@ function ResultCard({
         aria-current={selected ? "true" : undefined}
         onClick={() => onSelect(pin.id)}
       >
-        <span className="rc-top">
+        {/* Monogram mirrors the map: yellow = has ads, gray = none. */}
+        <span className={hasAds ? "rc-mono" : "rc-mono idle"} aria-hidden="true">
+          {pin.business_name.trim().charAt(0)}
+        </span>
+        <span className="rc-text">
           <strong>{pin.business_name}</strong>
-          <span className="rc-meta">
-            {pin.distance_m != null && (
-              <span className="rc-distance" aria-label="~">
-                {formatDistanceM(pin.distance_m, locale)}
-              </span>
-            )}
-            <span
-              className={pin.active_ads_count > 0 ? "rc-ads" : "rc-ads zero"}
-              aria-label={plural(locale, "ads", pin.active_ads_count)}
-            >
-              {pin.active_ads_count}
-            </span>
+          <span className="muted-2">
+            {pin.name}
+            {pin.distance_m != null && <> · {formatDistanceM(pin.distance_m, locale)}</>}
           </span>
         </span>
-        <span className="muted-2">{pin.name}</span>
+        {hasAds && (
+          <span className="rc-ads">
+            <IconMegaphone />
+            {pin.active_ads_count}
+            <span className="sr-only"> {plural(locale, "ads", pin.active_ads_count)}</span>
+          </span>
+        )}
       </button>
     </li>
   );
@@ -133,12 +138,13 @@ function LocationDetailView({
           <>
             {ads.length > 0 ? (
               <div className="sheet-ads">
-                {ads.slice(0, 2).map((ad) => (
+                {ads.slice(0, 2).map((ad, i) => (
                   <Link
                     key={ad.id}
                     to={`/ads/${ad.id}`}
                     className="sheet-ad"
                     state={{ fromLocationId: loc.id }}
+                    style={{ "--i": i } as React.CSSProperties}
                   >
                     <FallImg src={ad.banner_url} alt="" className="" />
                     <span className="sheet-ad-text">
@@ -293,6 +299,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
     <section className={state === "detail" ? "results-panel detail" : "results-panel"} data-state={state} aria-label={t.resultsTitle}>
       {state === "detail" ? (
         <LocationDetailView
+          key={selectedPin ?? ""} /* remount ⇒ entrance animation per location */
           pin={selected}
           colocGroup={colocGroup}
           onSelect={onSelect}
@@ -301,7 +308,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
           backBtnRef={backRef}
         />
       ) : (
-        <div className="panel-view list">
+        <div className="panel-view list-view">
           <div className="panel-head">
             <strong className="panel-title">{t.resultsTitle}</strong>
             <span className="panel-count" aria-live="polite">
@@ -355,10 +362,11 @@ export function ResultsPanel(props: ResultsPanelProps) {
             ) : (
               <>
                 <ul className="result-list" ref={listRef} onKeyDown={onListKeyDown}>
-                  {results.map((pin) => (
+                  {results.map((pin, i) => (
                     <ResultCard
                       key={pin.id}
                       pin={pin}
+                      index={i}
                       selected={pin.id === selectedPin}
                       onSelect={onSelect}
                     />

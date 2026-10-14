@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { useCategories, useLocationDetail, useLocationPins, usePublicSearch } from "@/shared/api/queries";
 import { MapLibreAdapter, type LatLngBounds, type MapAdapter } from "@/map-adapters";
-import { IconClose, IconLocate, IconPin, IconSearch } from "@/shared/icons";
+import { IconClose, IconDirections, IconList, IconPin, IconSearch } from "@/shared/icons";
 import { useMediaQuery } from "@/shared/hooks";
 import { ResultsPanel } from "@/features/map/ResultsPanel";
 import { RecentSearches, rememberSearch } from "@/features/map/RecentSearches";
@@ -16,6 +16,10 @@ const MAX_BBOX_AREA = 0.98;
 
 /** Zoom used when flying to a selected result. */
 const DETAIL_ZOOM = 15.2;
+
+/** Phones: lift the target into the map strip left visible above the detail
+ *  bottom sheet (≈60dvh) and below the floating toolbar. */
+const MOBILE_FLY_OFFSET: [number, number] = [0, -170];
 
 function boundsArea(b: LatLngBounds): number {
   return (b.east - b.west) * (b.north - b.south);
@@ -208,7 +212,7 @@ export function MapHomePage() {
     const bounds = adapter.getBounds();
     if (!bounds || !comfortablyVisible(bounds, pin.lon, pin.lat)) {
       // Offset the target so the pin is not hidden behind the panel / sheet.
-      const offset: [number, number] = isMobile ? [0, -110] : panelFlyOffset();
+      const offset: [number, number] = isMobile ? MOBILE_FLY_OFFSET : panelFlyOffset();
       adapter.flyTo([pin.lon, pin.lat], DETAIL_ZOOM, offset);
     }
   };
@@ -217,7 +221,7 @@ export function MapHomePage() {
   const clearSelection = useCallback(() => {
     setSelectedPin(null);
     adapterRef.current?.setSelected(null);
-    setSheet((s) => (s === "detail" ? "list" : s));
+    setSheet((s) => (s === "detail" ? "collapsed" : s));
   }, []);
 
   // New search / category ⇒ back to the list view.
@@ -256,7 +260,7 @@ export function MapHomePage() {
     adapterRef.current?.flyTo(
       [pin.lon, pin.lat],
       DETAIL_ZOOM,
-      isMobile ? [0, -110] : panelFlyOffset(),
+      isMobile ? MOBILE_FLY_OFFSET : panelFlyOffset(),
     );
     selectPinRef.current(deepLinkPin, false);
     setSearchParams({}, { replace: true });
@@ -342,7 +346,13 @@ export function MapHomePage() {
   useEffect(() => {
     if (!mapReady) return;
     adapterRef.current?.setClusters(
-      results.map((p) => ({ id: p.id, lng: p.lon, lat: p.lat, activeAdsCount: p.active_ads_count })),
+      results.map((p) => ({
+        id: p.id,
+        lng: p.lon,
+        lat: p.lat,
+        activeAdsCount: p.active_ads_count,
+        label: p.business_name,
+      })),
     );
   }, [mapReady, results]);
 
@@ -356,18 +366,18 @@ export function MapHomePage() {
     : sheet === "detail"
       ? "list"
       : sheet;
-  const effectivePanelState: SheetState =
-    !isMobile && panelState === "collapsed" ? "list" : panelState;
 
   return (
     <div className="map-page">
       <div className="map-container" ref={containerRef} role="region" aria-label={t.appTitle} />
 
-      {!mapReady && !isError && (
-        <div className="map-loading" aria-hidden="true">
+      {/* Stays mounted so it can fade out once the map is ready. */}
+      {!isError && (
+        <div className={mapReady ? "map-loading done" : "map-loading"} aria-hidden="true">
           <span className="map-loading-badge">
             <IconPin />
           </span>
+          <span className="map-loading-shadow" />
         </div>
       )}
 
@@ -382,50 +392,77 @@ export function MapHomePage() {
           </span>
         </Link>
 
-        <div className="controls">
-          <span
-            className={`search-wrap${
-              query.trim() !== "" && (searchActive ? searchLoading : isLoading) ? " busy" : ""
-            }`}
+        <div className="header-utils">
+          <Link className="btn primary" to="/login">
+            {t.forBusiness}
+          </Link>
+          <LanguageSwitcher />
+        </div>
+      </header>
+
+      {/* Floating toolbar over the map (Joymee-style): list toggle + search,
+          category chips underneath. */}
+      <div className="map-toolbar">
+        <div className="toolbar-row">
+          <button
+            type="button"
+            className={`list-toggle${panelState !== "collapsed" ? " active" : ""}`}
+            aria-expanded={panelState !== "collapsed"}
+            aria-label={panelState === "collapsed" ? t.openList : t.collapseList}
+            onClick={() => setSheet((s) => (s === "collapsed" ? "list" : "collapsed"))}
           >
-            <IconSearch />
-            <input
-              type="search"
-              placeholder={t.search}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={(e) => {
-                // Clicking a recent item keeps focus inside the wrapper.
-                if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) {
+            <IconList />
+            <span>{t.listToggle}</span>
+            {/* Keyed by value: a changed count re-mounts and "pops". */}
+            <span className="list-toggle-count" key={searchActive ? results.length : pins?.length ?? 0}>
+              {searchActive ? results.length : pins?.length ?? 0}
+            </span>
+          </button>
+          <div className="controls">
+            <span
+              className={`search-wrap${
+                query.trim() !== "" && (searchActive ? searchLoading : isLoading) ? " busy" : ""
+              }`}
+            >
+              <IconSearch />
+              <input
+                type="search"
+                placeholder={t.search}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={(e) => {
+                  // Clicking a recent item keeps focus inside the wrapper.
+                  if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) {
+                    setSearchFocused(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && query.trim().length >= 2) {
+                    rememberSearch(query);
+                    setSearchFocused(false);
+                  }
+                }}
+                aria-label={t.search}
+              />
+              <RecentSearches
+                open={searchFocused && query.trim() === ""}
+                recentLabel={t.recentSearches}
+                closeLabel={t.close}
+                onPick={(q) => {
+                  setQuery(q);
                   setSearchFocused(false);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && query.trim().length >= 2) {
-                  rememberSearch(query);
-                  setSearchFocused(false);
-                }
-              }}
-              aria-label={t.search}
-            />
-            <RecentSearches
-              open={searchFocused && query.trim() === ""}
-              recentLabel={t.recentSearches}
-              closeLabel={t.close}
-              onPick={(q) => {
-                setQuery(q);
-                setSearchFocused(false);
-              }}
-              onClose={() => setSearchFocused(false)}
-            />
-          </span>
-          {hasFilters && (
-            <button className="btn small" onClick={clearFilters}>
-              <IconClose />
-              {t.clearFilters}
-            </button>
-          )}
+                }}
+                onClose={() => setSearchFocused(false)}
+              />
+            </span>
+            {hasFilters && (
+              <button className="btn small" onClick={clearFilters}>
+                <IconClose />
+                {t.clearFilters}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Category filter: scannable chips instead of a native select — the
@@ -440,12 +477,13 @@ export function MapHomePage() {
           >
             {t.allCategories}
           </button>
-          {categories?.map((c) => {
+          {categories?.map((c, i) => {
             const active = category === c.slug;
             return (
               <button
                 key={c.slug}
                 type="button"
+                style={{ "--i": i + 1 } as React.CSSProperties}
                 className={`cat-chip${active ? " active" : ""}`}
                 aria-pressed={active}
                 onClick={() => setCategory(active ? "" : c.slug)}
@@ -455,17 +493,10 @@ export function MapHomePage() {
             );
           })}
         </div>
-
-        <div className="header-utils">
-          <Link className="btn primary" to="/login">
-            {t.forBusiness}
-          </Link>
-          <LanguageSwitcher />
-        </div>
-      </header>
+      </div>
 
       <ResultsPanel
-        state={effectivePanelState}
+        state={panelState}
         onStateChange={setSheet}
         results={results}
         campaigns={searchActive ? searchData?.campaigns ?? [] : []}
@@ -492,7 +523,8 @@ export function MapHomePage() {
         aria-label={geoState === "locating" ? t.geoLocating : t.myLocation}
         title={t.myLocation}
       >
-        <IconLocate />
+        <IconDirections />
+        <span>{t.nearMe}</span>
       </button>
 
       {geoState === "denied" && (

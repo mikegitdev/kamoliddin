@@ -2,8 +2,76 @@ import maplibregl from "maplibre-gl";
 import type { LatLngBounds, MapAdapter, MapMarker } from "../types";
 
 /** Mirrors --brand / --ink in index.css (map paint can't read CSS vars). */
-const BRAND = "#c6f432";
+const BRAND = "#fee02a";
 const INK = "#000000";
+/** Bold-ish glyphs with a Cyrillic range on the demo glyph host. */
+const LABEL_FONT = ["Open Sans Semibold"];
+const LABEL_MAX = 22;
+
+/** Logical px from the anchor to the badge's top edge (badge radius + ring). */
+const BADGE_LIFT = 15;
+
+function calloutLabel(m: MapMarker): string {
+  const name = m.label ?? "";
+  return name.length > LABEL_MAX ? `${name.slice(0, LABEL_MAX - 1).trimEnd()}…` : name;
+}
+
+function canvas2x(w: number, h: number): CanvasRenderingContext2D {
+  const ctx = document.createElement("canvas").getContext("2d")!;
+  ctx.canvas.width = w;
+  ctx.canvas.height = h;
+  return ctx;
+}
+
+/** Name tag (rounded pill + short pointer + soft shadow), drawn at 2x and
+ *  registered as a stretchable image so icon-text-fit wraps any label.
+ *  Image pixels: 112×81; body (8,8)–(104,68); pointer tip at y=80. The
+ *  image ends at the tip (no shadow room below) so its collision box never
+ *  reaches the badge's count. */
+function calloutImage(fill: string): { image: ImageData; options: Partial<maplibregl.StyleImageMetadata> } {
+  const ctx = canvas2x(112, 81);
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 96, 60, 20);
+  ctx.moveTo(46, 66);
+  ctx.lineTo(56, 80);
+  ctx.lineTo(66, 66);
+  ctx.closePath();
+  ctx.fill();
+  return {
+    image: ctx.getImageData(0, 0, 112, 81),
+    options: {
+      pixelRatio: 2,
+      stretchX: [
+        [28, 42],
+        [70, 84],
+      ],
+      stretchY: [[28, 48]],
+      content: [26, 18, 86, 58],
+    },
+  };
+}
+
+/** Ad-count badge: filled circle, white ring, soft shadow (2x, 36px logical). */
+function badgeImage(fill: string): { image: ImageData; options: Partial<maplibregl.StyleImageMetadata> } {
+  const ctx = canvas2x(72, 72);
+  ctx.shadowColor = "rgba(0,0,0,0.22)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(36, 35, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(36, 35, 21, 0, Math.PI * 2);
+  ctx.fill();
+  return { image: ctx.getImageData(0, 0, 72, 72), options: { pixelRatio: 2 } };
+}
 
 /**
  * MapLibre fallback adapter (spec §10 [E]): dev tile source is the public OSM
@@ -20,6 +88,7 @@ export class MapLibreAdapter implements MapAdapter {
   private readyCallbacks: (() => void)[] = [];
   private selectedId: string | null = null;
   private userMarker: maplibregl.Marker | null = null;
+  private pulseFrame = 0;
 
   // Style with a raster tile source; replaced by a licensed provider in prod.
   private static style(tilesUrl: string): maplibregl.StyleSpecification {
@@ -37,7 +106,18 @@ export class MapLibreAdapter implements MapAdapter {
       },
       layers: [
         { id: "background", type: "background", paint: { "background-color": "#e8ecef" } },
-        { id: "tiles", type: "raster", source: "tiles" },
+        {
+          id: "tiles",
+          type: "raster",
+          source: "tiles",
+          // Calm base map (Joymee-style): the brand callouts carry the color.
+          paint: {
+            "raster-saturation": -0.75,
+            "raster-contrast": -0.12,
+            "raster-brightness-min": 0.06,
+            "raster-fade-duration": 200,
+          },
+        },
       ],
     };
   }
@@ -119,7 +199,33 @@ export class MapLibreAdapter implements MapAdapter {
     this.selectedId = id;
     const map = this.map;
     if (!map || !map.getLayer("pin-selected")) return;
-    map.setFilter("pin-selected", id ? ["==", ["get", "id"], id] : ["==", ["get", "id"], "__none__"]);
+    const match: maplibregl.FilterSpecification = ["==", ["get", "id"], id ?? "__none__"];
+    const withAds: maplibregl.FilterSpecification = [">", ["get", "active_ads_count"], 0];
+    map.setFilter("pin-selected", ["all", match, ["!", withAds]]);
+    map.setFilter("pin-pulse", match);
+    map.setFilter("pin-badge-selected", ["all", match, withAds]);
+    map.setFilter("pin-callout-selected", ["all", match, withAds, ["!=", ["get", "label"], ""]]);
+    this.runPulse(id !== null);
+  }
+
+  /** Sonar ring under the selected pin: one circle layer, repainted per frame
+   *  only while something is selected (idle map = zero work). */
+  private runPulse(on: boolean): void {
+    cancelAnimationFrame(this.pulseFrame);
+    this.pulseFrame = 0;
+    const map = this.map;
+    if (!on || !map || !map.getLayer("pin-pulse")) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const start = performance.now();
+    const tick = (now: number) => {
+      if (!this.map) return;
+      const t = ((now - start) % 1600) / 1600; // 0→1 every 1.6s
+      const ease = 1 - (1 - t) ** 3;
+      this.map.setPaintProperty("pin-pulse", "circle-radius", 13 + ease * 22);
+      this.map.setPaintProperty("pin-pulse", "circle-opacity", 0.55 * (1 - t));
+      this.pulseFrame = requestAnimationFrame(tick);
+    };
+    this.pulseFrame = requestAnimationFrame(tick);
   }
 
   setUserLocation(lng: number, lat: number): void {
@@ -188,8 +294,24 @@ export class MapLibreAdapter implements MapAdapter {
       type: "geojson",
       data: this.toGeoJson(markers),
       cluster,
-      clusterRadius: 60,
-      clusterMaxZoom: 13,
+      // Cluster only at overview zooms; from city zoom on, every location is
+      // a dot and label collision (not clustering) thins the callouts.
+      clusterRadius: 50,
+      clusterMaxZoom: 10,
+    });
+    // Soft drop shadow under clusters (blurred circle, no extra images).
+    map.addLayer({
+      id: "clusters-shadow",
+      type: "circle",
+      source: "pins",
+      filter: ["has", "point_count"],
+      paint: {
+        "circle-color": "#000000",
+        "circle-opacity": 0.18,
+        "circle-blur": 0.6,
+        "circle-translate": [0, 2],
+        "circle-radius": ["step", ["get", "point_count"], 24, 10, 28, 25, 34],
+      },
     });
     map.addLayer({
       id: "clusters",
@@ -198,8 +320,8 @@ export class MapLibreAdapter implements MapAdapter {
       filter: ["has", "point_count"],
       paint: {
         "circle-color": BRAND,
-        "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 25, 26],
-        "circle-stroke-width": 3,
+        "circle-radius": ["step", ["get", "point_count"], 18, 10, 22, 25, 28],
+        "circle-stroke-width": 4,
         "circle-stroke-color": "#ffffff",
       },
     });
@@ -210,55 +332,135 @@ export class MapLibreAdapter implements MapAdapter {
       filter: ["has", "point_count"],
       layout: {
         "text-field": ["get", "point_count"],
-        "text-size": 13,
+        "text-font": LABEL_FONT,
+        "text-size": 14,
       },
       paint: { "text-color": INK },
     });
-    // Selection halo (below the pin): kept in sync with setSelected().
+    if (!map.hasImage("callout")) {
+      const images = {
+        callout: calloutImage("#ffffff"),
+        "callout-selected": calloutImage(INK),
+        badge: badgeImage(BRAND),
+        "badge-selected": badgeImage(INK),
+      };
+      for (const [name, { image, options }] of Object.entries(images)) map.addImage(name, image, options);
+    }
+    const single: maplibregl.FilterSpecification = ["!", ["has", "point_count"]];
+    const withAds: maplibregl.FilterSpecification = [">", ["get", "active_ads_count"], 0];
+    // Name tag sits above the badge. icon-text-fit wraps the (lifted) text,
+    // so the text offset alone positions it: text bottom at -(LIFT+15)px +
+    // 4px fit padding + 11px pointer = tip exactly on the badge's top edge.
+    const calloutLayout = {
+      "icon-text-fit": "both",
+      "icon-text-fit-padding": [5, 9, 4, 9],
+      "text-anchor": "bottom",
+      "text-offset": [0, -(BADGE_LIFT + 15) / 13],
+      "text-field": ["get", "label"],
+      "text-font": LABEL_FONT,
+      "text-size": 13,
+      "text-max-width": 20,
+    } satisfies maplibregl.SymbolLayerSpecification["layout"];
+    // Badge = icon + count. Always placed (allow-overlap) so EVERY location
+    // with ads stays visible. Only the count text takes part in collision
+    // (the icon's box includes shadow room and would block its own tag):
+    // name tags avoid covering any badge's number instead of hiding it.
+    const badgeLayout = {
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "text-allow-overlap": true,
+      "text-field": ["to-string", ["get", "active_ads_count"]],
+      "text-font": LABEL_FONT,
+      "text-size": 13,
+      "text-offset": [0, 0.02],
+      // Overlapping badges: the larger count draws on top.
+      "symbol-sort-key": ["get", "active_ads_count"],
+    } satisfies maplibregl.SymbolLayerSpecification["layout"];
+    // Selection pulse + halo (under everything): kept in sync with setSelected().
+    map.addLayer({
+      id: "pin-pulse",
+      type: "circle",
+      source: "pins",
+      filter: ["==", ["get", "id"], "__none__"],
+      paint: {
+        "circle-color": BRAND,
+        "circle-radius": 11,
+        "circle-opacity": 0,
+        // Driven per frame by runPulse(); style transitions would lag it.
+        "circle-radius-transition": { duration: 0 },
+        "circle-opacity-transition": { duration: 0 },
+      },
+    });
+    // Locations without ads: a quiet gray dot (selected → black dot).
+    map.addLayer({
+      id: "pins",
+      type: "circle",
+      source: "pins",
+      filter: ["all", single, ["!", withAds]],
+      paint: {
+        "circle-color": "#8a8a8a",
+        "circle-radius": 5,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      },
+    });
     map.addLayer({
       id: "pin-selected",
       type: "circle",
       source: "pins",
       filter: ["==", ["get", "id"], "__none__"],
       paint: {
-        "circle-color": BRAND,
-        "circle-radius": 20,
-        "circle-stroke-width": 2,
-        "circle-stroke-color": INK,
-      },
-    });
-    map.addLayer({
-      id: "pins",
-      type: "circle",
-      source: "pins",
-      filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-color": [
-          "case",
-          [">", ["get", "active_ads_count"], 0],
-          INK,
-          "#9e9e9e",
-        ],
-        "circle-radius": ["case", [">", ["get", "active_ads_count"], 0], 12, 7],
-        "circle-stroke-width": 2,
+        "circle-color": INK,
+        "circle-radius": 7,
+        "circle-stroke-width": 2.5,
         "circle-stroke-color": "#ffffff",
       },
     });
-    // Active-ads count on individual pins (spec §10: pin = location,
-    // count = CURRENTLY active ads there — distinct from cluster counts).
+    // Symbol layers higher in the stack are placed first. Order (top → down):
+    // selected tag, selected badge, badges, name tags — so badges claim their
+    // space before any name tag, and tags yield to them.
+    // Name tags (spec §10: count = CURRENTLY active ads, shown on the badge).
     map.addLayer({
-      id: "pin-count",
+      id: "pin-callouts",
       type: "symbol",
       source: "pins",
-      filter: ["all", ["!", ["has", "point_count"]], [">", ["get", "active_ads_count"], 0]],
+      filter: ["all", single, withAds, ["!=", ["get", "label"], ""]],
+      minzoom: 11,
       layout: {
-        "text-field": ["get", "active_ads_count"],
-        "text-size": 12,
+        ...calloutLayout,
+        "icon-image": "callout",
+        "symbol-sort-key": ["-", 0, ["get", "active_ads_count"]],
+      },
+      paint: { "text-color": INK },
+    });
+    map.addLayer({
+      id: "pin-badges",
+      type: "symbol",
+      source: "pins",
+      filter: ["all", single, withAds],
+      layout: { ...badgeLayout, "icon-image": "badge" },
+      paint: { "text-color": INK },
+    });
+    map.addLayer({
+      id: "pin-badge-selected",
+      type: "symbol",
+      source: "pins",
+      filter: ["==", ["get", "id"], "__none__"],
+      layout: { ...badgeLayout, "icon-image": "badge-selected" },
+      paint: { "text-color": BRAND },
+    });
+    map.addLayer({
+      id: "pin-callout-selected",
+      type: "symbol",
+      source: "pins",
+      filter: ["==", ["get", "id"], "__none__"],
+      layout: {
+        ...calloutLayout,
+        "icon-image": "callout-selected",
+        "icon-allow-overlap": true,
         "text-allow-overlap": true,
       },
-      paint: {
-        "text-color": BRAND,
-      },
+      paint: { "text-color": BRAND },
     });
     if (this.selectedId) this.setSelected(this.selectedId);
 
@@ -283,17 +485,19 @@ export class MapLibreAdapter implements MapAdapter {
       map.getCanvas().style.cursor = "";
     });
 
-    map.on("click", "pins", (e) => {
-      const feature = e.features?.[0];
-      const id = feature?.properties?.id as string | undefined;
-      if (id && this.clickCallback) this.clickCallback(id);
-    });
-    map.on("mouseenter", "pins", () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", "pins", () => {
-      map.getCanvas().style.cursor = "";
-    });
+    for (const layer of ["pins", "pin-badges", "pin-badge-selected", "pin-callouts", "pin-callout-selected"]) {
+      map.on("click", layer, (e) => {
+        const feature = e.features?.[0];
+        const id = feature?.properties?.id as string | undefined;
+        if (id && this.clickCallback) this.clickCallback(id);
+      });
+      map.on("mouseenter", layer, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", layer, () => {
+        map.getCanvas().style.cursor = "";
+      });
+    }
 
     this.markReady();
   }
@@ -308,6 +512,7 @@ export class MapLibreAdapter implements MapAdapter {
         properties: {
           id: m.id,
           active_ads_count: m.activeAdsCount,
+          label: calloutLabel(m),
         },
       })),
     };
@@ -334,6 +539,7 @@ export class MapLibreAdapter implements MapAdapter {
   }
 
   destroy(): void {
+    cancelAnimationFrame(this.pulseFrame);
     this.pickMarker?.remove();
     this.pickMarker = null;
     this.userMarker?.remove();

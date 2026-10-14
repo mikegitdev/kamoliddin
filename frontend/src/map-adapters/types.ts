@@ -12,6 +12,8 @@ export interface MapMarker {
   /** Number of ACTIVE public ads at this location (cluster label semantics,
    * spec §10: never ambiguously mix "locations" and "ads" counts). */
   activeAdsCount: number;
+  /** Callout text for locations with active ads (e.g. the business name). */
+  label?: string;
 }
 
 export interface LatLngBounds {
@@ -44,8 +46,8 @@ export interface MapAdapter {
   setSelected(id: string | null): void;
   /** Show the user-location dot at the given coordinates. */
   setUserLocation(lng: number, lat: number): void;
-  /** Fires once when the style has loaded and the first marker batch is set
-   *  (the earliest point where the map is genuinely painted). */
+  /** Fires once when the map style has loaded — the earliest point where
+   *  setMarkers/setClusters can add their layers. */
   onReady(cb: () => void): void;
   /** Plain markers, no clustering. */
   setMarkers(markers: MapMarker[]): void;

@@ -138,6 +138,8 @@ export const uz: Dict = {
   openList: "Natijalar ro'yxatini ko'rsatish",
   collapseList: "Ro'yxatni yig'ish",
   myLocation: "Mening joylashuvim",
+  nearMe: "Menga yaqin",
+  listToggle: "Ro'yxat",
   geoLocating: "Joylashuv aniqlanmoqda…",
   geoDeniedTitle: "Geolokatsiya mavjud emas",
   geoDeniedHint: "Brauzer sozlamalarida ruxsat bering — biznesni qidiruv orqali toping",
