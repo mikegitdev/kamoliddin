@@ -29,6 +29,10 @@ docs/       architecture ADRs, runbooks
 
 Prereqs: Docker, uv (or pip), Node LTS (22+).
 
+One-command alternative: `./dev.sh` starts infrastructure, backend, and frontend
+together (Ctrl+C stops the servers; if GeoDjango native libs are missing it runs
+the backend in Docker automatically, as described below).
+
 ```bash
 # 1. Infrastructure (PostGIS + Redis + Garage)
 docker compose up -d
@@ -39,7 +43,7 @@ cd backend
 cp .env.example .env
 uv sync                                  # or: pip install -r requirements.txt
 uv run python manage.py migrate
-uv run python manage.py seed --demo --reset  # rich demo dataset (20 businesses, banners, all campaign states)
+uv run python manage.py seed --demo --reset  # rich demo dataset (~100 businesses across Tashkent, banners, all campaign states)
 uv run python manage.py createsuperuser  # staff phone + password, for /admin
 uv run python manage.py runserver        # http://localhost:8000 (needs local GDAL; alternatively run in Docker — see below)
 
@@ -65,7 +69,7 @@ Dev SMS provider is `fake`: OTP codes are printed to the server log (never do th
 
 | Role | Phone | How to sign in |
 |---|---|---|
-| Advertiser (owns all 20 demo businesses) | +998 90 123 45 67 | OTP — code prints in server log |
+| Advertiser (owns all ~100 demo businesses) | +998 90 123 45 67 | OTP — code prints in server log |
 | Staff/admin | +998 90 111 00 00 | Django Admin password `admin12345`; or same OTP flow |
 
 **Staff moderation console**: log in as staff via the normal OTP flow and open

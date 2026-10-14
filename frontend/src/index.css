@@ -1408,7 +1408,10 @@ svg.ico {
     content: "";
   }
 }
-@media (max-width: 359px) {
+/* Logo-only brand under 374px: with the brand text shown, the header
+   utilities (CTA + language switcher) need ~369px in the widest locale (RU),
+   so 360–373px viewports would clip the switcher. */
+@media (max-width: 373px) {
   .brand .brand-text {
     display: none;
   }
@@ -2146,6 +2149,16 @@ svg.ico {
   }
   .table-wrap tfoot td[data-label=""] {
     display: none;
+  }
+  /* Stacked-row links keep a finger-friendly hit height (the truncated
+     order IDs otherwise render ~16px tall). Negative block margins keep
+     the row height unchanged. */
+  .table-wrap td a:not(.btn) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding-block: 4px;
+    margin-block: -4px;
   }
 }
 
