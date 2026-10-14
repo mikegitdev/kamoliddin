@@ -3,10 +3,11 @@ import { Link, useSearchParams } from "react-router-dom";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { useCategories, useLocationDetail, useLocationPins, usePublicSearch } from "@/shared/api/queries";
 import { MapLibreAdapter, type LatLngBounds, type MapAdapter } from "@/map-adapters";
-import { IconClose, IconDirections, IconList, IconPin, IconSearch } from "@/shared/icons";
+import { IconClose, IconDirections, IconFilter, IconList, IconPin, IconSearch } from "@/shared/icons";
 import { useMediaQuery } from "@/shared/hooks";
 import { ResultsPanel } from "@/features/map/ResultsPanel";
 import { RecentSearches, rememberSearch } from "@/features/map/RecentSearches";
+import { FilterSheet } from "@/features/map/FilterSheet";
 import { colocatedGroups, loadSnapshot, saveSnapshot, type SheetState } from "@/features/map/mapSession";
 import type { ApiLocationPin } from "@/entities/types";
 
@@ -79,9 +80,14 @@ export function MapHomePage() {
   const [bbox, setBbox] = useState(restored?.bbox ?? ""); // seeded from the saved session or the real viewport
   const [zoomedOut, setZoomedOut] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  const [category, setCategory] = useState<string>(restored?.category ?? "");
-  const [query, setQuery] = useState<string>(restored?.query ?? "");
-  const [debouncedQuery, setDebouncedQuery] = useState((restored?.query ?? "").trim());
+  // Filters live in the URL (?category=&q=) so a filtered view can be shared
+  // or bookmarked; a URL value wins over the saved session.
+  const [category, setCategory] = useState<string>(
+    searchParams.get("category") ?? restored?.category ?? "",
+  );
+  const [query, setQuery] = useState<string>(searchParams.get("q") ?? restored?.query ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(query.trim());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState>("collapsed");
   const [camera, setCamera] = useState<{
@@ -263,8 +269,30 @@ export function MapHomePage() {
       isMobile ? MOBILE_FLY_OFFSET : panelFlyOffset(),
     );
     selectPinRef.current(deepLinkPin, false);
-    setSearchParams({}, { replace: true });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("pin");
+        return next;
+      },
+      { replace: true },
+    );
   }, [deepLinkPin, mapReady, pinsById, deepLinkDetail, setSearchParams, isMobile]);
+
+  // Mirror the active filters into the URL (replace: no history spam).
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (category) next.set("category", category);
+        else next.delete("category");
+        if (debouncedQuery) next.set("q", debouncedQuery);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [category, debouncedQuery, setSearchParams]);
 
   // --- Session persistence (survives /locations/:id and back) ---
 
@@ -313,6 +341,9 @@ export function MapHomePage() {
 
   const totalAds = pins?.reduce((sum, p) => sum + p.active_ads_count, 0) ?? 0;
   const hasFilters = query.trim() !== "" || category !== "";
+  const activeCategory = categories?.find((c) => c.slug === category);
+  const categoryName = (c: { name_ru: string; name_uz: string }) =>
+    locale === "uz" ? c.name_uz : c.name_ru;
   const clearFilters = () => {
     setQuery("");
     setCategory("");
@@ -465,35 +496,55 @@ export function MapHomePage() {
           </div>
         </div>
 
-        {/* Category filter: scannable chips instead of a native select — the
-            highest-traffic control on a map-first product. Tapping the active
-            chip again clears it. */}
-        <div className="category-chips" role="group" aria-label={t.allCategories}>
+        {/* Category filter: [Filters] opens the full list; the active
+            category sits pinned right after it (never scrolled off-screen)
+            with a × to remove it; the rest stay as one-tap quick picks. */}
+        <div className="category-chips" role="group" aria-label={t.categoryLabel}>
           <button
             type="button"
-            className={`cat-chip${category === "" ? " active" : ""}`}
-            aria-pressed={category === ""}
-            onClick={() => setCategory("")}
+            className={`cat-chip filter-chip${category ? " has-active" : ""}`}
+            aria-haspopup="dialog"
+            onClick={() => setFiltersOpen(true)}
           >
-            {t.allCategories}
+            <IconFilter size={16} />
+            {t.filters}
+            {category && <span className="filter-chip-count">1</span>}
           </button>
-          {categories?.map((c, i) => {
-            const active = category === c.slug;
-            return (
+          {activeCategory && (
+            <button
+              type="button"
+              className="cat-chip active removable"
+              aria-label={`${t.removeFilter}: ${categoryName(activeCategory)}`}
+              onClick={() => setCategory("")}
+            >
+              {categoryName(activeCategory)}
+              <IconClose size={14} />
+            </button>
+          )}
+          {categories
+            ?.filter((c) => c.slug !== category)
+            .map((c, i) => (
               <button
                 key={c.slug}
                 type="button"
                 style={{ "--i": i + 1 } as React.CSSProperties}
-                className={`cat-chip${active ? " active" : ""}`}
-                aria-pressed={active}
-                onClick={() => setCategory(active ? "" : c.slug)}
+                className="cat-chip"
+                onClick={() => setCategory(c.slug)}
               >
-                {locale === "uz" ? c.name_uz : c.name_ru}
+                {categoryName(c)}
               </button>
-            );
-          })}
+            ))}
         </div>
       </div>
+
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        categories={categories ?? []}
+        category={category}
+        onCategoryChange={setCategory}
+        resultCount={(searchActive ? searchLoading : isLoading) ? undefined : results.length}
+      />
 
       <ResultsPanel
         state={panelState}

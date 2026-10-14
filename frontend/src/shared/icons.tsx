@@ -99,6 +99,11 @@ export const IconClock = (p: IconProps) => (
 export const IconList = (p: IconProps) => (
   <Line {...p}>{paths("M3 6h.01", "M3 12h.01", "M3 18h.01", "M8 6h13", "M8 12h13", "M8 18h13")}</Line>
 );
+export const IconFilter = (p: IconProps) => (
+  <Line {...p}>
+    {paths("M21 4h-7", "M10 4H3", "M21 12h-9", "M8 12H3", "M21 20h-5", "M12 20H3", "M14 2v4", "M8 10v4", "M16 18v4")}
+  </Line>
+);
 export const IconPlus =(p: IconProps) => <Line {...p}>{paths("M5 12h14", "M12 5v14")}</Line>;
 export const IconBulb = (p: IconProps) => (
   <Line {...p}>

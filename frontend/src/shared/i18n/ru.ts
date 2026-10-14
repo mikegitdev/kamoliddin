@@ -120,6 +120,10 @@ export const ru = {
   // map homepage
   forBusiness: "Для бизнеса",
   clearFilters: "Сбросить",
+  filters: "Фильтры",
+  categoryLabel: "Категория",
+  showResults: "Показать",
+  removeFilter: "Убрать фильтр",
   legendWithAds: "С объявлениями",
   legendNoAds: "Без объявлений",
   emptyTitle: "Ничего не найдено",

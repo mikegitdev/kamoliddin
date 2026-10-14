@@ -122,6 +122,10 @@ export const uz: Dict = {
   // map homepage
   forBusiness: "Biznes uchun",
   clearFilters: "Tozalash",
+  filters: "Filtrlar",
+  categoryLabel: "Toifa",
+  showResults: "Ko'rsatish",
+  removeFilter: "Filtrni olib tashlash",
   legendWithAds: "E'lonlari bor",
   legendNoAds: "E'lonsiz",
   emptyTitle: "Hech narsa topilmadi",
