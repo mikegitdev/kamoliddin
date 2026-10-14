@@ -606,6 +606,23 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def _format_headline(rng, template: str) -> str:
+    fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+    return template.format(**{k: rng.randint(*_PRICE_RANGES[k]) for k in fields})
+
+
+def _extra_offers(biz) -> list[tuple[str, str]]:
+    """Additional (headline, body) ads at the first branch for some active
+    advertisers, so map pins show varied counts (1–5; 5 is the default
+    max_active_ads_per_location). Deterministic per slug."""
+    rng = random.Random(f"{_RANDOM_SEED}:{biz['slug']}")
+    n = rng.choices([0, 1, 2, 3, 4], weights=[55, 20, 12, 8, 5])[0]
+    templates = _HEADLINES[biz["category"]]
+    candidates = [h for h in (_format_headline(rng, t) for t in templates) if h != biz["headline"]]
+    headlines = rng.sample(candidates, min(n, len(candidates)))
+    return [(h, rng.choice(_BODIES[biz["category"]])) for h in headlines]
+
+
 def _generate_extra_businesses(rng, used_names):
     out = []
     for category, count in _CATEGORY_SHARE.items():
@@ -637,10 +654,7 @@ def _generate_extra_businesses(rng, used_names):
                     )
                 )
 
-            headline_tpl = rng.choice(_HEADLINES[category])
-            fields = [f for _, f, _, _ in string.Formatter().parse(headline_tpl) if f]
-            values = {k: rng.randint(*_PRICE_RANGES[k]) for k in fields}
-            headline = headline_tpl.format(**values)
+            headline = _format_headline(rng, rng.choice(_HEADLINES[category]))
             body = rng.choice(_BODIES[category])
             phone = (
                 f"+998 {rng.choice([90, 91, 93, 94, 95, 97, 98, 99])} "
@@ -942,6 +956,24 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
             else:  # active
                 purchase(campaign, locations, days=7)
                 approve_campaign(campaign=campaign, reviewer=staff)
+
+        # Extra ads at the first branch (varied pin counts). Idempotent like
+        # the main campaign: keyed by headline, purchased once.
+        if SCENARIOS.get(biz["slug"], "active") == "active":
+            for headline, body in _extra_offers(biz):
+                # Banner rendered only on create (no orphan files on re-runs).
+                extra = Campaign.objects.filter(business=business, headline=headline).first()
+                if extra is None:
+                    extra = Campaign.objects.create(
+                        business=business,
+                        headline=headline,
+                        body=body,
+                        banner_key=_banner_image(biz["name"], headline, biz["phone"]),
+                    )
+                    stats["campaigns"] += 1
+                if not extra.orders.exists():
+                    purchase(extra, locations[:1], days=7)
+                    approve_campaign(campaign=extra, reviewer=staff)
 
     stats["active_placements"] = Placement.objects.filter(
         state=Placement.State.ACTIVE, campaign__business__owner=owner
