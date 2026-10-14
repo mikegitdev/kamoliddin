@@ -1,6 +1,10 @@
 import maplibregl from "maplibre-gl";
 import type { LatLngBounds, MapAdapter, MapMarker } from "../types";
 
+/** Mirrors --brand / --ink in index.css (map paint can't read CSS vars). */
+const BRAND = "#c6f432";
+const INK = "#000000";
+
 /**
  * MapLibre fallback adapter (spec §10 [E]): dev tile source is the public OSM
  * server — fine for local development ONLY. Production requires a licensed
@@ -47,6 +51,9 @@ export class MapLibreAdapter implements MapAdapter {
       zoom: 11.5,
     });
     this.map.addControl(new maplibregl.NavigationControl(), "top-right");
+    // Ready = style loaded. Callers wait for this before the first
+    // setClusters/setMarkers, so it must not depend on pins existing.
+    this.map.once("load", () => this.markReady());
   }
 
   getBounds(): LatLngBounds | null {
@@ -190,9 +197,10 @@ export class MapLibreAdapter implements MapAdapter {
       source: "pins",
       filter: ["has", "point_count"],
       paint: {
-        "circle-color": "#2563eb",
-        "circle-radius": ["step", ["get", "point_count"], 14, 10, 18, 25, 24],
-        "circle-opacity": 0.85,
+        "circle-color": BRAND,
+        "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 25, 26],
+        "circle-stroke-width": 3,
+        "circle-stroke-color": "#ffffff",
       },
     });
     map.addLayer({
@@ -204,7 +212,20 @@ export class MapLibreAdapter implements MapAdapter {
         "text-field": ["get", "point_count"],
         "text-size": 13,
       },
-      paint: { "text-color": "#ffffff" },
+      paint: { "text-color": INK },
+    });
+    // Selection halo (below the pin): kept in sync with setSelected().
+    map.addLayer({
+      id: "pin-selected",
+      type: "circle",
+      source: "pins",
+      filter: ["==", ["get", "id"], "__none__"],
+      paint: {
+        "circle-color": BRAND,
+        "circle-radius": 20,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": INK,
+      },
     });
     map.addLayer({
       id: "pins",
@@ -215,10 +236,10 @@ export class MapLibreAdapter implements MapAdapter {
         "circle-color": [
           "case",
           [">", ["get", "active_ads_count"], 0],
-          "#f97316",
-          "#94a3b8",
+          INK,
+          "#9e9e9e",
         ],
-        "circle-radius": 8,
+        "circle-radius": ["case", [">", ["get", "active_ads_count"], 0], 12, 7],
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff",
       },
@@ -232,28 +253,11 @@ export class MapLibreAdapter implements MapAdapter {
       filter: ["all", ["!", ["has", "point_count"]], [">", ["get", "active_ads_count"], 0]],
       layout: {
         "text-field": ["get", "active_ads_count"],
-        "text-size": 11,
-        "text-offset": [0, -1.4],
-        "text-anchor": "bottom",
+        "text-size": 12,
+        "text-allow-overlap": true,
       },
       paint: {
-        "text-color": "#7c2d12",
-        "text-halo-color": "#ffffff",
-        "text-halo-width": 1.5,
-      },
-    });
-    // Selection halo: kept in sync with setSelected() (results panel sync).
-    map.addLayer({
-      id: "pin-selected",
-      type: "circle",
-      source: "pins",
-      filter: ["==", ["get", "id"], "__none__"],
-      paint: {
-        "circle-color": "#2563eb",
-        "circle-opacity": 0.22,
-        "circle-radius": 18,
-        "circle-stroke-width": 2.5,
-        "circle-stroke-color": "#2563eb",
+        "text-color": BRAND,
       },
     });
     if (this.selectedId) this.setSelected(this.selectedId);

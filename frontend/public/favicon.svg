@@ -1,21 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1d4ed8" />
-      <stop offset="1" stop-color="#7c3aed" />
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="16" fill="url(#g)" />
-  <!-- Same pin glyph as IconPin (shared/icons.tsx), scaled to the badge -->
+  <rect width="64" height="64" rx="16" fill="#c6f432" />
+  <!-- Same pin glyph as IconPin (shared/icons.tsx), scaled to the tile -->
   <g
-    transform="translate(6.45 6.45) scale(2.13)"
+    transform="translate(11 9.5) scale(1.75)"
     fill="none"
-    stroke="#fff"
-    stroke-width="1.7"
+    stroke="#000"
+    stroke-width="2.3"
     stroke-linecap="round"
     stroke-linejoin="round"
   >
-    <path d="M12 21s-7-5.3-7-11a7 7 0 0 1 14 0c0 5.7-7 11-7 11z" />
-    <circle cx="12" cy="10" r="2.5" />
+    <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+    <circle cx="12" cy="10" r="3" />
   </g>
 </svg>

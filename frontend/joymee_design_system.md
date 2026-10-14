@@ -1,160 +1,101 @@
-# Joymee.uz — Reconstructed Design System
+# Local Ads design system (Joymee-derived)
 
-**Source:** https://joymee.uz/  
-**Status:** Provisional reconstruction, **not** a verified extraction of computed website styles.  
-**Purpose:** A starting design system for a map-oriented marketplace inspired by Joymee. Validate values against rendered desktop and mobile pages before claiming visual fidelity.
+**Reference:** https://joymee.uz/
+**How the reference values were obtained:** computed styles and `:root` custom
+properties read from the live site in Chromium (desktop 1440×900, mobile
+390×844), 2026-10-14. Joymee is built on Mantine; its theme variables are
+quoted below verbatim.
 
-## 1. Design principles
+We copy Joymee's **design language** (one loud brand color on black and white,
+borderless gray fills, 16px radius, pill chips, flat surfaces). We do **not**
+copy its brand: no yellow `#FEE02A`, no Gotham, no logo or imagery. Joymee is a
+known brand in the same city, so a yellow-and-black clone would read as theirs.
 
-- Clean, modern marketplace interface with prominent search and filtering.
-- Map-first browsing alongside listing discovery.
-- Clear primary actions, restrained borders and shadows, rounded controls.
-- Responsive layouts for desktop and mobile.
+Implementation: `src/index.css` (`:root` tokens), `src/shared/icons.tsx`,
+`src/map-adapters/maplibre/adapter.ts` (map paint mirrors the tokens).
 
-## 2. Color tokens (proposed)
+## 1. What Joymee actually uses (measured)
 
-| Token | Hex | Usage |
-|---|---|---|
-| `--color-primary` | `#2563EB` | Primary buttons, selected states |
-| `--color-primary-hover` | `#1D4ED8` | Hover states |
-| `--color-background` | `#FFFFFF` | Page background |
-| `--color-surface` | `#F8FAFC` | Secondary surfaces |
-| `--color-border` | `#E5E7EB` | Dividers, inputs, cards |
-| `--color-text` | `#111827` | Main text |
-| `--color-text-muted` | `#6B7280` | Secondary text |
-| `--color-success` | `#16A34A` | Success states |
-| `--color-muted` | `#F3F4F6` | Inactive backgrounds |
-
-> These colors are **not confirmed** as Joymee's actual palette.
-
-## 3. Typography (proposed)
-
-- Font stack: `Inter, Arial, sans-serif` (actual font unverified).
-- Extra-small: `12px`.
-- Small/body UI: `14px`.
-- Base content: `16px`.
-- Large: `20px`.
-- Heading: `24px` to `28px`, weight `600–700`.
-- Button labels: `14px`, weight `500–600`.
-- Body line-height: `1.5`.
-
-## 4. Spacing and sizing (proposed)
-
-| Element | Value |
+| Aspect | Joymee value |
 |---|---|
-| Spacing scale | `4, 8, 12, 16, 24, 32px` |
-| Header height | `64px` |
-| Inputs | `44px` height |
-| Buttons | `40–44px` height |
-| Card internal padding | `16px` |
-| Section gap | `24–32px` |
-| Small radius | `8px` |
-| Medium radius | `12px` |
-| Large radius | `16px` |
-| Pill radius | `999px` |
-| Border | `1px solid #E5E7EB` |
-| Card shadow | `0 2px 8px rgba(0,0,0,.06)` |
-| Fast transition | `150ms ease` |
+| Brand | `#FEE02A` yellow (Mantine `yellow-0…9` all set to it), label text `#000` |
+| Ink | `#000000` for nearly all text |
+| Secondary text | `#9E9E9E`, `#868E96` |
+| Surfaces | page `#FFFFFF`; inputs `#FAFAFA`; segmented track `#EEEEEE`; chips `rgba(135,143,151,.1)` |
+| Borders | almost none; a single `1px #EEEEEE` under the header |
+| Font | Gotham (`gothamFamily`) — commercial license |
+| Type sizes | 16px body (dominant), 20px card/section titles, 25px page titles, 13px and 11px meta |
+| Weights | 400 / 500 / 600 / 700 / 800 |
+| Radius | 16px default (`--mantine-radius-default`), pills `999px`; scale 8 / 10 / 16 / 40 / 100 |
+| Shadows | essentially none; image cards use a dark bottom gradient for text legibility |
+| Header | 83px, white, bottom border `#EEE` |
+| Inputs | 48px tall, borderless, `#FAFAFA` fill, 16px radius |
+| Primary button | yellow fill, black 600 label, 16px radius, ~40px tall |
+| Selected state | brand fill (segmented tabs, view toggle, chips) |
+| Breakpoints | 576 / 768 / 992 / 1200 / 1400 |
+| Mobile | bottom tab bar; horizontally scrolling filter chips |
 
-## 5. Component inventory
+## 2. Our adaptation
 
-### Header and navigation
-- Logo/brand area.
-- Search entry point.
-- Language selection.
-- Account/profile navigation.
-- Primary listing creation action.
-- Compact mobile navigation variant.
+| Token | Value | Notes |
+|---|---|---|
+| `--brand` | `#C6F432` lime | Fill only (CTA, selected chip/tab, logo tile, map clusters). Never text on white. |
+| `--on-brand` | `#000000` | 16:1 on `--brand` |
+| `--ink` / `--primary` | `#000000` | Text, links, focus rings, selected outlines |
+| `--muted` | `#5C5C5C` | Joymee's `#9E9E9E` fails WCAG AA (2.7:1); we keep ≥ 4.5:1 |
+| `--muted-2` | `#6B6B6B` | Meta text, placeholders |
+| `--bg` / `--surface` | `#FFFFFF` | |
+| `--surface-subtle` | `#FAFAFA` | |
+| `--fill` | `#F2F3F4` | Default button, inputs, chips, stat tiles, segmented track |
+| `--fill-hover` | `#E8EAEC` | |
+| `--border` / `--border-2` | `#EEEEEE` / `#E0E0E0` | Used sparingly |
+| `--radius` | 16px | Surfaces and buttons |
+| `--radius-sm` | 10px | Small controls, thumbnails |
+| `--radius-lg` | 24px | Bottom sheet top corners |
+| `--radius-pill` | 999px | Chips, segmented controls |
+| `--header-height` | 72px (desktop) / 124px (mobile map, two rows) | |
+| `--panel-width` | 380px | Docked results panel on the map |
+| Shadows | `--shadow-sm/md/lg` | Only for things floating over the map (chips, sheet, map controls) |
+| Font | Montserrat 400–800 (self-hosted, Cyrillic) | Closest free match for Gotham |
 
-### Search and filters
-- Search input with search action.
-- Transaction-type filter chips (e.g., sale/rent).
-- Additional property filters.
-- Map/list view action.
-- Selected, default, hover, disabled, and focus states.
+Semantic colors (`--success`, `--danger`, `--warn`, `--accent` and their
+`*-soft` tints) stay AA on their soft backgrounds.
 
-### Listing cards
-- Listing image, title, price, location, and relevant metadata.
-- Rounded card container and consistent internal spacing.
-- Loading, empty, and error states.
+## 3. Component rules
 
-### Map browsing
-- Map canvas with listing markers.
-- Filter/search controls accessible while browsing.
-- Responsive relationship between map and results.
+- **Buttons:** default = `--fill`, borderless, 16px radius, 600 weight.
+  `.primary` = brand fill + black label. `.dark` = black fill + white label.
+  `.subtle` = same as default. No shadows.
+- **Inputs:** `--fill` background; focus = black 1px border (search) or a brand
+  ring (forms).
+- **Chips:** pills; inactive white (over the map) or `--fill`; active = brand.
+- **Segmented controls** (language switcher, cabinet nav): `--fill` track,
+  pill items; active item = white thumb (language) or brand (nav).
+- **Cards:** prefer `--fill` tiles or a 1px `--border` outline. No decorative
+  color strips, no gradients, no glass blur.
+- **Icons:** one set — 24px Lucide-style line glyphs, `stroke: currentColor`.
+  No 3D renders, no gradient badges.
+- **Labels:** sentence case. No uppercase tracking.
+- **Map:** markers with ads = black circle with brand-colored count; no ads =
+  gray dot; clusters = brand circle with black count; selected = brand halo
+  with black outline.
 
-### Forms and account
-- Sign-in and account/profile controls.
-- Text fields, selects, validation messages, and primary/secondary actions.
+## 4. Layout
 
-> Component categories reflect the site's marketplace functionality; exact component geometry and styling still require browser verification.
+- **Map desktop:** a solid 72px header bar (brand · search · business CTA ·
+  language), a results panel docked to the left edge below it, and a category
+  chip row floating over the map.
+- **Map mobile:** two header rows (brand + utilities, then full-width search),
+  a scrolling chip row, and the results as a full-width bottom sheet.
+- **Cabinet:** header with a bottom rule, then the section nav as a segmented
+  track.
 
-## 6. Responsive design recommendations
+## 5. Not adopted (yet)
 
-- Desktop: allow map and results to share the main workspace.
-- Tablet: reduce sidebar width and collapse less-important filters.
-- Mobile: prioritize search, a compact filter row, map/list switching, and accessible primary actions.
-- Verify actual breakpoints, sticky behavior, and mobile navigation directly from the site.
-
-## 7. CSS tokens
-
-```css
-:root {
-  /* Provisional palette */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-background: #ffffff;
-  --color-surface: #f8fafc;
-  --color-text: #111827;
-  --color-text-muted: #6b7280;
-  --color-border: #e5e7eb;
-  --color-success: #16a34a;
-  --color-muted: #f3f4f6;
-
-  /* Typography */
-  --font-family: Inter, Arial, sans-serif;
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-base: 16px;
-  --font-size-lg: 20px;
-  --font-size-xl: 24px;
-
-  /* Shapes */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
-
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
-
-  /* Layout */
-  --header-height: 64px;
-  --input-height: 44px;
-  --button-height: 44px;
-
-  /* Effects */
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, .06);
-  --transition-fast: 150ms ease;
-}
-```
-
-## 8. Verification checklist for a pixel-accurate extraction
-
-- [ ] Capture desktop and mobile screenshots of main pages.
-- [ ] Inspect computed font family, weights, sizes, and line heights.
-- [ ] Sample exact brand and semantic colors.
-- [ ] Measure header, content widths, gaps, card dimensions, and radii.
-- [ ] Inspect buttons, inputs, dropdowns, chips, and shadows.
-- [ ] Record responsive breakpoints and sticky/overlay behavior.
-- [ ] Capture hover, focus, selected, loading, empty, and error states.
-- [ ] Replace all provisional tokens with verified values.
-
-## 9. Implementation note
-
-Use these tokens as an initial theme, not as evidence of Joymee's exact styling. Recreate the design language with original branding, assets, and content for your product.
+- **Bottom tab bar on mobile:** the public side has one destination (the
+  map), so there's nothing to tab between. Revisit if favorites or messages
+  get added.
+- **Image-led listing cards with gradient overlays:** ad banners are
+  advertiser-uploaded with no aspect or quality guarantee yet.
+- **Dark mode:** Joymee has one; the token split above makes it a contained
+  follow-up.
