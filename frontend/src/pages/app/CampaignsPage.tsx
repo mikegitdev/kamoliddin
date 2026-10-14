@@ -1,26 +1,32 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCampaigns } from "@/shared/api/queries";
-import { CampaignChip } from "@/shared/ui";
+import { CampaignChip, FallImg } from "@/shared/ui";
 import { formatDate } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { IconBulb, IconPencil } from "@/shared/icons";
 import type { CampaignStatus } from "@/entities/types";
 
-type Filter = "all" | "draft" | "review" | "approved" | "rejected";
+type Filter = "all" | "draft" | "review" | "approved" | "suspended" | "rejected";
 
 const MATCHER: Record<Filter, (status: CampaignStatus) => boolean> = {
   all: () => true,
   draft: (s) => s === "draft",
   review: (s) => s === "submitted" || s === "under_review",
-  approved: (s) => s === "approved" || s === "suspended",
+  approved: (s) => s === "approved",
+  suspended: (s) => s === "suspended",
   rejected: (s) => s === "rejected",
 };
+
+/** Initial page size + step for the client-side "show more" — the API has no
+ *  pagination yet, but lists must not become an endless wall. */
+const PAGE_SIZE = 10;
 
 export function CampaignsPage() {
   const { t, locale } = useI18n();
   const { data: campaigns, isLoading } = useCampaigns();
   const [filter, setFilter] = useState<Filter>("all");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const countFor = (key: Filter) =>
     (campaigns ?? []).filter((c) => MATCHER[key](c.review_status)).length;
@@ -30,10 +36,13 @@ export function CampaignsPage() {
     { key: "draft", label: t.stDraft },
     { key: "review", label: t.pendingReview },
     { key: "approved", label: t.stApproved },
+    { key: "suspended", label: t.stSuspended },
     { key: "rejected", label: t.stRejected },
   ];
 
-  const visible = campaigns?.filter((c) => MATCHER[filter](c.review_status)) ?? [];
+  const visible = (campaigns ?? [])
+    .filter((c) => MATCHER[filter](c.review_status))
+    .slice(0, visibleCount);
 
   return (
     <section>
@@ -50,7 +59,10 @@ export function CampaignsPage() {
             key={key}
             className="filter-chip"
             aria-pressed={filter === key}
-            onClick={() => setFilter(key)}
+            onClick={() => {
+              setFilter(key);
+              setVisibleCount(PAGE_SIZE);
+            }}
           >
             {label} <span className="filter-count">{countFor(key)}</span>
           </button>
@@ -59,35 +71,39 @@ export function CampaignsPage() {
 
       {isLoading && (
         <>
-          <div className="skeleton skeleton-card" style={{ marginTop: 14 }} />
-          <div className="skeleton skeleton-card" style={{ marginTop: 10 }} />
+          <div className="skeleton skeleton-card mt-14" />
+          <div className="skeleton skeleton-card mt-10" />
         </>
       )}
       {campaigns && campaigns.length === 0 && (
-        <p className="callout" style={{ marginTop: 14 }}>
+        <p className="callout mt-14">
           <IconBulb size={16} /> {t.newCampaignHint}
         </p>
       )}
       {campaigns && campaigns.length > 0 && visible.length === 0 && (
-        <p className="muted" style={{ marginTop: 14 }}>
-          {t.emptyTitle}
-        </p>
+        <p className="muted mt-14">{t.emptyTitle}</p>
       )}
       <ul className="campaign-list">
         {visible.map((c) => (
           <li key={c.id} className="campaign-card">
-            <img className="thumb" src={c.banner_url} alt="" loading="lazy" />
-            <div className="cc-main">
-              <Link
-                to={`/app/campaigns/${c.id}`}
-                className="cc-title"
-              >
-                {c.headline}
-              </Link>
-              <span className="muted-2">
-                {c.business_name} · {formatDate(c.created_at, locale)}
-              </span>
-            </div>
+            <Link to={`/app/campaigns/${c.id}`} className="cc-click" aria-label={c.headline}>
+              <FallImg className="thumb" src={c.banner_url || undefined} alt="" />
+              <div className="cc-main">
+                <span className="cc-title">{c.headline}</span>
+                <span className="muted-2">
+                  {c.business_name}
+                  {c.next_interval && (
+                    <>
+                      {" · "}
+                      {t.secSchedule}: {formatDate(c.next_interval.start_at, locale)} →{" "}
+                      {formatDate(c.next_interval.end_at, locale)}
+                    </>
+                  )}
+                  {" · "}
+                  {formatDate(c.created_at, locale)}
+                </span>
+              </div>
+            </Link>
             <div className="cc-side">
               {/* Publication state — deliberately separate from the
                   moderation chip above it: approved ≠ live (spec §7). */}
@@ -106,6 +122,13 @@ export function CampaignsPage() {
           </li>
         ))}
       </ul>
+      {campaigns && countFor(filter) > visible.length && (
+        <p className="cc-more-row">
+          <button className="btn subtle small" onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}>
+            {t.showMore} ({countFor(filter) - visible.length})
+          </button>
+        </p>
+      )}
     </section>
   );
 }

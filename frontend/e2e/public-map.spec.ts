@@ -4,19 +4,21 @@ test.describe("public map", () => {
   test("home loads pins and map stats", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-    await expect(page.getByRole("contentinfo")).toContainText(
-      /Найдено|точек|nuqta/,
+    // Counts live in the results panel (collapsed pill on mobile shows them
+    // too); the footer carries status + legend only.
+    await expect(page.locator(".panel-count")).toContainText(
+      /точек|объявлен|nuqta|e'lon/,
       { timeout: 20_000 },
     );
   });
 
   test("search filters the map data", async ({ page }) => {
     await page.goto("/");
-    const footer = page.getByRole("contentinfo");
-    await expect(footer).toContainText(/Найдено|точек|nuqta/, { timeout: 20_000 });
+    const counts = page.locator(".panel-count");
+    await expect(counts).toContainText(/точек|nuqta/, { timeout: 20_000 });
     await page.getByPlaceholder(/Поиск|Qidirish/).fill("пицц");
     await page.waitForTimeout(900); // 400ms debounce + request + render
-    await expect(footer).toContainText(/Найдено|точ|nuqta|ничего|hech/);
+    await expect(counts).toContainText(/Найдено|точ|nuqta/);
   });
 
   test("location detail shows active ads", async ({ request, page }) => {

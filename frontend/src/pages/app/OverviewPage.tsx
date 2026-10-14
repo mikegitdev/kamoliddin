@@ -7,8 +7,8 @@ import {
   useOrders,
   useRenewals,
 } from "@/shared/api/queries";
-import { formatDateTime, formatMinor } from "@/shared/format";
-import { useI18n } from "@/shared/i18n";
+import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
+import { useI18n, plural } from "@/shared/i18n";
 import {
   IconAlert,
   IconCalendar,
@@ -44,8 +44,7 @@ const TONE_RANK = { danger: 0, warn: 1, quiet: 2 } as const;
 
 /** Derive the actionable items from loaded owner data. A source that has not
  *  loaded (or failed) contributes nothing — no false alarms while pending.
- *  Every item carries the one action that resolves it. */
-function attentionItems(
+ *  Every item carries the one action that resolves it. */function attentionItems(
   campaigns: ApiCampaign[] | undefined,
   orders: ApiOrder[] | undefined,
   renewals: ApiRenewal[] | undefined,
@@ -122,13 +121,9 @@ function attentionItems(
   return items.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
 }
 
-const ATTENTION_LIMIT = 5;
-
 function AttentionSection({ items }: { items: AttentionItem[] }) {
   const { t } = useI18n();
   if (items.length === 0) return null;
-  const shown = items.slice(0, ATTENTION_LIMIT);
-  const rest = items.length - shown.length;
   return (
     <div className="card attention-card">
       <div className="row-between">
@@ -136,7 +131,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
         <span className="chip orange">{items.length}</span>
       </div>
       <ul className="attention-list">
-        {shown.map((item) => (
+        {items.map((item) => (
           <li key={item.key} className={`attention-item ${item.tone}`}>
             <div className="attention-text">
               <strong>{item.title}</strong>
@@ -148,11 +143,6 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
           </li>
         ))}
       </ul>
-      {rest > 0 && (
-        <Link to="/app/campaigns" className="muted attention-more">
-          {t.viewAll} ({rest})
-        </Link>
-      )}
     </div>
   );
 }
@@ -190,17 +180,17 @@ function SetupChecklist({
 
       {loading && (
         <>
-          <div className="skeleton skeleton-line w60" style={{ marginTop: 10 }} />
+          <div className="skeleton skeleton-line w60 mt-10" />
           <div className="skeleton skeleton-line" />
           <div className="skeleton skeleton-line w40" />
         </>
       )}
       {!loading && error && (
         <>
-          <p className="callout danger" role="alert" style={{ marginTop: 10 }}>
+          <p className="callout danger mt-10" role="alert">
             <IconAlert size={14} /> {t.loadError}
           </p>
-          <button className="btn" style={{ marginTop: 10 }} onClick={onRetry}>
+          <button className="btn mt-10" onClick={onRetry}>
             {t.retry}
           </button>
         </>
@@ -293,6 +283,8 @@ export function OverviewPage() {
 
   return (
     <section>
+      <h2>{t.overview}</h2>
+
       <SetupChecklist
         steps={steps}
         loading={stepsSetupLoading}
@@ -301,7 +293,7 @@ export function OverviewPage() {
       />
 
       {attention.length > 0 && (
-        <div style={{ margin: "14px 0" }}>
+        <div className="my-14">
           <AttentionSection items={attention} />
         </div>
       )}
@@ -311,6 +303,11 @@ export function OverviewPage() {
         renewalsQuery.isSuccess && (
           <p className="muted all-quiet"><IconCheck size={14} /> {t.allQuiet}</p>
         )}
+      {(campaignsQuery.isError || ordersQuery.isError || renewalsQuery.isError) && (
+        <p className="muted-2" role="status">
+          <IconAlert size={12} /> {t.partialLoadError}
+        </p>
+      )}
 
       {summaryQuery.isLoading && <div className="skeleton skeleton-card" />}
       {summaryQuery.isError && (
@@ -319,8 +316,7 @@ export function OverviewPage() {
             <IconAlert size={14} /> {t.loadError}
           </p>
           <button
-            className="btn"
-            style={{ marginTop: 12 }}
+            className="btn mt-12"
             onClick={() => summaryQuery.refetch()}
           >
             {t.retry}
@@ -343,14 +339,14 @@ export function OverviewPage() {
             </div>
             <div className="stat-card">
               <span className="icon"><IconMoney size={22} /></span>
-              <span className="num" style={{ fontSize: "1.15rem" }}>
+              <span className="num num-money">
                 {formatMinor(summary.spend.total, summary.spend.currency, lang)}
               </span>
               <span className="muted-2">{t.totalSpent}</span>
             </div>
             <div className="stat-card">
               <span className="icon"><IconCalendar size={22} /></span>
-              <span className="num" style={{ fontSize: "1.15rem" }}>
+              <span className="num num-money">
                 {formatMinor(summary.spend.month, summary.spend.currency, lang)}
               </span>
               <span className="muted-2">{t.thisMonth}</span>
@@ -358,7 +354,7 @@ export function OverviewPage() {
           </div>
 
           {summary.expiring_soon.length > 0 && (
-            <div className="card" style={{ marginTop: 16 }}>
+            <div className="card mt-16">
               <h2 className="h-icon"><IconClock size={20} /> {t.expiringSoon}</h2>
               <ul className="list">
                 {summary.expiring_soon.map((p) => (
@@ -369,8 +365,8 @@ export function OverviewPage() {
                       </Link>
                       <div className="muted-2"><IconPin size={12} /> {p.location}</div>
                     </div>
-                    <span className="chip orange">
-                      {formatDateTime(p.ends_at, lang)}
+                    <span className="due-soon" title={formatDateTime(p.ends_at, lang)}>
+                      {formatRelative(p.ends_at, locale)}
                     </span>
                   </li>
                 ))}
@@ -379,18 +375,20 @@ export function OverviewPage() {
           )}
 
           {summary.next_renewal && (
-            <div className="card" style={{ marginTop: 12 }}>
+            <div className="card mt-12">
               <h2 className="h-icon"><IconCard size={20} /> {t.nextCharge}</h2>
               <div className="row-between">
                 <div>
                   <strong>{summary.next_renewal.campaign_headline}</strong>
                   <div className="muted-2">
-                    <IconPin size={12} /> {summary.next_renewal.locations_count} ·{" "}
-                    {summary.next_renewal.charge_days} × 24{t.hoursShort}
+                    <IconPin size={12} />{" "}
+                    {summary.next_renewal.locations_count}{" "}
+                    {plural(locale, "locations", summary.next_renewal.locations_count)} ·{" "}
+                    {summary.next_renewal.charge_days} {t.daysShort}
                   </div>
                 </div>
-                <span className="chip blue">
-                  {formatDateTime(summary.next_renewal.next_run_at, lang)}
+                <span className="due-info" title={formatDateTime(summary.next_renewal.next_run_at, lang)}>
+                  {formatRelative(summary.next_renewal.next_run_at, locale)}
                 </span>
               </div>
             </div>

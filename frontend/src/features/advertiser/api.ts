@@ -23,6 +23,9 @@ export interface LocationInput {
   address: string;
   city?: string;
   phone?: string;
+  telegram?: string;
+  whatsapp?: string;
+  hours?: Record<string, [string, string] | undefined>;
   lon: number;
   lat: number;
 }

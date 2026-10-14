@@ -4,8 +4,11 @@ import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { api, ApiError } from "@/shared/api/client";
 import { IconArrowLeft, IconPin } from "@/shared/icons";
 import { requestOtp, verifyOtp } from "@/features/auth/otp";
+import { formatPhone } from "@/shared/format";
+import { OtpInput } from "@/shared/otp-input";
 
 const RESEND_SECONDS = 60;
+const CODE_LENGTH = 6;
 
 /** Tolerant UZ phone normalization: 901234567 / 998901234567 / +998 90 123 45 67. */
 function normalizePhone(raw: string): string {
@@ -67,6 +70,15 @@ export function LoginPage() {
     }
   };
 
+  // Auto-verify shortly after the full 6-digit code is entered — the small
+  // delay leaves the explicit button click a clear path (and feels deliberate).
+  useEffect(() => {
+    if (stage !== "code" || code.length !== 6 || busy) return;
+    const timer = setTimeout(() => void verify(), 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, stage]);
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -80,7 +92,7 @@ export function LoginPage() {
           <IconPin size={52} />
         </div>
         <h1>{t.loginIntro}</h1>
-        <p className="login-sub">{stage === "phone" ? t.tagline : `${t.codeSent} → ${phone}`}</p>
+        <p className="login-sub">{stage === "phone" ? t.tagline : `${t.codeSent} → ${formatPhone(phone)}`}</p>
         <p className="login-hint">{t.loginHint}</p>
 
         {stage === "phone" ? (
@@ -101,42 +113,46 @@ export function LoginPage() {
               placeholder="+998 90 123 45 67"
               inputMode="tel"
               autoFocus
+              aria-describedby={error ? "login-error" : undefined}
             />
+            <span className="field-hint">{t.phoneHint}</span>
             <button
-              className="btn primary"
+              className="btn primary mt-12 w-full"
               type="submit"
-              style={{ marginTop: 12, width: "100%" }}
               disabled={busy || phone.replace(/\D/g, "").length < 9}
             >
               {busy ? t.sending : t.sendCode}
             </button>
+            <p className="login-consent muted-2">{t.loginConsent}</p>
+            {error && (
+              <p className="error" id="login-error" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         ) : (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (code.length >= 4) verify();
+              if (code.length === CODE_LENGTH) verify();
             }}
           >
-            <label htmlFor="code">{t.smsCode}</label>
+            <label htmlFor="login-otp">{t.smsCode}</label>
             <div className="login-code-row">
-              <input
-                id="code"
-                name="code"
-                type="text"
-                autoComplete="one-time-code"
+              <OtpInput
+                id="login-otp"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                inputMode="numeric"
-                autoFocus
-                placeholder="••••••"
+                onChange={(next) => {
+                  setCode(next);
+                  setError(null);
+                }}
+                ariaDescribedBy={error ? "login-error" : undefined}
               />
             </div>
             <button
-              className="btn primary"
+              className="btn primary mt-12 w-full"
               type="submit"
-              style={{ marginTop: 12, width: "100%" }}
-              disabled={busy || code.length < 4}
+              disabled={busy || code.length < CODE_LENGTH}
             >
               {busy ? t.verifying : t.verify}
             </button>
@@ -154,23 +170,24 @@ export function LoginPage() {
                 </button>
               )}
             </div>
-            <button
-              type="button"
-              className="btn"
-              style={{ marginTop: 8, width: "100%" }}
-              onClick={() => setStage("phone")}
-              disabled={busy}
-            >
-              {t.changeNumber}
-            </button>
+            <div className="otp-countdown">
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setStage("phone")}
+                disabled={busy}
+              >
+                {t.changeNumber}
+              </button>
+            </div>
+            {error && (
+              <p className="error" id="login-error" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         )}
 
-        {error && (
-          <p className="error" style={{ textAlign: "center" }} role="alert">
-            {error}
-          </p>
-        )}
       </div>
     </div>
   );

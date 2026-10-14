@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_INPUT_PIXELS = 40_000_000
 ALLOWED_FORMATS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 ALLOWED_PURPOSES = {"banners", "logos"}
 ALLOWED_SERVE_PREFIXES = ("banners/", "logos/")
@@ -43,6 +44,8 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
         raise ValueError("Not a recognizable image") from exc
     if image.format not in ALLOWED_FORMATS:
         raise ValueError(f"Unsupported image format {image.format!r}")
+    if image.width * image.height > MAX_INPUT_PIXELS:
+        raise ValueError("Image dimensions exceed the processing limit")
     fmt = image.format
     image.load()
     # Honor EXIF orientation before the EXIF is discarded.

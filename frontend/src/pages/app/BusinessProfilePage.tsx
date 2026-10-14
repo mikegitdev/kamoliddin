@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinesses, useCategories } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { saveBusiness } from "@/features/advertiser/api";
 import { useI18n } from "@/shared/i18n";
-import { IconCheck } from "@/shared/icons";
+import { useDirtyRouteGuard } from "@/shared/route-guard";
+import { toast } from "@/shared/toast";
+import { IconAlert } from "@/shared/icons";
 
 export function BusinessProfilePage() {
   const { t, locale } = useI18n();
@@ -22,7 +24,31 @@ export function BusinessProfilePage() {
     whatsapp: "",
     site: "",
   });
-  const [error, setError] = useState<string | null>(null);
+
+  // Prefilled server values, for the unsaved-changes indicator.
+  const baseline = useMemo(
+    () =>
+      existing
+        ? `${existing.name}|${existing.category}|${existing.description ?? ""}|${existing.phone ?? ""}|${existing.telegram ?? ""}|${existing.whatsapp ?? ""}|${existing.site ?? ""}`
+        : null,
+    [existing],
+  );
+  const dirty =
+    baseline !== null &&
+    baseline !== `${form.name}|${form.category}|${form.description}|${form.phone}|${form.telegram}|${form.whatsapp}|${form.site}`;
+  // In-app navigation (nav tabs) drops edits just like a refresh — guard both.
+  useDirtyRouteGuard(dirty);
+
+  // Warn before leaving the page with unsaved edits (matches the editor).
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   useEffect(() => {
     if (existing) {
@@ -53,10 +79,10 @@ export function BusinessProfilePage() {
         existing?.id,
       ),
     onSuccess: () => {
-      setError(null);
+      toast.success(t.saved);
       queryClient.invalidateQueries({ queryKey: ["businesses"] });
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : t.error),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
   });
 
   const set =
@@ -66,13 +92,26 @@ export function BusinessProfilePage() {
 
   return (
     <section className="form">
-      <h2>{t.business}</h2>
+      <div className="row-between">
+        <h2>{t.business}</h2>
+        {dirty && (
+          <span className="chip orange" role="status">
+            <IconAlert size={14} /> {t.unsavedChangesNote}
+          </span>
+        )}
+      </div>
+      {businesses && businesses.length > 1 && (
+        <p className="callout">
+          {t.multiBusinessNote}: {businesses.length}
+        </p>
+      )}
 
-      <div className="form-section" style={{ borderTop: "none", marginTop: 8, paddingTop: 0 }}>
+      <div className="form-section flush">
         <h3 className="section-title">
-          <span className="section-num">1</span>
+          <span className="section-num" aria-hidden="true">1</span>
           {t.secProfile}
         </h3>
+        <span className="field-hint">{t.profileSectionHint}</span>
         <div className="field">
           <label htmlFor="biz-name">{t.businessName}</label>
           <input id="biz-name" value={form.name} onChange={set("name")} placeholder="Osh Markazi" />
@@ -80,6 +119,7 @@ export function BusinessProfilePage() {
         <div className="field">
           <label htmlFor="biz-category">{t.allCategories}</label>
           <select id="biz-category" value={form.category} onChange={set("category")}>
+            <option value="">{t.categoryPlaceholder}</option>
             {categories?.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {locale === "uz" ? c.name_uz : c.name_ru}
@@ -91,18 +131,19 @@ export function BusinessProfilePage() {
 
       <div className="form-section">
         <h3 className="section-title">
-          <span className="section-num">2</span>
+          <span className="section-num" aria-hidden="true">2</span>
           {t.secAbout}
         </h3>
+        <span className="field-hint">{t.aboutSectionHint}</span>
         <div className="field">
-          <label htmlFor="biz-desc">{t.adText}</label>
+          <label htmlFor="biz-desc">{t.businessDescriptionLabel}</label>
           <textarea id="biz-desc" value={form.description} onChange={set("description")} rows={3} />
         </div>
       </div>
 
       <div className="form-section">
         <h3 className="section-title">
-          <span className="section-num">3</span>
+          <span className="section-num" aria-hidden="true">3</span>
           {t.secContacts}
         </h3>
         <div className="field">
@@ -151,13 +192,12 @@ export function BusinessProfilePage() {
         >
           {mutation.isPending ? t.saving : t.save}
         </button>
-        {mutation.isSuccess && !error && <span className="ok"><IconCheck size={12} /> {t.saved}</span>}
+        {(!form.name || !form.category) && !mutation.isPending && (
+          <span className="field-hint" role="status">
+            {t.saveRequiresHint}
+          </span>
+        )}
       </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
     </section>
   );
 }

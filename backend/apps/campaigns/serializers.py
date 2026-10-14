@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.businesses.models import Business
@@ -25,13 +26,15 @@ class CampaignSerializer(serializers.ModelSerializer):
     # an approved campaign is NOT necessarily live. Populated by a queryset
     # annotation; unannotated instances (create/submit responses) report 0.
     active_placements_count = serializers.SerializerMethodField()
+    # Nearest upcoming/ongoing show window (annotation), for list cards.
+    next_interval = serializers.SerializerMethodField()
 
     class Meta:
         model = Campaign
         fields = (
             "id", "business", "business_name", "headline", "body", "banner_key",
             "banner_url", "review_status", "review_version", "active_placements_count",
-            "created_at", "updated_at",
+            "next_interval", "created_at", "updated_at",
         )
         read_only_fields = ("id", "review_status", "review_version",
                             "active_placements_count", "created_at", "updated_at",
@@ -48,6 +51,23 @@ class CampaignSerializer(serializers.ModelSerializer):
 
     def get_active_placements_count(self, obj) -> int:
         return getattr(obj, "active_placements_count", 0) or 0
+
+    @extend_schema_field(
+        {
+            "type": "object",
+            "properties": {
+                "start_at": {"type": "string", "format": "date-time"},
+                "end_at": {"type": "string", "format": "date-time"},
+            },
+            "nullable": True,
+        }
+    )
+    def get_next_interval(self, obj):
+        start = getattr(obj, "next_interval_start", None)
+        end = getattr(obj, "next_interval_end", None)
+        if start is None or end is None:
+            return None
+        return {"start_at": start, "end_at": end}
 
     def validate_headline(self, value: str) -> str:
         if not value.strip():

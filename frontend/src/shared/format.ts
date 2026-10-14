@@ -1,5 +1,14 @@
 import type { Locale } from "@/shared/i18n";
 
+/** E.164 (+998901234567) -> display form (+998 90 123 45 67).
+ *  Non-Uzbek numbers fall back to the raw value rather than a wrong mask. */
+export function formatPhone(e164: string | null | undefined): string {
+  if (!e164) return "—";
+  const m = e164.match(/^\+998(\d{2})(\d{3})(\d{2})(\d{2})$/);
+  if (!m) return e164;
+  return `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}`;
+}
+
 /** Minor units (tiyin) -> localized currency string. Integer math only
  *  (spec: money is never floating point). */
 const INTL_LOCALE: Record<Locale, string> = { ru: "ru-RU", uz: "uz-UZ" };
@@ -59,4 +68,116 @@ export function isoToLocalInput(iso: string | null | undefined): string {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
     `T${pad(d.getHours())}:${pad(d.getMinutes())}`
   );
+}
+
+/** Relative time like "через 2 дня" / "5 мин назад" (auto unit).
+ *  Falls back to the absolute date for anything beyond a week. */
+export function formatRelative(iso: string | null | undefined, locale: Locale = "ru"): string {
+  if (!iso) return "—";
+  const target = new Date(iso).getTime();
+  if (Number.isNaN(target)) return iso;
+  const diffMs = target - Date.now();
+  const abs = Math.abs(diffMs);
+  const rtf = new Intl.RelativeTimeFormat(INTL_LOCALE[locale], { numeric: "auto" });
+  const min = 60_000;
+  if (abs < 10 * min) return rtf.format(Math.round(diffMs / min), "minute");
+  if (abs < 3_600_000 * 12) return rtf.format(Math.round(diffMs / 3_600_000), "hour");
+  if (abs < 86_400_000 * 7) return rtf.format(Math.round(diffMs / 86_400_000), "day");
+  return formatDateTime(iso, locale);
+}
+
+/** Meters -> "850 м" / "2,4 км" (search result cards). */
+export function formatDistanceM(meters: number, locale: Locale = "ru"): string {
+  const nf = new Intl.NumberFormat(INTL_LOCALE[locale], { maximumFractionDigits: 1 });
+  if (meters < 1000) return `${nf.format(Math.max(1, Math.round(meters)))} м`;
+  return `${nf.format(meters / 1000)} км`;
+}
+
+/** Bytes -> "1,2 МБ" / "1.2 MB" — locale-aware unit labels, one implementation
+ *  shared by the banner editor and the campaign editor. */
+const BYTE_UNITS: Record<Locale, { kb: string; mb: string }> = {
+  ru: { kb: "КБ", mb: "МБ" },
+  uz: { kb: "KB", mb: "MB" },
+};
+export function formatBytes(bytes: number, locale: Locale = "ru"): string {
+  const nf = new Intl.NumberFormat(INTL_LOCALE[locale], { maximumFractionDigits: 1 });
+  if (bytes >= 1024 * 1024) return `${nf.format(bytes / (1024 * 1024))} ${BYTE_UNITS[locale].mb}`;
+  return `${nf.format(Math.max(1, Math.round(bytes / 1024)))} ${BYTE_UNITS[locale].kb}`;
+}
+
+/** Whole 24h units billed for an interval (mirrors billing.models.compute_charge_days):
+ *  a 25h request bills 2 days. Used only for the editor's live estimate —
+ *  the quote endpoint stays the source of truth. */
+export function estimateChargeDays(startIso: string, endIso: string): number {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+  return Math.max(1, Math.ceil((end - start) / 86_400_000));
+}
+
+/* ---------- Opening hours (Tashkent timezone) ---------- */
+
+export const WEEK_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+export type WeekDay = (typeof WEEK_DAYS)[number];
+
+const JS_DAY_TO_KEY: Record<number, WeekDay> = {
+  0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat",
+};
+
+/** Localized weekday abbreviation (Пн / Dush). */
+export function weekdayLabel(day: WeekDay, locale: Locale): string {
+  // Fixed dates whose weekday is known: 2024-01-01 is a Monday.
+  const dates: Record<WeekDay, string> = {
+    mon: "2024-01-01", tue: "2024-01-02", wed: "2024-01-03", thu: "2024-01-04",
+    fri: "2024-01-05", sat: "2024-01-06", sun: "2024-01-07",
+  };
+  return new Intl.DateTimeFormat(INTL_LOCALE[locale], { weekday: "short" })
+    .format(new Date(dates[day] + "T12:00:00Z"))
+    .replace(".", "");
+}
+
+/** Current weekday key + HH:MM in Asia/Tashkent. */
+export function tashkentNow(): { day: WeekDay; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tashkent",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const weekday = get("weekday").slice(0, 3).toLowerCase();
+  const key = (WEEK_DAYS as readonly string[]).includes(weekday)
+    ? (weekday as WeekDay)
+    : JS_DAY_TO_KEY[new Date().getDay()];
+  return { day: key, minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+
+/** "09:00" -> 540 minutes. */
+function hhmmToMinutes(value: string): number {
+  const [h, m] = value.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Open-now check for a hours map (mon..sun -> [open, close] | undefined).
+ *  Handles ranges crossing midnight (22:00–02:00). */
+export function isOpenNow(
+  hours: Record<string, [string, string] | undefined>,
+  now = tashkentNow(),
+): boolean {
+  const today = hours[now.day];
+  if (today) {
+    const open = hhmmToMinutes(today[0]);
+    const close = hhmmToMinutes(today[1]);
+    if (close > open) return now.minutes >= open && now.minutes < close;
+    return now.minutes >= open || now.minutes < close; // overnight
+  }
+  // Maybe we are inside yesterday's overnight range.
+  const idx = WEEK_DAYS.indexOf(now.day);
+  const yesterday = WEEK_DAYS[(idx + 6) % 7];
+  const prev = hours[yesterday];
+  if (prev && hhmmToMinutes(prev[1]) < hhmmToMinutes(prev[0])) {
+    return now.minutes < hhmmToMinutes(prev[1]);
+  }
+  return false;
 }

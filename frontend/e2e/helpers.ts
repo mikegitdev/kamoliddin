@@ -73,12 +73,18 @@ export async function loginViaOtp(page: Page, phone: string) {
     code = await requestOtpCode(page, phone);
   }
 
-  await page.locator(".login-code-row input").fill(code);
+  // Segmented OTP boxes: typing into the first box auto-advances focus.
+  await page.locator(".login-code-row input").first().pressSequentially(code, {
+    delay: 40,
+  });
+  // Auto-verify fires ~600ms after the sixth digit; the explicit button is
+  // the fallback path (and may already be busy by the time we reach it).
   await page
     .locator(".btn.primary")
     .filter({ hasText: /Подтвердить|Tasdiqlash/ })
     .first()
-    .click();
+    .click({ timeout: 2_000 })
+    .catch(() => {});
   await page.waitForURL(/\/app|\/staff/, { timeout: 15_000 });
 }
 

@@ -9,6 +9,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.billing.models import Order
 from apps.billing.services import create_checkout, create_quote
 from apps.moderation.services import submit_for_review
 from apps.payments.models import PaymentAttempt, PaymentEvent
@@ -53,6 +54,13 @@ def test_amount_mismatch_leaves_attempt_untouched(
     order.refresh_from_db()
     assert order.state != "paid"
 
+    # A corrected retry with the same provider event ID must not be discarded.
+    body = _event(attempt, event_id="evt-wrong-amount", amount=attempt.amount)
+    response = client.post(WEBHOOK_URL, data=body, content_type="application/json")
+    assert response.status_code == 200
+    order.refresh_from_db()
+    assert order.state == Order.State.PAID
+
 
 def test_currency_mismatch_rejected(client, owner, tariff, business, campaign, location):
     order, attempt = _checkout(owner, tariff, business, campaign, location)
@@ -63,7 +71,7 @@ def test_currency_mismatch_rejected(client, owner, tariff, business, campaign, l
     assert order.state != "paid"
 
 
-def test_unknown_payment_is_recorded_not_crashed(
+def test_unknown_payment_is_recorded_and_same_event_can_be_retried(
     client, owner, tariff, business, campaign, location
 ):
     body = json.dumps({
@@ -75,7 +83,25 @@ def test_unknown_payment_is_recorded_not_crashed(
     }).encode()
     response = client.post(WEBHOOK_URL, data=body, content_type="application/json")
     assert response.status_code == 200
-    assert PaymentEvent.objects.filter(event_id="evt-ghost").exists()
+    event = PaymentEvent.objects.get(event_id="evt-ghost")
+    assert event.payment_attempt is None
+
+    order, attempt = _checkout(owner, tariff, business, campaign, location)
+    attempt.provider_payment_id = "fake-does-not-exist"
+    attempt.save(update_fields=["provider_payment_id"])
+    body = json.dumps({
+        "event_id": "evt-ghost",
+        "provider_payment_id": attempt.provider_payment_id,
+        "amount_minor": attempt.amount,
+        "currency": order.currency,
+        "succeeded": True,
+    }).encode()
+    response = client.post(WEBHOOK_URL, data=body, content_type="application/json")
+    assert response.status_code == 200
+    order.refresh_from_db()
+    event.refresh_from_db()
+    assert order.state == Order.State.PAID
+    assert event.payment_attempt_id == attempt.id
 
 
 def test_unverified_provider_returns_503(client, owner, tariff, business, campaign, location):

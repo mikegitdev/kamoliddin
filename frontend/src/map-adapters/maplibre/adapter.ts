@@ -93,6 +93,21 @@ export class MapLibreAdapter implements MapAdapter {
     });
   }
 
+  fitBounds(bounds: LatLngBounds, padding?: Partial<Record<"top" | "bottom" | "left" | "right", number>>): void {
+    if (!this.map) return;
+    this.map.fitBounds(
+      [
+        [bounds.west, bounds.south],
+        [bounds.east, bounds.north],
+      ],
+      { padding: { top: 60, bottom: 60, left: 60, right: 60, ...padding }, maxZoom: 15.5, essential: true },
+    );
+  }
+
+  zoomIn(): void {
+    this.map?.zoomIn({ duration: 400 });
+  }
+
   setSelected(id: string | null): void {
     this.selectedId = id;
     const map = this.map;

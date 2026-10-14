@@ -19,10 +19,16 @@ export interface LocationFilters {
   q?: string;
 }
 
+/** Cap for the viewport pins request. The UI shows a truncation hint when
+ *  the API returns exactly this many — the visitor must know the map shows
+ *  a subset, not everything. */
+export const PINS_LIMIT = 200;
+
 export interface ApiSearchAd {
   id: string;
   headline: string;
   business_name: string;
+  banner_url: string;
 }
 
 export interface ApiSearchResult {
@@ -42,7 +48,7 @@ export function useLocationPins(filters: LocationFilters | null) {
   return useQuery({
     queryKey: ["location-pins", filters],
     queryFn: () => {
-      const params = new URLSearchParams({ bbox: filters!.bbox, limit: "200" });
+      const params = new URLSearchParams({ bbox: filters!.bbox, limit: String(PINS_LIMIT) });
       if (filters!.category) params.set("category", filters!.category);
       if (filters!.q) params.set("q", filters!.q);
       return api<ApiLocationPin[]>(`/api/v1/public/locations?${params.toString()}`);
@@ -162,9 +168,22 @@ export interface ApiRefund {
   created_at: string;
 }
 
+export interface ApiGrantRow {
+  id: string;
+  campaign_headline: string;
+  business_name: string;
+  location_name: string;
+  start_at: string;
+  end_at: string;
+  reason: string;
+  admin_phone: string | null;
+  created_at: string;
+}
+
 export interface ApiGrantOptions {
   campaigns: { id: string; headline: string; business_name: string }[];
   locations: { id: string; name: string; business_name: string }[];
+  grants: ApiGrantRow[];
 }
 
 export function useReviewQueue(enabled: boolean) {
@@ -343,6 +362,25 @@ export function useOrder(id: string | undefined) {
     queryKey: ["order", id],
     queryFn: () => api<ApiOrderDetail>(`/api/v1/orders/${id}`),
     enabled: !!id,
+    // Payment status resolves asynchronously (provider webhook): poll while
+    // the order sits in payment_processing so checkout resolves on its own.
+    refetchInterval: (query) =>
+      query.state.data?.state === "payment_processing" ? 3000 : false,
+  });
+}
+
+/** Current ad tariff (minor units per location per 24h) for the editor's
+ *  live estimate. The quote endpoint remains the charged-amount source of
+ *  truth — this is display-only. */
+export interface PublicPricing {
+  tariff: { currency: string; amount_per_24h: number; valid_from: string } | null;
+}
+
+export function usePublicPricing() {
+  return useQuery({
+    queryKey: ["public-pricing"],
+    queryFn: () => api<PublicPricing>("/api/v1/public/pricing"),
+    staleTime: 60_000,
   });
 }
 

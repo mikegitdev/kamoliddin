@@ -30,12 +30,15 @@ logger = logging.getLogger(__name__)
 def _apply_verified_event(provider: str, result: WebhookResult) -> Response:
     """Idempotently record a verified event and settle its payment attempt."""
     with transaction.atomic():
-        _, created = PaymentEvent.objects.get_or_create(
+        event, created = PaymentEvent.objects.get_or_create(
             provider=provider,
             event_id=result.event_id,
             defaults={"validated_payload_digest": result.raw_digest},
         )
-        if not created:
+        event = PaymentEvent.objects.select_for_update().get(pk=event.pk)
+        # Unknown/mismatched callbacks stay unlinked so the same provider event
+        # can be retried after the attempt is visible or the payload is corrected.
+        if not created and event.payment_attempt_id is not None:
             return Response({"detail": "duplicate event ignored"})
 
         attempt = (
@@ -55,6 +58,10 @@ def _apply_verified_event(provider: str, result: WebhookResult) -> Response:
                 attempt.amount, attempt.order.currency,
             )
             return Response({"detail": "recorded"})
+
+        event.payment_attempt = attempt
+        event.validated_payload_digest = result.raw_digest
+        event.save(update_fields=["payment_attempt", "validated_payload_digest"])
 
         attempt.status = (
             PaymentAttempt.Status.SUCCEEDED

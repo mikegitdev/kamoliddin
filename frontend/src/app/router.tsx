@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 import { MapHomePage } from "@/pages/MapHomePage";
 import { LocationDetailPage } from "@/pages/LocationDetailPage";
 import { PublicAdPage } from "@/pages/PublicAdPage";
@@ -19,29 +19,31 @@ import {
   AccountPage,
 } from "@/pages/app";
 
-export function AppRouter() {
-  return (
-    <Routes>
-      <Route path="/" element={<MapHomePage />} />
-      <Route path="/locations/:id" element={<LocationDetailPage />} />
-      <Route path="/ads/:id" element={<PublicAdPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/staff" element={<StaffPage />} />
-      <Route path="/app" element={<AdvertiserLayout />}>
-        <Route index element={<OverviewPage />} />
-        <Route path="business" element={<BusinessProfilePage />} />
-        <Route path="locations" element={<BranchesPage />} />
-        <Route path="campaigns" element={<CampaignsPage />} />
-        <Route path="campaigns/new" element={<CampaignEditorPage />} />
-        <Route path="campaigns/:id" element={<CampaignDetailPage />} />
-        <Route path="campaigns/:id/edit" element={<CampaignEditorPage />} />
-        <Route path="checkout/:id" element={<CheckoutPage />} />
-        <Route path="billing" element={<BillingPage />} />
-        <Route path="orders/:id" element={<OrderDetailPage />} />
-        <Route path="account" element={<AccountPage />} />
-      </Route>
-      <Route path="/admin" element={<Navigate to="/admin/" replace />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
-}
+/** Data router (createBrowserRouter): enables useBlocker for the dirty-form
+ *  route-leave guards. Route tree is identical to the previous <Routes>. */
+export const router = createBrowserRouter([
+  { path: "/", element: <MapHomePage /> },
+  { path: "/locations/:id", element: <LocationDetailPage /> },
+  { path: "/ads/:id", element: <PublicAdPage /> },
+  { path: "/login", element: <LoginPage /> },
+  { path: "/staff", element: <StaffPage /> },
+  {
+    path: "/app",
+    element: <AdvertiserLayout />,
+    children: [
+      { index: true, element: <OverviewPage /> },
+      { path: "business", element: <BusinessProfilePage /> },
+      { path: "locations", element: <BranchesPage /> },
+      { path: "campaigns", element: <CampaignsPage /> },
+      { path: "campaigns/new", element: <CampaignEditorPage /> },
+      { path: "campaigns/:id", element: <CampaignDetailPage /> },
+      { path: "campaigns/:id/edit", element: <CampaignEditorPage /> },
+      { path: "checkout/:id", element: <CheckoutPage /> },
+      { path: "billing", element: <BillingPage /> },
+      { path: "orders/:id", element: <OrderDetailPage /> },
+      { path: "account", element: <AccountPage /> },
+    ],
+  },
+  { path: "/admin", element: <Navigate to="/admin/" replace /> },
+  { path: "*", element: <NotFoundPage /> },
+]);

@@ -44,6 +44,22 @@ Still deferred (unchanged from §5/§9): keyboard-accessible results list, coinc
 
 **Main-page order:** `/` → selected location sheet → `/locations/:id` → `/ads/:id` → `/login` → `/app` and `/app/campaigns`. Editor and checkout get shared visual improvements immediately, then a separate, careful workflow pass.
 
+### 1b. Second design pass (senior-designer audit, verified in-app)
+
+Full-page audit at 1512/390/320px (RU + spot UZ) via live DOM/geometry/contrast measurement plus the Playwright suite. All changes verified: typecheck, lint, build, and 10/10 e2e green.
+
+- **Touch targets raised toward the 44px product target:** MapLibre zoom/compass 29→40px; language switcher 36→40px; sheet close 40→44px; panel-collapse 32→36px; cabinet nav links and small buttons +4px; public back links now a 44px inline-flex row (they were 17px text).
+- **Contrast:** muted text on tinted danger surfaces (`callout.danger`, `rejection-card`) darkened to #7a271a (8.6:1 on `--danger-soft`; was 4.36:1).
+- **Mobile money tables:** billing orders and checkout charges tables now render as labeled stacked cards below 640px (`data-label` + CSS) — the **Итого** column no longer hides behind horizontal scroll on phones.
+- **Filter chips wrap on phones** instead of a hidden horizontal scroll: the “Отклонено” filter must stay discoverable.
+- **Editor truthfulness:** fixed pre-existing regression where “Сохранить черновик” required a banner (dead-end disabled button; backend accepts banner-less drafts — design system §7.7 says only submit/quote need it). Caught by the e2e suite, now green.
+- **Editor hierarchy:** removed the inner 1–5 section numbering that fought the 1–3 stepper (stage 2 contained sections “2,3,4”; preview was “5”); stepper chips now use `aria-current="step"` only (dropped conflicting `aria-pressed`); removed the last functional emoji (ℹ️).
+- **Accessible names:** `.section-num` badges on the business form are `aria-hidden` — headings no longer read “1Профиль”.
+- **Copy/format:** phones render as `+998 90 123 45 67` (new `formatPhone`) in cabinet header, account page, and the login OTP step; results panel count now says “29 точек · 19 объявлений” / “Найдено: N” instead of bare “29 · 19”; zero-ad result chips are neutral gray (orange now means active ads only, matching map pin semantics); next-renewal meta reads “2 точки · 8 дн × 24 ч”.
+- **320px layout:** editor header and header rows (`row-between`, `row`) wrap; login card width `min(410px, 94vw)` → `100%` (the vw form overflowed the 20px page gutters).
+
+Audit tooling notes for future passes: measure contrast with **alpha compositing** over the effective background (translucent chips over white otherwise report false 2:1 failures), don't flag `alt=""` images (decorative is correct), and remember `getComputedStyle().backgroundColor` cannot see gradient avatars (measured “white on white” was a blue gradient).
+
 ## 2. Evidence and limits of this audit
 
 ### Reviewed

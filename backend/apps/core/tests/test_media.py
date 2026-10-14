@@ -2,6 +2,7 @@
 stripping (GPS/EXIF never reaches storage), dimension policy, serve guards.
 """
 import io
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -52,6 +53,20 @@ def test_reencode_caps_long_edge():
 def test_reencode_rejects_non_image():
     with pytest.raises(ValueError):
         _reencode(b"definitely not an image", purpose="banners")
+
+
+def test_reencode_rejects_oversized_dimensions_before_decode():
+    class OversizedImage:
+        format = "JPEG"
+        width = 10_000
+        height = 10_000
+
+        def load(self):
+            raise AssertionError("oversized image must be rejected before decoding")
+
+    with patch("apps.core.media.Image.open", return_value=OversizedImage()):
+        with pytest.raises(ValueError, match="processing limit"):
+            _reencode(b"header", purpose="banners")
 
 
 def test_upload_api_strips_metadata_and_returns_key(owner):

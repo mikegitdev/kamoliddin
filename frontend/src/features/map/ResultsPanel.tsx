@@ -5,11 +5,13 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { plural, useI18n } from "@/shared/i18n";
+import { formatDistanceM } from "@/shared/format";
 import { useLocationDetail, type ApiSearchAd } from "@/shared/api/queries";
 import type { ApiLocationPin } from "@/entities/types";
 import type { SheetState } from "./mapSession";
 import { IconBack, IconChevronDown, IconChevronUp, IconClose } from "@/shared/icons";
-import { ContactActions, directionsUrl } from "@/shared/ui";
+import { ContactActions, directionsUrl, FallImg } from "@/shared/ui";
+import { PINS_LIMIT } from "@/shared/api/queries";
 
 /* ---------- Result card: a real <button>, keyboard-reachable ---------- */
 
@@ -34,8 +36,18 @@ function ResultCard({
       >
         <span className="rc-top">
           <strong>{pin.business_name}</strong>
-          <span className="rc-ads" aria-label={plural(locale, "ads", pin.active_ads_count)}>
-            {pin.active_ads_count}
+          <span className="rc-meta">
+            {pin.distance_m != null && (
+              <span className="rc-distance" aria-label="~">
+                {formatDistanceM(pin.distance_m, locale)}
+              </span>
+            )}
+            <span
+              className={pin.active_ads_count > 0 ? "rc-ads" : "rc-ads zero"}
+              aria-label={plural(locale, "ads", pin.active_ads_count)}
+            >
+              {pin.active_ads_count}
+            </span>
           </span>
         </span>
         <span className="muted-2">{pin.name}</span>
@@ -128,7 +140,7 @@ function LocationDetailView({
                     className="sheet-ad"
                     state={{ fromLocationId: loc.id }}
                   >
-                    <img src={ad.banner_url} alt="" loading="lazy" />
+                    <FallImg src={ad.banner_url} alt="" className="" />
                     <span className="sheet-ad-text">
                       <strong>{ad.headline}</strong>
                       <span className="muted-2">{ad.business_name}</span>
@@ -182,6 +194,9 @@ export interface ResultsPanelProps {
   onClearSelection: () => void;
   hasFilters: boolean;
   onClearFilters: () => void;
+  /** Frame the map on the (relevance-first, possibly off-viewport) search
+   *  results so list and map tell the same story. */
+  onFitResults?: () => void;
   /** Viewport counts for the collapsed pill / header. */
   locationsCount: number;
   adsCount: number;
@@ -203,6 +218,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
     onClearSelection,
     hasFilters,
     onClearFilters,
+    onFitResults,
     locationsCount,
     adsCount,
   } = props;
@@ -290,9 +306,18 @@ export function ResultsPanel(props: ResultsPanelProps) {
             <strong className="panel-title">{t.resultsTitle}</strong>
             <span className="panel-count" aria-live="polite">
               {searchMode
-                ? `${results.length}`
-                : `${locationsCount} · ${adsCount}`}
+                ? `${t.found}: ${results.length}`
+                : `${locationsCount} ${plural(locale, "locations", locationsCount)} · ${adsCount} ${plural(locale, "ads", adsCount)}`}
             </span>
+            {searchMode && onFitResults && results.length > 0 && (
+              <button
+                type="button"
+                className="btn subtle small panel-fit"
+                onClick={onFitResults}
+              >
+                {t.showResultsOnMap}
+              </button>
+            )}
             <button
               type="button"
               className="sheet-close small panel-collapse"
@@ -339,6 +364,11 @@ export function ResultsPanel(props: ResultsPanelProps) {
                     />
                   ))}
                 </ul>
+                {/* Viewport mode caps pins at PINS_LIMIT — a full page means
+                    "subset", and the visitor deserves to know that. */}
+                {!searchMode && locationsCount >= PINS_LIMIT && results.length >= PINS_LIMIT && (
+                  <p className="muted-2 pins-truncated" role="status">{t.pinsTruncated}</p>
+                )}
                 {campaigns.length > 0 && (
                   <div className="panel-campaigns">
                     <strong className="panel-subtitle">{t.matchingAds}</strong>
@@ -346,8 +376,11 @@ export function ResultsPanel(props: ResultsPanelProps) {
                       {campaigns.map((ad) => (
                         <li key={ad.id}>
                           <Link to={`/ads/${ad.id}`} className="result-campaign">
-                            <strong>{ad.headline}</strong>
-                            <span className="muted-2">{ad.business_name}</span>
+                            <FallImg className="rc-banner" src={ad.banner_url || undefined} alt="" />
+                            <span className="rc-text">
+                              <strong>{ad.headline}</strong>
+                              <span className="muted-2">{ad.business_name}</span>
+                            </span>
                           </Link>
                         </li>
                       ))}

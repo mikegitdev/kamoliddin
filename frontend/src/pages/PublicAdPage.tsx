@@ -1,12 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { api, ApiError } from "@/shared/api/client";
-import { IconLock } from "@/shared/icons";
+import { IconFlag, IconLock, IconPin } from "@/shared/icons";
+import { reportDialog } from "@/shared/dialog";
 import type { ApiCampaignDetail } from "@/entities/types";
 import { plural, useI18n } from "@/shared/i18n";
+import { formatDate } from "@/shared/format";
 import {
   BackLink,
   ContactActions,
+  FallImg,
   HoursList,
   ShareButton,
   StickyContactActions,
@@ -40,8 +43,8 @@ export function PublicAdPage() {
         <nav>
           <BackLink fallbackTo="/" />
         </nav>
-        <div className="skeleton" style={{ height: 230, borderRadius: 18 }} />
-        <div style={{ marginTop: 18, maxWidth: 420 }}>
+        <div className="skeleton skeleton-hero tall" />
+        <div className="mt-18 max-w-420">
           <div className="skeleton skeleton-line w60" />
           <div className="skeleton skeleton-line" />
         </div>
@@ -61,7 +64,7 @@ export function PublicAdPage() {
             </button>
           )}
         </div>
-        <p style={{ marginTop: 14 }}>
+        <p className="mt-14">
           <Link className="btn" to="/">
             {t.toHomepage}
           </Link>
@@ -80,15 +83,30 @@ export function PublicAdPage() {
     <div className={`page${featured ? " with-sticky" : ""}`}>
       <nav className="row-between">
         <BackLink fallbackTo="/" />
-        <ShareButton title={data.headline} />
+        <div className="row">
+          <ShareButton title={data.headline} />
+          <button
+            type="button"
+            className="btn subtle small"
+            aria-label={t.reportTitle}
+            title={t.reportTitle}
+            onClick={() => void reportDialog({ t, entity: "campaign", entityId: data.id })}
+          >
+            <IconFlag size={14} /> <span className="hide-mobile">{t.report}</span>
+          </button>
+        </div>
       </nav>
 
       <div className="ad-banner">
-        <img src={data.banner_url} alt={data.headline} />
+        <FallImg src={data.banner_url} alt={data.headline} />
       </div>
+      {/* Ad disclosure: visitors must always see this is paid placement. */}
+      <p className="ad-eyebrow">{t.adLabel}</p>
       <h1>{data.headline}</h1>
-      <p className="muted" style={{ marginBottom: 12 }}>
+      <p className="muted ad-validity">
         {data.business_name}
+        {data.ends_at &&
+          ` · ${t.validUntil} ${formatDate(data.ends_at, locale)}`}
       </p>
       <p className="ad-body">{data.body}</p>
 
@@ -108,10 +126,14 @@ export function PublicAdPage() {
               <div className="info-card">
                 <div className="label">{t.address}</div>
                 <div className="value">{featured.address}</div>
+                <Link to={`/?pin=${featured.id}`} className="btn small map-link">
+                  <IconPin size={14} /> {t.showOnMap}
+                </Link>
               </div>
               <HoursList hours={featured.hours} />
             </div>
             <ContactActions
+              hiddenOnMobile
               directionsUrl={featuredDirections}
               phone={featured.phone}
               telegram={featured.telegram}
@@ -127,7 +149,9 @@ export function PublicAdPage() {
 
           {others.length > 0 && (
             <div className="branch-others">
-              <strong className="muted">{t.otherBranches}</strong>
+              <strong className="muted">
+                {t.otherBranches} ({others.length})
+              </strong>
               <ul>
                 {others.map((loc) => (
                   <li key={loc.id}>

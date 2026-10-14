@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { LanguageSwitcher, plural, useI18n } from "@/shared/i18n";
-import { useCategories, useLocationPins, usePublicSearch } from "@/shared/api/queries";
+import { Link, useSearchParams } from "react-router-dom";
+import { LanguageSwitcher, useI18n } from "@/shared/i18n";
+import { useCategories, useLocationDetail, useLocationPins, usePublicSearch } from "@/shared/api/queries";
 import { MapLibreAdapter, type LatLngBounds, type MapAdapter } from "@/map-adapters";
 import { IconClose, IconLocate, IconPin, IconSearch } from "@/shared/icons";
 import { useMediaQuery } from "@/shared/hooks";
 import { ResultsPanel } from "@/features/map/ResultsPanel";
+import { RecentSearches, rememberSearch } from "@/features/map/RecentSearches";
 import { colocatedGroups, loadSnapshot, saveSnapshot, type SheetState } from "@/features/map/mapSession";
 import type { ApiLocationPin } from "@/entities/types";
 
@@ -51,10 +52,23 @@ function comfortablyVisible(b: LatLngBounds, lon: number, lat: number): boolean 
 
 type GeoState = "idle" | "locating" | "denied";
 
+/** Horizontal offset that keeps the selected pin clear of the results
+ *  panel — measured, not hardcoded, so resizes can't hide the pin. The one
+ *  place that reads the panel element from the DOM (fitResults shares it). */
+const PANEL_SELECTOR = ".results-panel";
+function panelWidth(): number {
+  const panel = document.querySelector(PANEL_SELECTOR) as HTMLElement | null;
+  return panel?.offsetWidth ?? 380;
+}
+function panelFlyOffset(): [number, number] {
+  return [Math.round(panelWidth() * 0.55), 0];
+}
+
 export function MapHomePage() {
   const restored = useRef(loadSnapshot()).current;
   const isMobile = useMediaQuery("(max-width: 767px)");
   const { t, locale } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   const containerRef = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<MapAdapter | null>(null);
 
@@ -76,6 +90,7 @@ export function MapHomePage() {
   );
   const [userOrigin, setUserOrigin] = useState<{ lat: number; lon: number } | null>(null);
   const [geoState, setGeoState] = useState<GeoState>("idle");
+  const [searchFocused, setSearchFocused] = useState(false);
   // Marker clicks arrive from the adapter created in the init effect below;
   // a ref keeps the callback current without re-initializing the map.
   const selectPinRef = useRef<(id: string, fly?: boolean) => void>(() => {});
@@ -185,13 +200,15 @@ export function MapHomePage() {
     setSelectedPin(id);
     adapterRef.current?.setSelected(id);
     setSheet("detail");
+    // A result chosen from a live search is a successful query — remember it.
+    if (searchActive) rememberSearch(debouncedQuery);
     const pin = pinsById.get(id);
     const adapter = adapterRef.current;
     if (!pin || !fly || !adapter) return;
     const bounds = adapter.getBounds();
     if (!bounds || !comfortablyVisible(bounds, pin.lon, pin.lat)) {
       // Offset the target so the pin is not hidden behind the panel / sheet.
-      const offset: [number, number] = isMobile ? [0, -110] : [190, 0];
+      const offset: [number, number] = isMobile ? [0, -110] : panelFlyOffset();
       adapter.flyTo([pin.lon, pin.lat], DETAIL_ZOOM, offset);
     }
   };
@@ -221,6 +238,29 @@ export function MapHomePage() {
       clearSelection();
     }
   }, [selectedPin, searchActive, pins, clearSelection]);
+
+  // Deep link /?pin=<id> ("show on map" from detail pages): select the pin
+  // once its data is available, then clean the URL so refresh behaves
+  // normally (session snapshot takes over). If the pin sits outside the
+  // fetched results, its detail is fetched and the map flies there.
+  const deepLinkPin = searchParams.get("pin");
+  const { data: deepLinkDetail } = useLocationDetail(
+    deepLinkPin && !pinsById.has(deepLinkPin) ? deepLinkPin : undefined,
+  );
+  useEffect(() => {
+    if (!deepLinkPin || !mapReady) return;
+    const pin = pinsById.get(deepLinkPin) ?? deepLinkDetail;
+    if (!pin || !("lon" in pin)) return;
+    // selectPin only flies to pins it knows; deep-linked ones may be outside
+    // the fetched viewport, so fly explicitly first.
+    adapterRef.current?.flyTo(
+      [pin.lon, pin.lat],
+      DETAIL_ZOOM,
+      isMobile ? [0, -110] : panelFlyOffset(),
+    );
+    selectPinRef.current(deepLinkPin, false);
+    setSearchParams({}, { replace: true });
+  }, [deepLinkPin, mapReady, pinsById, deepLinkDetail, setSearchParams, isMobile]);
 
   // --- Session persistence (survives /locations/:id and back) ---
 
@@ -259,7 +299,7 @@ export function MapHomePage() {
             const { latitude: lat, longitude: lon } = pos.coords;
             setUserOrigin({ lat, lon });
             adapterRef.current?.setUserLocation(lon, lat);
-            adapterRef.current?.flyTo([lon, lat], 15.5, isMobile ? [0, -110] : [190, 0]);
+            adapterRef.current?.flyTo([lon, lat], 15.5, isMobile ? [0, -110] : panelFlyOffset());
           },
           () => setGeoState("denied"),
           { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
@@ -274,6 +314,43 @@ export function MapHomePage() {
     setCategory("");
   };
 
+  /** Frame the map on the current (relevance-ordered) result set, so the
+   *  list and the map tell the same story in search mode. */
+  const fitResults = () => {
+    if (results.length === 0) return;
+    const b = results.reduce<LatLngBounds>(
+      (acc, p) => ({
+        west: Math.min(acc.west, p.lon),
+        east: Math.max(acc.east, p.lon),
+        south: Math.min(acc.south, p.lat),
+        north: Math.max(acc.north, p.lat),
+      }),
+      { west: results[0].lon, east: results[0].lon, south: results[0].lat, north: results[0].lat },
+    );
+    const panelWidthPx = panelWidth();
+    adapterRef.current?.fitBounds(
+      b,
+      isMobile
+        ? { top: 90, bottom: 340, left: 24, right: 24 }
+        : { top: 90, bottom: 90, left: panelWidthPx + 32, right: 48 },
+    );
+  };
+
+  // --- Pins on the map: clustered (adapter groups at low zoom) ---
+  // Must run after init AND whenever the visible result set changes (viewport
+  // pan, search, category). Without it the map is just tiles.
+  useEffect(() => {
+    if (!mapReady) return;
+    adapterRef.current?.setClusters(
+      results.map((p) => ({ id: p.id, lng: p.lon, lat: p.lat, activeAdsCount: p.active_ads_count })),
+    );
+  }, [mapReady, results]);
+
+  // Keep the selection halo in sync when the pin set changes (e.g. new search).
+  useEffect(() => {
+    if (selectedPin) adapterRef.current?.setSelected(selectedPin);
+  }, [results, selectedPin]);
+
   const panelState: SheetState = selectedPin
     ? sheet
     : sheet === "detail"
@@ -284,7 +361,7 @@ export function MapHomePage() {
 
   return (
     <div className="map-page">
-      <div className="map-container" ref={containerRef} aria-label={t.appTitle} />
+      <div className="map-container" ref={containerRef} role="region" aria-label={t.appTitle} />
 
       {!mapReady && !isError && (
         <div className="map-loading" aria-hidden="true">
@@ -306,34 +383,77 @@ export function MapHomePage() {
         </Link>
 
         <div className="controls">
-          <span className="search-wrap">
+          <span
+            className={`search-wrap${
+              query.trim() !== "" && (searchActive ? searchLoading : isLoading) ? " busy" : ""
+            }`}
+          >
             <IconSearch />
             <input
               type="search"
               placeholder={t.search}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={(e) => {
+                // Clicking a recent item keeps focus inside the wrapper.
+                if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) {
+                  setSearchFocused(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && query.trim().length >= 2) {
+                  rememberSearch(query);
+                  setSearchFocused(false);
+                }
+              }}
               aria-label={t.search}
             />
+            <RecentSearches
+              open={searchFocused && query.trim() === ""}
+              recentLabel={t.recentSearches}
+              closeLabel={t.close}
+              onPick={(q) => {
+                setQuery(q);
+                setSearchFocused(false);
+              }}
+              onClose={() => setSearchFocused(false)}
+            />
           </span>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label={t.allCategories}
-          >
-            <option value="">{t.allCategories}</option>
-            {categories?.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {locale === "uz" ? c.name_uz : c.name_ru}
-              </option>
-            ))}
-          </select>
           {hasFilters && (
             <button className="btn small" onClick={clearFilters}>
               <IconClose />
               {t.clearFilters}
             </button>
           )}
+        </div>
+
+        {/* Category filter: scannable chips instead of a native select — the
+            highest-traffic control on a map-first product. Tapping the active
+            chip again clears it. */}
+        <div className="category-chips" role="group" aria-label={t.allCategories}>
+          <button
+            type="button"
+            className={`cat-chip${category === "" ? " active" : ""}`}
+            aria-pressed={category === ""}
+            onClick={() => setCategory("")}
+          >
+            {t.allCategories}
+          </button>
+          {categories?.map((c) => {
+            const active = category === c.slug;
+            return (
+              <button
+                key={c.slug}
+                type="button"
+                className={`cat-chip${active ? " active" : ""}`}
+                aria-pressed={active}
+                onClick={() => setCategory(active ? "" : c.slug)}
+              >
+                {locale === "uz" ? c.name_uz : c.name_ru}
+              </button>
+            );
+          })}
         </div>
 
         <div className="header-utils">
@@ -359,6 +479,7 @@ export function MapHomePage() {
         onClearSelection={clearSelection}
         hasFilters={hasFilters}
         onClearFilters={clearFilters}
+        onFitResults={searchActive ? fitResults : undefined}
         locationsCount={pins?.length ?? 0}
         adsCount={totalAds}
       />
@@ -398,7 +519,22 @@ export function MapHomePage() {
         </div>
       )}
 
+      {zoomedOut && !isError && (
+        <div className="map-banner" role="status">
+          <div className="map-banner-text">
+            <strong>{t.zoomOutTitle}</strong>
+            <span className="muted">{t.zoomOutHint}</span>
+          </div>
+          <button className="btn small" onClick={() => adapterRef.current?.zoomIn()}>
+            {t.zoomInAction}
+          </button>
+        </div>
+      )}
+
       <footer className="map-footer">
+        {/* Counts live in the results panel / collapsed pill — the footer
+            carries status and the pin legend only; the zoomed-out state is
+            the .map-banner's job (no duplicated hint here). */}
         {isError ? (
           <span className="row" role="alert">
             <span className="error-text">{t.loadError}</span>
@@ -406,17 +542,9 @@ export function MapHomePage() {
               {t.retry}
             </button>
           </span>
-        ) : zoomedOut ? (
-          <span className="muted">{t.zoomInHint}</span>
-        ) : isLoading ? (
+        ) : isLoading && !searchActive ? (
           <span className="muted">{t.loading}</span>
-        ) : (
-          <span>
-            {pins?.length ?? 0} {plural(locale, "locations", pins?.length ?? 0)}
-            {" · "}
-            {totalAds} {plural(locale, "ads", totalAds)}
-          </span>
-        )}
+        ) : null}
         <span className="legend">
           <span>
             <span className="dot dot-active" /> {t.legendWithAds}

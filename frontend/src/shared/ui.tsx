@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useLocation as useRouterLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "@/shared/i18n";
 import type { Dict } from "@/shared/i18n/ru";
+import { isOpenNow, tashkentNow, WEEK_DAYS, weekdayLabel, type WeekDay } from "@/shared/format";
 import type { ApiActiveAd, CampaignStatus, OrderState } from "@/entities/types";
 import {
   IconArrowLeft,
+  IconCopy,
   IconDirections,
   IconGlobe,
+  IconMegaphone,
   IconPhone,
   IconShare,
   IconTelegram,
@@ -61,6 +64,102 @@ export function OrderChip({ state }: { state: OrderState }) {
   return <span className={ORDER_CLASS[state] ?? "chip gray"}>{t[ORDER_LABEL[state]]}</span>;
 }
 
+/* ---------- Placement / attempt / refund / report chips ----------
+   Every API enum the UI surfaces gets a localized label — no raw snake_case
+   ever reaches the user. */
+
+const PLACEMENT_CLASS: Record<string, string> = {
+  pending: "chip gray",
+  scheduled: "chip blue",
+  active: "chip green",
+  expired: "chip gray",
+  cancelled: "chip gray",
+  blocked: "chip red",
+};
+const PLACEMENT_LABEL: Record<string, keyof Dict> = {
+  pending: "stPlacementPending",
+  scheduled: "stPlacementScheduled",
+  active: "stPlacementActive",
+  expired: "stPlacementExpired",
+  cancelled: "stPlacementCancelled",
+  blocked: "stPlacementBlocked",
+};
+
+export function PlacementChip({ state }: { state: string }) {
+  const { t } = useI18n();
+  const label = PLACEMENT_LABEL[state];
+  return (
+    <span className={PLACEMENT_CLASS[state] ?? "chip gray"}>
+      {label ? t[label] : state}
+    </span>
+  );
+}
+
+const ATTEMPT_CLASS: Record<string, string> = {
+  succeeded: "chip green",
+  pending: "chip orange",
+  failed: "chip red",
+};
+const ATTEMPT_LABEL: Record<string, keyof Dict> = {
+  succeeded: "stAttemptSucceeded",
+  pending: "stAttemptPending",
+  failed: "stAttemptFailed",
+};
+
+export function AttemptChip({ status }: { status: string }) {
+  const { t } = useI18n();
+  const label = ATTEMPT_LABEL[status];
+  return (
+    <span className={ATTEMPT_CLASS[status] ?? "chip gray"}>
+      {label ? t[label] : status}
+    </span>
+  );
+}
+
+const REFUND_CLASS: Record<string, string> = {
+  requested: "chip orange",
+  admin_review: "chip blue",
+  refunded: "chip green",
+  rejected: "chip red",
+};
+const REFUND_LABEL: Record<string, keyof Dict> = {
+  requested: "stRefundRequested",
+  admin_review: "stRefundAdminReview",
+  refunded: "stRefundRefunded",
+  rejected: "stRefundRejected",
+};
+
+export function RefundStateChip({ state }: { state: string }) {
+  const { t } = useI18n();
+  const label = REFUND_LABEL[state];
+  return (
+    <span className={REFUND_CLASS[state] ?? "chip gray"}>
+      {label ? t[label] : state}
+    </span>
+  );
+}
+
+const REPORT_CLASS: Record<string, string> = {
+  open: "chip orange",
+  resolved: "chip green",
+  dismissed: "chip gray",
+};
+const REPORT_LABEL: Record<string, keyof Dict> = {
+  open: "stReportOpen",
+  resolved: "stReportResolved",
+  dismissed: "stReportDismissed",
+};
+
+export function ReportStateChip({ state }: { state: string }) {
+  const { t } = useI18n();
+  const label = REPORT_LABEL[state];
+  return (
+    <span className={REPORT_CLASS[state] ?? "chip gray"}>
+      {label ? t[label] : state}
+    </span>
+  );
+}
+
 /* ---------- Contact actions: shared by map sheet and location page ---------- */
 
 /** Directions deep link to the branch coordinates (2GIS directions API,
@@ -79,6 +178,9 @@ export interface ContactActionsProps {
   /** Compact label for the directions action ("Маршрут"), used where the
    *  full "Проложить маршрут" does not fit — e.g. the mobile sticky bar. */
   shortDirections?: boolean;
+  /** Hide on phones: pages with a StickyContactActions bar render the same
+   *  actions twice on small screens — the in-content copy goes away. */
+  hiddenOnMobile?: boolean;
 }
 function withProtocol(value: string): string {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
@@ -101,6 +203,7 @@ export function ContactActions({
   site,
   compact = false,
   shortDirections = false,
+  hiddenOnMobile = false,
 }: ContactActionsProps) {
   const { t } = useI18n();
   const size = compact ? "btn small" : "btn";
@@ -125,7 +228,7 @@ export function ContactActions({
 
   if (links.length === 0) return null;
   return (
-    <div className="contact-actions">
+    <div className={hiddenOnMobile ? "contact-actions hide-mobile" : "contact-actions"}>
       {links.map(({ href, label, icon, primary }) => (
         <a
           key={label}
@@ -153,19 +256,30 @@ export function StickyContactActions(props: Omit<ContactActionsProps, "compact" 
 
 /* ---------- Opening hours: shared by location page and ad branch card ---------- */
 
+/** Hours with localized day names, today highlighted, and an open-now badge
+ *  (Asia/Tashkent). Raw API keys (mon..sun) never reach the user. */
 export function HoursList({ hours }: { hours: Record<string, [string, string] | undefined> }) {
-  const { t } = useI18n();
-  const entries = Object.entries(hours ?? {}).filter(([, v]) => Array.isArray(v));
+  const { t, locale } = useI18n();
+  const entries = WEEK_DAYS.map((day) => ({ day, range: hours?.[day] })).filter(
+    (e): e is { day: WeekDay; range: [string, string] } => Array.isArray(e.range),
+  );
   if (entries.length === 0) return null;
+  const now = tashkentNow();
+  const open = isOpenNow(hours ?? {});
   return (
     <div className="info-card">
-      <div className="label">{t.hours}</div>
+      <div className="label hours-label">
+        <span>{t.hours}</span>
+        <span className={`chip ${open ? "green" : "gray"}`}>
+          {open ? t.hoursOpenNow : t.hoursClosedNow}
+        </span>
+      </div>
       <div className="value hours-list">
-        {entries.map(([day, range]) => (
-          <div key={day} className="hours-row">
-            <span>{day}</span>
+        {entries.map(({ day, range }) => (
+          <div key={day} className={`hours-row${day === now.day ? " today" : ""}`}>
+            <span>{day === now.day ? t.todayLabel : weekdayLabel(day, locale)}</span>
             <span>
-              {range![0]}–{range![1]}
+              {range[0]}–{range[1]}
             </span>
           </div>
         ))}
@@ -175,6 +289,35 @@ export function HoursList({ hours }: { hours: Record<string, [string, string] | 
 }
 
 /* ---------- Share: URL is server-driven, so shared links keep context ---------- */
+
+/** Copy an opaque ID (order, campaign) to the clipboard with feedback —
+ *  truncated UUIDs are unreadable; at least make the full value portable
+ *  for support conversations. */
+export function CopyButton({ value, label }: { value: string; label?: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      /* insecure context: keep the value selectable nearby instead */
+    }
+  };
+
+  return (
+    <button type="button" className="btn subtle small" onClick={copy} title={value}>
+      <IconCopy /> {copied ? t.idCopied : (label ?? t.copyLabel)}
+    </button>
+  );
+}
 
 export function ShareButton({ title }: { title?: string }) {
   const { t } = useI18n();
@@ -239,10 +382,41 @@ export function BackLink({ fallbackTo, fallbackLabel }: { fallbackTo: string; fa
 
 /* ---------- Ad card: one banner + headline + business, shared everywhere ---------- */
 
+/** Image with a styled fallback: a broken/missing banner must not leave a
+ *  blank hole or a browser broken-image glyph (design review 0.10). */
+export function FallImg({
+  src,
+  alt,
+  className,
+}: {
+  src: string | undefined;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) {
+    return (
+      <div className={`${className ?? ""} img-fallback`.trim()} aria-hidden="true">
+        <IconMegaphone size={22} />
+      </div>
+    );
+  }
+  return (
+    <img
+      className={className}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export function AdCard({ ad, fromLocationId }: { ad: ApiActiveAd; fromLocationId?: string }) {
   return (
     <Link to={`/ads/${ad.id}`} className="ad-card" state={{ fromLocationId }}>
-      <img src={ad.banner_url} alt="" loading="lazy" />
+      <FallImg src={ad.banner_url} alt="" className="" />
       <div className="ad-card-body">
         <strong>{ad.headline}</strong>
         <span className="muted-2">{ad.business_name}</span>

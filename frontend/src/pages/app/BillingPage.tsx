@@ -5,6 +5,7 @@ import { ApiError } from "@/shared/api/client";
 import { cancelRenewal, enableRenewal, requestRefund } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { OrderChip } from "@/shared/ui";
+import { confirmDialog, mountDialog, RefundDialogBody } from "@/shared/dialog";
 import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiRenewal } from "@/entities/types";
@@ -43,33 +44,46 @@ function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
         ? t.error
         : null;
 
+  const toggle = async () => {
+    const cancelling = renewal.status !== "disabled";
+    const ok = await confirmDialog({
+      t,
+      body: cancelling ? t.confirmCancelRenewal : t.confirmEnableRenewal,
+      confirmLabel: cancelling ? t.cancelRenewal : t.enableRenewal,
+      cancelLabel: t.cancel,
+    });
+    if (!ok) return;
+    if (cancelling) cancel.mutate();
+    else enable.mutate();
+  };
+
   return (
-    <li className="row-between" style={{ alignItems: "flex-start" }}>
-      <div style={{ minWidth: 0 }}>
-        <strong style={{ overflowWrap: "anywhere" }}>{renewal.campaign_headline}</strong>
-        <span className="muted-2">
-          {renewal.locations_count} {t.locationsCount} · {renewal.charge_days} {t.days} ·{" "}
-          {t.nextCharge}: {formatDateTime(renewal.next_run_at, locale)}
-        </span>
-      </div>
-      <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <span className={RENEWAL_CHIP[renewal.status] ?? "chip gray"}>
-          {t[RENEWAL_LABEL[renewal.status] as "renewalActive"]}
-        </span>
-        {renewal.status !== "disabled" ? (
+    <li className="renewal-row">
+      <div className="row-between items-start">
+        <div className="min-w-0">
+          <strong className="wrap-anywhere">{renewal.campaign_headline}</strong>
+          <span className="muted-2">
+            {renewal.locations_count} {t.locationsCount} · {renewal.charge_days} {t.days} ·{" "}
+            {t.nextCharge}: {formatDateTime(renewal.next_run_at, locale)}
+          </span>
+        </div>
+        <div className="row justify-end">
+          <span className={RENEWAL_CHIP[renewal.status] ?? "chip gray"}>
+            {t[RENEWAL_LABEL[renewal.status] as "renewalActive"]}
+          </span>
           <button
             className="btn small"
             disabled={pending}
-            onClick={() => cancel.mutate()}
+            onClick={() => void toggle()}
             title={t.paidTimeStays}
           >
-            {cancel.isPending ? t.loading : t.cancelRenewal}
+            {pending
+              ? t.loading
+              : renewal.status !== "disabled"
+                ? t.cancelRenewal
+                : t.enableRenewal}
           </button>
-        ) : (
-          <button className="btn small" disabled={pending} onClick={() => enable.mutate()}>
-            {enable.isPending ? t.loading : t.enableRenewal}
-          </button>
-        )}
+        </div>
       </div>
       {failed && (
         <p className="error" role="alert">
@@ -87,14 +101,44 @@ export function BillingPage() {
   const { data: renewals } = useRenewals();
 
   const refund = useMutation({
-    mutationFn: ({ orderId }: { orderId: string }) =>
-      requestRefund(orderId, "Rejected campaign refund"),
+    mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
+      requestRefund(orderId, reason),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
   });
+
+  /** Refund with a user-typed reason (the moderator reads it verbatim) —
+   *  presets cover the common rejected-campaign case. */
+  const openRefundDialog = (orderId: string) => {
+    void mountDialog((close) => (
+      <RefundDialogBody
+        t={t}
+        locale={locale}
+        onSubmit={async (reason) => {
+          await refund.mutateAsync({ orderId, reason });
+        }}
+        close={close}
+      />
+    ));
+  };
+
+  const paidTotal = (orders ?? [])
+    .filter((o) => o.state === "paid")
+    .reduce((sum, o) => sum + o.amount_total, 0);
 
   return (
     <section>
       <h2>{t.ordersSection}</h2>
+
+      {orders && orders.length > 0 && (
+        <p className="billing-total">
+          <span className="muted">{t.paidTotal}:</span>{" "}
+          <strong>
+            {formatMinor(paidTotal, orders[0].currency, locale)}
+          </strong>
+          <span className="muted-2 billing-count">· {t.countLabel}: {orders.length}</span>
+        </p>
+      )}
+
       {orders && orders.length === 0 && <p className="muted">{t.noOrders}</p>}
       <div className="table-wrap">
         <table className="table">
@@ -103,7 +147,7 @@ export function BillingPage() {
               <th>{t.order}</th>
               <th>{t.campaigns}</th>
               <th>{t.total}</th>
-              <th>{t.overview}</th>
+              <th>{t.status}</th>
               <th>{t.refundState}</th>
               <th />
             </tr>
@@ -111,40 +155,51 @@ export function BillingPage() {
           <tbody>
             {orders?.map((order) => {
               const refundable = order.state === "paid" && order.campaign_status === "rejected";
-              const refundPending =
-                refund.isPending && refund.variables?.orderId === order.id;
+              const refundDone = refund.isSuccess && refund.variables?.orderId === order.id;
               return (
                 <tr key={order.id}>
-                  <td>{formatDateTime(order.created_at, locale)}</td>
-                  <td style={{ maxWidth: 220, overflowWrap: "anywhere" }}>
+                  <td data-label={t.order}>
+                    <Link to={`/app/orders/${order.id}`} className="muted-2" title={order.id}>
+                      …{order.id.slice(0, 8)}
+                    </Link>
+                    <div className="muted-2">{formatDateTime(order.created_at, locale)}</div>
+                  </td>
+                  <td data-label={t.campaigns} className="max-w-220 wrap-anywhere">
                     <Link to={`/app/orders/${order.id}`}>{order.campaign_headline}</Link>
                   </td>
-                  <td>{formatMinor(order.amount_total, order.currency, locale)}</td>
-                  <td>
+                  <td data-label={t.total}>{formatMinor(order.amount_total, order.currency, locale)}</td>
+                  <td data-label={t.overview}>
                     <OrderChip state={order.state} />
                   </td>
-                  <td>
-                    {refundable && (
+                  <td data-label={t.refundState}>
+                    {order.state === "expired" ? (
+                      <span className="muted-2">—</span>
+                    ) : refundable ? (
                       <button
                         className="btn small"
-                        disabled={refundPending}
-                        onClick={() => refund.mutate({ orderId: order.id })}
+                        disabled={refund.isPending && refund.variables?.orderId === order.id}
+                        onClick={() => openRefundDialog(order.id)}
                       >
-                        {refundPending ? t.sending : t.requestRefund}
+                        {refund.isPending && refund.variables?.orderId === order.id
+                          ? t.sending
+                          : t.requestRefund}
                       </button>
-                    )}
-                    {refund.isSuccess && refund.variables?.orderId === order.id && (
+                    ) : refundDone ? (
                       <span className="ok"><IconCheck size={12} /> {t.refundSent}</span>
+                    ) : (
+                      <span className="muted-2">—</span>
                     )}
                     {refund.isError && refund.variables?.orderId === order.id && (
-                      <span className="error">
+                      <span className="error" role="alert">
                         {refund.error instanceof ApiError ? refund.error.message : t.error}
                       </span>
                     )}
                   </td>
                   <td>
                     {["draft_quote", "awaiting_payment"].includes(order.state) && (
-                      <Link to={`/app/checkout/${order.id}`}>{t.checkout}</Link>
+                      <Link className="btn small" to={`/app/checkout/${order.id}`}>
+                        {t.checkout}
+                      </Link>
                     )}
                   </td>
                 </tr>

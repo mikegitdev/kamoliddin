@@ -96,7 +96,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Options for the grant form */
+        /** Grant form options and recent grants */
         get: operations["api_v1_admin_grants_retrieve"];
         put?: never;
         /** Issue a zero-charge placement grant */
@@ -750,6 +750,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current ad price per location per 24h
+         * @description GET /public/pricing — the current Tariff, so the campaign editor can
+         *     show a live cost estimate while the advertiser picks branches and dates.
+         *     The quote endpoint remains the source of truth for the charged amount.
+         */
+        get: operations["api_v1_public_pricing_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/reports": {
         parameters: {
             query?: never;
@@ -948,6 +970,12 @@ export interface components {
             readonly review_status: components["schemas"]["ReviewStatusEnum"];
             readonly review_version: number;
             readonly active_placements_count: number;
+            readonly next_interval: {
+                /** Format: date-time */
+                start_at?: string;
+                /** Format: date-time */
+                end_at?: string;
+            } | null;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1149,6 +1177,12 @@ export interface components {
             readonly review_status?: components["schemas"]["ReviewStatusEnum"];
             readonly review_version?: number;
             readonly active_placements_count?: number;
+            readonly next_interval?: {
+                /** Format: date-time */
+                start_at?: string;
+                /** Format: date-time */
+                end_at?: string;
+            } | null;
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -2550,6 +2584,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PublicLocationDetail"];
                 };
+            };
+        };
+    };
+    api_v1_public_pricing_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

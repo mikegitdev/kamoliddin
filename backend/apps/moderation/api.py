@@ -35,7 +35,7 @@ from apps.moderation.services import (
     suspend_campaign,
     unsuspend_campaign,
 )
-from apps.placements.models import Placement
+from apps.placements.models import FreeGrant, Placement
 from apps.placements.services import issue_free_grant
 
 
@@ -154,12 +154,17 @@ class GrantView(APIView):
             )
         return Response({"id": str(grant.id)}, status=status.HTTP_201_CREATED)
 
-    @extend_schema(tags=["Admin"], summary="Options for the grant form")
+    @extend_schema(tags=["Admin"], summary="Grant form options and recent grants")
     def get(self, request):
         campaigns = Campaign.objects.filter(
             review_status=Campaign.ReviewStatus.APPROVED
         ).order_by("-updated_at")[:100]
         locations = Location.objects.select_related("business").order_by("name")[:500]
+        grants = (
+            FreeGrant.objects.select_related(
+                "campaign", "location", "location__business", "admin"
+            ).order_by("-created_at")[:100]
+        )
         return Response({
             "campaigns": [
                 {"id": str(c.id), "headline": c.headline,
@@ -169,6 +174,20 @@ class GrantView(APIView):
             "locations": [
                 {"id": str(loc.id), "name": loc.name, "business_name": loc.business.name}
                 for loc in locations
+            ],
+            "grants": [
+                {
+                    "id": str(g.id),
+                    "campaign_headline": g.campaign.headline,
+                    "business_name": g.location.business.name,
+                    "location_name": g.location.name,
+                    "start_at": g.start_at,
+                    "end_at": g.end_at,
+                    "reason": g.reason,
+                    "admin_phone": g.admin.phone_e164 if g.admin else None,
+                    "created_at": g.created_at,
+                }
+                for g in grants
             ],
         })
 

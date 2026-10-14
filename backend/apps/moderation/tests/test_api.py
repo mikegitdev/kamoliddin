@@ -103,3 +103,34 @@ def test_foreign_campaign_review_is_404(staff, other_owner, campaign):
         {"decision": "approve"}, format="json",
     )
     assert response.status_code == 403
+
+
+def test_grant_options_include_recent_grants(staff, campaign, location):
+    """GET admin/grants feeds the form AND the audit list: issued grants must
+    be visible with campaign/location context (staff cannot issue blind)."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.moderation.services import approve_campaign
+    from apps.placements.models import Placement
+    from apps.placements.services import issue_free_grant
+
+    submit_for_review(campaign=campaign)
+    approve_campaign(campaign=campaign, reviewer=staff)
+    now = timezone.now()
+    issue_free_grant(
+        staff=staff, campaign=campaign, location=location,
+        start_at=now, end_at=now + timedelta(hours=24), reason="launch promo",
+    )
+    response = _auth(staff).get(reverse("admin-grants"))
+    assert response.status_code == 200
+    grants = response.json()["grants"]
+    assert any(
+        g["campaign_headline"] == campaign.headline and g["reason"] == "launch promo"
+        for g in grants
+    )
+    # The issued grant is a live placement, so the list carries real context.
+    assert Placement.objects.filter(
+        campaign=campaign, source_type=Placement.SourceType.GRANT
+    ).exists()

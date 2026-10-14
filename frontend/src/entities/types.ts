@@ -16,6 +16,8 @@ export interface ApiLocationPin {
   business_name: string;
   /** Count of CURRENTLY active public ads — not historical (spec §10). */
   active_ads_count: number;
+  /** Distance from the search origin in meters (search results only). */
+  distance_m?: number;
 }
 
 export interface ApiActiveAd {
@@ -126,6 +128,8 @@ export interface ApiCampaign {
   /** PUBLICATION state, independent of review_status: count of placements
    *  currently eligible (live) — approved ≠ live (spec §7). */
   active_placements_count: number;
+  /** Nearest upcoming/ongoing show window (list cards); null when none. */
+  next_interval: { start_at: string; end_at: string } | null;
   created_at: string;
   updated_at: string;
 }

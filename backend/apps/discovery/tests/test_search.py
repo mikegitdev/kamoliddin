@@ -35,7 +35,17 @@ def test_search_returns_eligible_campaign(rf, campaign, location):
     _make_eligible(campaign, location)
     response = _search(rf, q="Test campaign")
     assert response.status_code == 200
-    assert any(c["id"] == str(campaign.id) for c in response.data["campaigns"])
+    matched = next(c for c in response.data["campaigns"] if c["id"] == str(campaign.id))
+    # Banner thumbnail for the matching-ads section of the results panel.
+    assert matched["banner_url"] == "/media/banners/test.jpg"
+
+
+def test_search_includes_distance_when_origin_given(rf, campaign, location):
+    _make_eligible(campaign, location)
+    near = _search(rf, q="Test campaign", lat=41.31, lon=69.27)
+    assert near.data["locations"][0]["distance_m"] == 0
+    far = _search(rf, q="Test campaign", lat=41.35, lon=69.27)
+    assert far.data["locations"][0]["distance_m"] > 3000
 
 
 def test_search_hides_campaign_of_disabled_business(rf, campaign, location, business):

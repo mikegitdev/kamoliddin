@@ -6,6 +6,8 @@ import { ApiError } from "@/shared/api/client";
 import { createLocation, updateLocation } from "@/features/advertiser/api";
 import { MapLibreAdapter, type MapAdapter } from "@/map-adapters";
 import { useI18n, plural } from "@/shared/i18n";
+import { WEEK_DAYS, weekdayLabel, type WeekDay } from "@/shared/format";
+import { useDirtyRouteGuard } from "@/shared/route-guard";
 import {
   IconAlert,
   IconCheck,
@@ -90,7 +92,7 @@ function PublicPreview({
         )}
       </div>
       <div className="detail-head">
-        <div style={{ minWidth: 0 }}>
+        <div className="min-w-0">
           <h1>{business?.name ?? "…"}</h1>
           <p className="muted">{form.name.trim() || "…"}</p>
         </div>
@@ -98,6 +100,8 @@ function PublicPreview({
       <ContactActions
         directionsUrl={previewDirectionsUrl}
         phone={form.phone || null}
+        telegram={form.telegram || null}
+        whatsapp={form.whatsapp || null}
         site={business?.site || null}
       />
       <div className="info-grid">
@@ -117,10 +121,30 @@ interface BranchForm {
   name: string;
   address: string;
   phone: string;
+  telegram: string;
+  whatsapp: string;
+  /** mon..sun -> [open, close]; undefined = closed that day. */
+  hours: Partial<Record<WeekDay, [string, string]>>;
   point: { lng: number; lat: number } | null;
 }
 
-const EMPTY_FORM: BranchForm = { id: null, name: "", address: "", phone: "", point: null };
+const EMPTY_FORM: BranchForm = {
+  id: null, name: "", address: "", phone: "", telegram: "", whatsapp: "",
+  hours: {}, point: null,
+};
+
+function normalizeHours(raw: unknown): Partial<Record<WeekDay, [string, string]>> {
+  const out: Partial<Record<WeekDay, [string, string]>> = {};
+  if (raw && typeof raw === "object") {
+    for (const [day, range] of Object.entries(raw as Record<string, unknown>)) {
+      if (WEEK_DAYS.includes(day as WeekDay) && Array.isArray(range)) {
+        const [from, to] = range as string[];
+        if (from && to) out[day as WeekDay] = [from, to];
+      }
+    }
+  }
+  return out;
+}
 
 function statusLabel(status: string, t: ReturnType<typeof useI18n>["t"]): string | null {
   if (status === "under_review") return t.stUnderReview;
@@ -141,6 +165,11 @@ export function BranchesPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLDivElement>(null);
+  // Snapshot of the form when it was loaded — the route-leave guard and the
+  // cancel affordance both key off real dirtiness, not "any content".
+  const [baseline, setBaseline] = useState<string>(JSON.stringify(EMPTY_FORM));
+  const dirty = JSON.stringify(form) !== baseline;
+  useDirtyRouteGuard(dirty);
 
   const applyError = (e: unknown) => {
     if (e instanceof ApiError) {
@@ -161,6 +190,9 @@ export function BranchesPage() {
         name: form.name,
         address: form.address,
         phone: form.phone || undefined,
+        telegram: form.telegram || undefined,
+        whatsapp: form.whatsapp || undefined,
+        hours: Object.keys(form.hours).length > 0 ? form.hours : undefined,
       };
       return form.id
         ? updateLocation(form.id, { ...base, lon: form.point!.lng, lat: form.point!.lat })
@@ -171,6 +203,7 @@ export function BranchesPage() {
       setError(null);
       setFieldErrors({});
       setForm(EMPTY_FORM);
+      setBaseline(JSON.stringify(EMPTY_FORM));
       queryClient.invalidateQueries({ queryKey: ["business-locations", business?.id] });
       queryClient.invalidateQueries({ queryKey: ["location-pins"] }); // public map
     },
@@ -178,21 +211,48 @@ export function BranchesPage() {
   });
 
   const set =
-    (key: "name" | "address" | "phone") => (e: React.ChangeEvent<HTMLInputElement>) =>
+    (key: "name" | "address" | "phone" | "telegram" | "whatsapp") =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  const setHour = (day: WeekDay, field: 0 | 1, value: string) =>
+    setForm((f) => {
+      const current = f.hours[day] ?? ["", ""];
+      const next: [string, string] = [current[0], current[1]];
+      next[field] = value;
+      const hours = { ...f.hours };
+      if (next[0] && next[1]) hours[day] = next;
+      else delete hours[day];
+      return { ...f, hours };
+    });
+
   const startEdit = (loc: ApiOwnerLocation) => {
-    setForm({
+    const next: BranchForm = {
       id: loc.id,
       name: loc.name,
       address: loc.address,
       phone: loc.phone ?? "",
+      telegram: loc.telegram ?? "",
+      whatsapp: loc.whatsapp ?? "",
+      hours: normalizeHours(loc.hours),
       point: { lng: loc.lon, lat: loc.lat },
-    });
+    };
+    setForm(next);
+    setBaseline(JSON.stringify(next));
     setStatus(null);
     setError(null);
     setFieldErrors({});
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  /** Copy the first defined day's range to the whole week — 14 empty time
+      inputs is the most tedious part of branch setup. */
+  const copyHoursToAll = () => {
+    const first = WEEK_DAYS.map((d) => form.hours[d]).find((r): r is [string, string] => !!r);
+    if (!first) return;
+    const hours: Partial<Record<WeekDay, [string, string]>> = {};
+    for (const d of WEEK_DAYS) hours[d] = first;
+    setForm((f) => ({ ...f, hours }));
   };
 
   // Loading / error / no-business states — an existing advertiser must never be
@@ -202,8 +262,8 @@ export function BranchesPage() {
       <section>
         <h2>{t.branches}</h2>
         <div className="skeleton skeleton-card" />
-        <div className="skeleton skeleton-card" style={{ marginTop: 10 }} />
-        <div className="skeleton skeleton-card" style={{ marginTop: 10, height: 160 }} />
+        <div className="skeleton skeleton-card mt-10" />
+        <div className="skeleton skeleton-card mt-10 h160" />
       </section>
     );
   }
@@ -215,8 +275,7 @@ export function BranchesPage() {
           <IconAlert size={14} /> {t.loadError}
         </p>
         <button
-          className="btn"
-          style={{ marginTop: 12 }}
+          className="btn mt-12"
           onClick={() => businessesQuery.refetch()}
         >
           {t.retry}
@@ -258,7 +317,7 @@ export function BranchesPage() {
       {locationsQuery.isLoading && (
         <>
           <div className="skeleton skeleton-card" />
-          <div className="skeleton skeleton-card" style={{ marginTop: 10 }} />
+          <div className="skeleton skeleton-card mt-10" />
         </>
       )}
       {locationsQuery.isError && (
@@ -267,8 +326,7 @@ export function BranchesPage() {
             <IconAlert size={14} /> {t.loadError}
           </p>
           <button
-            className="btn"
-            style={{ marginTop: 12 }}
+            className="btn mt-12"
             onClick={() => locationsQuery.refetch()}
           >
             {t.retry}
@@ -282,13 +340,17 @@ export function BranchesPage() {
           const chip = statusLabel(loc.status, t);
           return (
             <li key={loc.id} className="row-between">
-              <div style={{ minWidth: 0 }}>
+              <div className="min-w-0">
                 <strong>{loc.name}</strong>
                 <span className="muted">{loc.address}</span>
                 {loc.phone && <span className="muted-2"><IconPhone size={12} /> {loc.phone}</span>}
               </div>
               <div className="branch-row-actions">
-                {chip && <span className="chip gray">{chip}</span>}
+                {chip && (
+                  <span className="chip gray" title={t.branchStatusHint}>
+                    {chip}
+                  </span>
+                )}
                 <Link
                   className="btn small"
                   to={`/locations/${loc.id}`}
@@ -338,6 +400,70 @@ export function BranchesPage() {
             placeholder="+998 …"
           />
         </div>
+        <div className="two-cols">
+          <div className="field">
+            <label htmlFor="br-telegram">{t.branchTelegram}</label>
+            <input
+              id="br-telegram"
+              value={form.telegram}
+              onChange={set("telegram")}
+              placeholder="@username"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="br-whatsapp">{t.branchWhatsapp}</label>
+            <input
+              id="br-whatsapp"
+              type="tel"
+              value={form.whatsapp}
+              onChange={set("whatsapp")}
+              placeholder="+998 90 123 45 67"
+            />
+          </div>
+        </div>
+        <span className="field-hint">{t.contactsLevelHint}</span>
+
+        <div className="field">
+          <label htmlFor="br-hours">{t.hours}</label>
+          <span className="field-hint" id="br-hours-hint">
+            {t.hoursOptionalHint}
+          </span>
+          <div className="row-between hours-toolbar">
+            <span />
+            <button
+              type="button"
+              className="btn subtle small"
+              disabled={!WEEK_DAYS.some((d) => form.hours[d])}
+              onClick={copyHoursToAll}
+            >
+              <IconCheck size={12} /> {t.hoursCopyToAll}
+            </button>
+          </div>
+          <div className="hours-editor" id="br-hours" aria-describedby="br-hours-hint">
+            {WEEK_DAYS.map((day) => {
+              const range = form.hours[day];
+              return (
+                <div key={day} className="hours-editor-row">
+                  <span className="he-day">{weekdayLabel(day, locale)}</span>
+                  <input
+                    type="time"
+                    aria-label={`${weekdayLabel(day, locale)} — ${t.hours}`}
+                    value={range?.[0] ?? ""}
+                    onChange={(e) => setHour(day, 0, e.target.value)}
+                  />
+                  <span className="muted-2">—</span>
+                  <input
+                    type="time"
+                    aria-label={`${weekdayLabel(day, locale)}`}
+                    value={range?.[1] ?? ""}
+                    onChange={(e) => setHour(day, 1, e.target.value)}
+                  />
+                  {!range && <span className="muted-2 he-closed">{t.closedDay}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="field">
           <label htmlFor="br-map">{t.pickOnMap}</label>
@@ -373,11 +499,12 @@ export function BranchesPage() {
           <button className="btn primary" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? t.saving : t.save}
           </button>
-          {form.id && (
+          {(form.id || dirty) && (
             <button
               className="btn"
               onClick={() => {
                 setForm(EMPTY_FORM);
+                setBaseline(JSON.stringify(EMPTY_FORM));
                 setError(null);
                 setFieldErrors({});
               }}
@@ -398,7 +525,10 @@ export function BranchesPage() {
         )}
       </div>
 
-      <PublicPreview business={business} form={form} />
+      {/* Live public preview — only once there is something to preview. */}
+      {(form.name.trim() || form.address.trim() || form.point) && (
+        <PublicPreview business={business} form={form} />
+      )}
     </section>
   );
 }

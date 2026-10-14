@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/shared/i18n";
+import { formatBytes } from "@/shared/format";
 
 /**
  * Dependency-free banner editor: crop (drag / handles / arrows), brightness,
@@ -24,13 +25,6 @@ function maxFitRect(target: number, iw: number, ih: number): Rect {
   const w = clamp(1 / Math.max(k, 1e-6), 0.02, 1);
   const h = clamp(w * k, 0.02, 1);
   return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
-}
-
-function fmtBytes(bytes: number, locale: string) {
-  const n = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
-  return bytes < 1024 * 1024
-    ? `${n.format(Math.max(1, Math.round(bytes / 1024)))} KB`
-    : `${n.format(bytes / (1024 * 1024))} MB`;
 }
 
 type Props = {
@@ -328,7 +322,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
       <div className="be-head">
         <strong>{t.beTitle}</strong>
         <span className="muted-2">
-          {file.name} · {fmtBytes(file.size, locale)}
+          {file.name} · {formatBytes(file.size, locale)}
         </span>
       </div>
 
@@ -461,7 +455,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
             )}
             {estBytes !== null && (
               <span className={tooBig ? "field-error" : undefined}>
-                {t.beSize}: ≈ {fmtBytes(estBytes, locale)} / 5 MB
+                {t.beSize}: ≈ {formatBytes(estBytes, locale)} / 5 MB
               </span>
             )}
           </p>

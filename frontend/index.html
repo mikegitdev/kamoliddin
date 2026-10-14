@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Local Ads — карта рекламы Ташкента</title>
     <meta
       name="description"
@@ -19,8 +19,8 @@
       property="og:description"
       content="Активные объявления и акции бизнесов Ташкента на одной карте."
     />
-    <!-- Same-origin link previews (Telegram etc.) resolve this; absolutize per
-         deployment domain when it is finalized. -->
+    <!-- Same-origin link previews (Telegram etc.) need an absolute URL;
+         vite.config.ts absolutizes it from VITE_SITE_URL at build time. -->
     <meta property="og:image" content="/og-image.png" />
     <meta property="og:locale" content="ru_RU" />
     <meta property="og:locale:alternate" content="uz_UZ" />

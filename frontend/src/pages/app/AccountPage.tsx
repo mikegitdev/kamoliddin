@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/shared/api/client";
 import { useSession } from "@/shared/api/queries";
 import { deleteAccount, requestPhoneChange, verifyPhoneChange } from "@/features/auth/account";
+import { formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { OtpInput } from "@/shared/otp-input";
+import { toast } from "@/shared/toast";
+
+const RESEND_SECONDS = 60;
+const CODE_LENGTH = 6;
 
 /** Account settings: phone change (OTP to the NEW phone, spec §9) and
  * soft account deletion (anonymize + stop charges, spec §14). */
@@ -25,23 +31,29 @@ export function AccountPage() {
   const [newPhone, setNewPhone] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"phone" | "code">("phone");
-  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
   const [confirmText, setConfirmText] = useState("");
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   const requestCode = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setNotice(null);
     const normalized = normalizePhone(newPhone);
     try {
       await requestPhoneChange(normalized);
       setNewPhone(normalized);
       setStage("code");
       setCode("");
+      setCountdown(RESEND_SECONDS);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.error);
     } finally {
@@ -55,7 +67,7 @@ export function AccountPage() {
     setError(null);
     try {
       await verifyPhoneChange(normalizePhone(newPhone), code);
-      setNotice(t.phoneChanged);
+      toast.success(t.phoneChanged);
       setStage("phone");
       setNewPhone("");
       setCode("");
@@ -70,7 +82,7 @@ export function AccountPage() {
   };
 
   const remove = async () => {
-    if (busy || confirmText !== "DELETE") return;
+    if (busy || !deleteConfirmed) return;
     setBusy(true);
     setError(null);
     try {
@@ -83,13 +95,17 @@ export function AccountPage() {
     }
   };
 
+  /** Locale-free typed confirmation: the last 4 digits of the own number. */
+  const last4 = (user?.phone_e164 ?? "").replace(/\D/g, "").slice(-4);
+  const deleteConfirmed = last4.length === 4 && confirmText.trim() === last4;
+
   return (
     <section className="form">
       <h2>{t.account}</h2>
 
-      <div className="form-section" style={{ borderTop: "none", marginTop: 8, paddingTop: 0 }}>
+      <div className="form-section flush">
         <h3 className="section-title">{t.accountPhone}</h3>
-        <p className="muted">{user?.phone_e164 ?? "…"}</p>
+        <p className="muted">{formatPhone(user?.phone_e164)}</p>
 
         {stage === "phone" ? (
           <form
@@ -118,35 +134,51 @@ export function AccountPage() {
             >
               {busy ? t.sending : t.sendCode}
             </button>
+            {error && (
+              <p className="error mt-10" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         ) : (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (code.length >= 4) verify();
+              if (code.length === CODE_LENGTH) verify();
             }}
           >
             <p className="muted">
               {t.codeSentNew} → {newPhone}
             </p>
             <div className="field">
-              <label htmlFor="change-code">{t.smsCode}</label>
-              <input
-                id="change-code"
-                name="change-code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
+              <label htmlFor="change-otp">{t.smsCode}</label>
+              <OtpInput
+                id="change-otp"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="••••••"
-                autoFocus
+                onChange={(next) => {
+                  setCode(next);
+                  setError(null);
+                }}
               />
             </div>
             <div className="row">
-              <button className="btn primary" type="submit" disabled={busy || code.length < 4}>
+              <button className="btn primary" type="submit" disabled={busy || code.length < CODE_LENGTH}>
                 {busy ? t.verifying : t.verify}
               </button>
+              {countdown > 0 ? (
+                <span className="muted-2 otp-countdown">
+                  {t.resend} — {countdown} {t.seconds}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn subtle"
+                  onClick={requestCode}
+                  disabled={busy}
+                >
+                  {t.resend}
+                </button>
+              )}
               <button
                 className="btn"
                 type="button"
@@ -156,22 +188,29 @@ export function AccountPage() {
                 {t.cancel}
               </button>
             </div>
+            {error && (
+              <p className="error mt-10" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         )}
       </div>
 
-      <div className="form-section">
+      <div className="form-section danger-zone">
         <h3 className="section-title">{t.deleteAccount}</h3>
         <p className="muted">{t.deleteAccountHint}</p>
+        <p className="muted-2">{t.deleteWhyDigits}</p>
         <div className="field">
-          <label htmlFor="delete-confirm">{t.deleteConfirmType}</label>
+          <label htmlFor="delete-confirm">{t.deleteConfirmDigits}</label>
           <input
             id="delete-confirm"
             name="delete-confirm"
             type="text"
+            inputMode="numeric"
             value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="DELETE"
+            onChange={(e) => setConfirmText(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="••••"
             autoComplete="off"
           />
         </div>
@@ -179,22 +218,12 @@ export function AccountPage() {
           className="btn danger"
           type="button"
           onClick={remove}
-          disabled={busy || confirmText !== "DELETE"}
+          disabled={busy || !deleteConfirmed}
         >
           {t.deleteAccount}
         </button>
       </div>
 
-      {notice && (
-        <p className="muted" role="status">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
     </section>
   );
 }

@@ -9,6 +9,8 @@ import pytest
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.accounts.services import OTPError, request_otp, verify_otp
+
 pytestmark = pytest.mark.django_db
 
 PHONE = "+998901234999"
@@ -49,3 +51,20 @@ def test_echo_off_keeps_generic_response():
     assert response.status_code == 202
     assert "dev_code" not in response.data
     assert response.data["detail"]
+
+
+@override_settings(OTP_DEV_ECHO=True, SMS_PROVIDER="fake")
+def test_wrong_otp_attempts_are_persisted_and_capped():
+    challenge = request_otp(PHONE)
+    wrong_code = "000000" if challenge.dev_code != "000000" else "000001"
+
+    for _ in range(5):
+        with pytest.raises(OTPError):
+            verify_otp(PHONE, wrong_code)
+
+    challenge.refresh_from_db()
+    assert challenge.attempts == 5
+    with pytest.raises(OTPError):
+        verify_otp(PHONE, challenge.dev_code)
+    challenge.refresh_from_db()
+    assert challenge.attempts == 5

@@ -120,7 +120,7 @@ paths:
   /api/v1/admin/grants:
     get:
       operationId: api_v1_admin_grants_retrieve
-      summary: Options for the grant form
+      summary: Grant form options and recent grants
       tags:
       - Admin
       security:
@@ -1010,6 +1010,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/PublicLocationDetail'
           description: ''
+  /api/v1/public/pricing:
+    get:
+      operationId: api_v1_public_pricing_retrieve
+      description: |-
+        GET /public/pricing — the current Tariff, so the campaign editor can
+        show a live cost estimate while the advertiser picks branches and dates.
+        The quote endpoint remains the source of truth for the charged amount.
+      summary: Current ad price per location per 24h
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
   /api/v1/public/reports:
     post:
       operationId: api_v1_public_reports_create
@@ -1299,6 +1314,17 @@ components:
         active_placements_count:
           type: integer
           readOnly: true
+        next_interval:
+          type: object
+          properties:
+            start_at:
+              type: string
+              format: date-time
+            end_at:
+              type: string
+              format: date-time
+          nullable: true
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -1316,6 +1342,7 @@ components:
       - created_at
       - headline
       - id
+      - next_interval
       - review_status
       - review_version
       - updated_at
@@ -1794,6 +1821,17 @@ components:
           readOnly: true
         active_placements_count:
           type: integer
+          readOnly: true
+        next_interval:
+          type: object
+          properties:
+            start_at:
+              type: string
+              format: date-time
+            end_at:
+              type: string
+              format: date-time
+          nullable: true
           readOnly: true
         created_at:
           type: string

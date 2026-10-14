@@ -249,6 +249,7 @@ class PublicSearchView(APIView):
             return Response({"locations": [], "campaigns": []})
         category = request.query_params.get("category")
         now = timezone.now()
+        origin = None
 
         locations = (
             Location.objects.filter(status=Location.Status.ACTIVE)
@@ -289,17 +290,55 @@ class PublicSearchView(APIView):
             campaign_qs = campaign_qs.filter(business__category__slug=category)
         campaigns = campaign_qs.select_related("business")[:20]
 
+        location_data = serializers.PublicLocationSerializer(locations, many=True).data
+        # Distance (meters) for the result cards: only when an origin was given
+        # — the same annotation the ordering used.
+        if origin is not None:
+            for item, loc in zip(location_data, locations):
+                distance = getattr(loc, "distance", None)
+                if distance is not None:
+                    item["distance_m"] = round(distance.m)
+
         return Response(
             {
-                "locations": serializers.PublicLocationSerializer(locations, many=True).data,
+                "locations": location_data,
                 "campaigns": [
                     {
                         "id": str(c.id),
                         "headline": c.headline,
                         "business_name": c.business.name,
+                        "banner_url": f"/media/{c.banner_key}" if c.banner_key else "",
                     }
                     for c in campaigns
                 ],
+            }
+        )
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Public"], summary="Current ad price per location per 24h")
+)
+class PublicPricingView(APIView):
+    """GET /public/pricing — the current Tariff, so the campaign editor can
+    show a live cost estimate while the advertiser picks branches and dates.
+    The quote endpoint remains the source of truth for the charged amount."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        from apps.billing.models import Tariff
+
+        tariff = Tariff.current()
+        if tariff is None:
+            return Response({"tariff": None})
+        return Response(
+            {
+                "tariff": {
+                    "currency": tariff.currency,
+                    "amount_per_24h": tariff.amount_per_24h,
+                    "valid_from": tariff.valid_from,
+                }
             }
         )
 

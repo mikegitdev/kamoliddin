@@ -11,7 +11,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -65,8 +65,20 @@ def _old_phone_block(phone: str) -> PhoneChangeRecord | None:
     ).first()
 
 
+@transaction.atomic
 def _issue_challenge(phone: str, purpose: str) -> OTPChallenge:
     """Create+send an OTP challenge, enforcing quota/resend throttling."""
+    # Serialize quota checks for this phone+purpose across workers.
+    lock_digest = _hash(f"otp-request:{phone}:{purpose}")[:16]
+    lock_key_1 = int(lock_digest[:8], 16)
+    lock_key_2 = int(lock_digest[8:], 16)
+    if lock_key_1 >= 2**31:
+        lock_key_1 -= 2**32
+    if lock_key_2 >= 2**31:
+        lock_key_2 -= 2**32
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [lock_key_1, lock_key_2])
+
     now = timezone.now()
     recent = OTPChallenge.objects.filter(
         Q(phone_hash=_hash(phone), purpose=purpose),
@@ -145,14 +157,27 @@ def _consume_challenge(phone: str, code: str, purpose: str) -> OTPChallenge:
 def verify_otp(raw_phone: str, code: str) -> User:
     """Verify a challenge and return the (created-or-existing) user session subject."""
     phone = normalize_phone(raw_phone)
+    invalid: OTPError | None = None
+    user: User | None = None
     with transaction.atomic():
-        _consume_challenge(phone, code, OTPChallenge.Purpose.LOGIN)
-        if _old_phone_block(phone):
-            raise OTPError("Invalid or expired code.")
-        user, _ = User.objects.get_or_create(phone_e164=phone, defaults={"is_active": True})
-        if not user.is_active or user.deleted_at:
-            raise OTPError("Account disabled.")
-        return user
+        try:
+            _consume_challenge(phone, code, OTPChallenge.Purpose.LOGIN)
+        except OTPError as exc:
+            # Catch inside the transaction so a wrong-code attempt is committed.
+            invalid = exc
+        if invalid is None:
+            if _old_phone_block(phone):
+                invalid = OTPError("Invalid or expired code.")
+            else:
+                user, _ = User.objects.get_or_create(
+                    phone_e164=phone, defaults={"is_active": True}
+                )
+                if not user.is_active or user.deleted_at:
+                    invalid = OTPError("Account disabled.")
+    if invalid is not None:
+        raise invalid
+    assert user is not None
+    return user
 
 
 # --- Phone change ------------------------------------------------------------
@@ -183,25 +208,34 @@ def complete_phone_change(user: User, raw_new_phone: str, code: str) -> User:
     cannot immediately register over the abandoned number.
     """
     phone = normalize_phone(raw_new_phone)
+    invalid: OTPError | None = None
     with transaction.atomic():
-        _consume_challenge(phone, code, OTPChallenge.Purpose.PHONE_CHANGE)
-        if _old_phone_block(phone):
-            raise OTPError("Invalid or expired code.")
-        old_phone = user.phone_e164
         try:
-            with transaction.atomic():  # savepoint vs. concurrent same-phone verify
-                user.phone_e164 = phone
-                user.save(update_fields=["phone_e164"])
-        except IntegrityError:
-            raise PhoneTakenError("This phone number is already in use.")
-        PhoneChangeRecord.objects.create(
-            user=user,
-            old_phone_e164=old_phone,
-            new_phone_e164=phone,
-            old_phone_blocked_until=timezone.now()
-            + timedelta(days=settings.PHONE_RECLAIM_BLOCK_DAYS),
-        )
-        return user
+            _consume_challenge(phone, code, OTPChallenge.Purpose.PHONE_CHANGE)
+        except OTPError as exc:
+            # Preserve wrong-code attempts instead of rolling them back.
+            invalid = exc
+        if invalid is None:
+            if _old_phone_block(phone):
+                invalid = OTPError("Invalid or expired code.")
+            else:
+                old_phone = user.phone_e164
+                try:
+                    with transaction.atomic():  # savepoint vs. concurrent same-phone verify
+                        user.phone_e164 = phone
+                        user.save(update_fields=["phone_e164"])
+                except IntegrityError:
+                    raise PhoneTakenError("This phone number is already in use.")
+                PhoneChangeRecord.objects.create(
+                    user=user,
+                    old_phone_e164=old_phone,
+                    new_phone_e164=phone,
+                    old_phone_blocked_until=timezone.now()
+                    + timedelta(days=settings.PHONE_RECLAIM_BLOCK_DAYS),
+                )
+    if invalid is not None:
+        raise invalid
+    return user
 
 
 # --- Account deletion ----------------------------------------------------------

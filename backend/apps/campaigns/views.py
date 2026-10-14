@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Min, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status
@@ -18,12 +18,17 @@ def with_live_annotation(qs):
     show publication state (live or not) separately from review status
     (spec §7: approved ≠ live)."""
     now = timezone.now()
+    upcoming = Q(placements__state__in=("scheduled", "active")) & Q(
+        placements__end_at__gt=now
+    )
     return qs.annotate(
         active_placements_count=Count(
             "placements",
             filter=eligible_now_q(now, prefix="placements__"),
             distinct=True,
-        )
+        ),
+        next_interval_start=Min("placements__start_at", filter=upcoming),
+        next_interval_end=Min("placements__end_at", filter=upcoming),
     )
 
 

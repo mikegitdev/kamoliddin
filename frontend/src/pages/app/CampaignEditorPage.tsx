@@ -6,6 +6,7 @@ import {
   useBusinesses,
   useCampaign,
   useCampaignReviews,
+  usePublicPricing,
 } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import {
@@ -15,8 +16,18 @@ import {
   updateCampaign,
   uploadMedia,
 } from "@/features/advertiser/api";
-import { formatDateTime, localInputToIso } from "@/shared/format";
+import { formatDate, formatDateTime, estimateChargeDays, formatMinor, formatBytes, localInputToIso } from "@/shared/format";
+import { confirmDialog } from "@/shared/dialog";
 import { BannerEditor } from "@/shared/banner-editor";
+import { toast } from "@/shared/toast";
+import { useDirtyRouteGuard } from "@/shared/route-guard";
+import {
+  Baseline,
+  Draft,
+  clearDraft,
+  draftKeyFor,
+  readDraft,
+} from "@/features/advertiser/campaignDraft";
 import {
   IconAlert,
   IconArrowLeft,
@@ -27,7 +38,7 @@ import {
   IconSave,
 } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
-import { CampaignChip } from "@/shared/ui";
+import { CampaignChip, FallImg } from "@/shared/ui";
 import type { ApiCampaign } from "@/entities/types";
 
 /* ------------------------------------------------------------------ *
@@ -47,48 +58,25 @@ import type { ApiCampaign } from "@/entities/types";
 
 const PLACEHOLDER_BANNER = "banners/placeholder.jpg";
 
-function defaultDates(): { start: string; end: string } {
+function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultDates(): { start: string; end: string } {
   const now = new Date();
   return {
-    start: fmt(new Date(now.getTime() + 60 * 60 * 1000)),
-    end: fmt(new Date(now.getTime() + 25 * 60 * 60 * 1000)),
+    start: toLocalInput(new Date(now.getTime() + 60 * 60 * 1000)),
+    end: toLocalInput(new Date(now.getTime() + 25 * 60 * 60 * 1000)),
   };
 }
 
-/** Baseline the working copy is diffed against (server content + the
- * placement inputs captured when the editor opened / last saved). */
-interface Baseline {
-  headline: string;
-  body: string;
-  bannerKey: string;
-  start: string;
-  end: string;
-  selected: string[];
-  autoRenew: boolean;
+/** `start` + N days, as a datetime-local string (duration presets). */
+function addDays(localInput: string, days: number): string {
+  const d = new Date(localInput);
+  d.setDate(d.getDate() + days);
+  return toLocalInput(d);
 }
-
-interface Draft extends Baseline {
-  bannerUrl: string;
-  stage: number;
-  baseUpdatedAt: string | null; // campaign.updated_at the draft was based on
-  savedAt: number;
-}
-
-const draftKeyFor = (campaignId: string | undefined, businessId: string) =>
-  campaignId ? `campaign-draft:${campaignId}` : `campaign-draft:new:${businessId}`;
-
-function readDraft(key: string): Draft | null {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Draft) : null;
-  } catch {
-    return null;
-  }
-}
-const clearDraft = (key: string) => localStorage.removeItem(key);
 
 const CONTENT_STEPS = 3;
 const LOCKED_STATUSES = ["submitted", "under_review", "suspended"];
@@ -119,8 +107,7 @@ export function CampaignEditorPage() {
   const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [restoredAt, setRestoredAt] = useState<number | null>(null);
   const [cardPreview, setCardPreview] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const headlineRef = useRef<HTMLInputElement>(null);
@@ -128,14 +115,14 @@ export function CampaignEditorPage() {
 
   const applyError = (e: unknown) => {
     if (e instanceof ApiError) {
-      setError(e.message);
+      toast.error(e.message);
       const flat: Record<string, string> = {};
       for (const [key, messages] of Object.entries(e.fields ?? {})) {
         flat[key] = messages.join(" ");
       }
       setFieldErrors(flat);
     } else {
-      setError(t.error);
+      toast.error(t.error);
     }
   };
 
@@ -225,6 +212,10 @@ export function CampaignEditorPage() {
     return false;
   }, [baseline, headline, body, bannerKey, start, end, autoRenew, selected]);
 
+  // Confirm (once) when leaving with unsaved edits — covers nav tabs and the
+  // back button alike; intentional flows call bypassNextNav() first.
+  const { bypassNextNav } = useDirtyRouteGuard(dirty);
+
   const locked = !!saved && LOCKED_STATUSES.includes(saved.review_status);
   const rejected = saved?.review_status === "rejected";
   const approved = saved?.review_status === "approved";
@@ -296,8 +287,7 @@ export function CampaignEditorPage() {
       saved ? updateCampaign(saved.id, contentPayload()) : createCampaign(contentPayload()),
     onSuccess: (campaign) => {
       settleSaved(campaign);
-      setStatus(t.campaignSaved);
-      setError(null);
+      toast.success(t.campaignSaved);
       setFieldErrors({});
     },
     onError: applyError,
@@ -317,6 +307,7 @@ export function CampaignEditorPage() {
     onSuccess: (campaign) => {
       settleSaved(campaign);
       qc.invalidateQueries({ queryKey: ["campaign-reviews", campaign.id] });
+      bypassNextNav();
       navigate(`/app/campaigns/${campaign.id}`);
     },
     onError: applyError,
@@ -332,7 +323,10 @@ export function CampaignEditorPage() {
         requested_end_at: localInputToIso(end),
         auto_renew: autoRenew,
       }),
-    onSuccess: (order) => navigate(`/app/checkout/${order.id}`),
+    onSuccess: (order) => {
+      bypassNextNav();
+      navigate(`/app/checkout/${order.id}`);
+    },
     onError: applyError,
   });
 
@@ -341,7 +335,6 @@ export function CampaignEditorPage() {
     onSuccess: (res) => {
       setBannerKey(res.key);
       setBannerUrl(res.url);
-      setError(null);
     },
     onError: applyError,
   });
@@ -356,7 +349,8 @@ export function CampaignEditorPage() {
 
   // ---------- guards & gating ----------
   const leaveEditor = () => {
-    if (dirty && !window.confirm(t.confirmLeave)) return;
+    // The dirty-route guard intercepts this navigation and confirms when
+    // there are unsaved edits (same protection as the nav tabs).
     navigate("/app/campaigns");
   };
 
@@ -377,6 +371,22 @@ export function CampaignEditorPage() {
   const { data: reviews } = useCampaignReviews(rejected ? saved?.id : undefined);
   const latestRejection = reviews?.find((r) => r.decision === "rejected");
 
+  // ---------- stage gating & live estimate ----------
+  const headlineOk = headline.trim().length > 2;
+  const scheduleOk = new Date(end).getTime() > new Date(start).getTime();
+  // Schedule fields live on stage 2 — stage 1 only gates on the headline.
+  const stage1Hint = !headlineOk ? t.nextRequiresHeadline : null;
+  const stageReachable = (i: number) =>
+    i === 0 || (i === 1 && headlineOk) || (i === 2 && headlineOk && scheduleOk);
+
+  const { data: pricing } = usePublicPricing();
+  const tariff = pricing?.tariff ?? null;
+  const estimateDays = estimateChargeDays(start, end);
+  const estimate =
+    tariff && selected.size > 0 && estimateDays > 0
+      ? { total: tariff.amount_per_24h * selected.size * estimateDays, currency: tariff.currency }
+      : null;
+
   // ---------- render ----------
   if (!business) {
     // Loading and "no business yet" are different states: an existing
@@ -385,7 +395,7 @@ export function CampaignEditorPage() {
       return (
         <section>
           <div className="skeleton skeleton-card" />
-          <div className="skeleton skeleton-card" style={{ marginTop: 10, height: 160 }} />
+          <div className="skeleton skeleton-card mt-10 h160" />
         </section>
       );
     }
@@ -427,8 +437,12 @@ export function CampaignEditorPage() {
   // and returns it to moderation (backend CampaignSerializer) — the confirm
   // dialog makes the "ads go dark until re-approval" consequence explicit.
   const canSave =
-    !locked && headline.trim().length > 2 && !!bannerKey &&
+    !locked && headline.trim().length > 2 &&
     (!saved || ["draft", "rejected", "approved"].includes(saved.review_status));
+  // NOTE: a DRAFT deliberately does not require a banner — only submit and
+  // quote do (design system §7.7). The backend accepts banner-less drafts
+  // (the seeded e2e drafts exist without one); gating save on the banner
+  // made "Сохранить черновик" a dead-end disabled button.
   const canQuote =
     !!saved &&
     ["submitted", "under_review", "approved"].includes(saved.review_status) &&
@@ -441,9 +455,16 @@ export function CampaignEditorPage() {
   // every live placement of this campaign off the public map until
   // re-approval; auto-renewal pauses as well (content hash mismatch, §8).
   // The user must confirm that consciously — no silent going-dark.
-  const confirmApprovedEdit = (): boolean => {
+  const confirmApprovedEdit = async (): Promise<boolean> => {
     if (saved?.review_status !== "approved") return true;
-    return window.confirm(t.editorApprovedEditWarning);
+    return confirmDialog({
+      t,
+      title: t.confirmTitle,
+      body: t.editorApprovedEditWarning,
+      confirmLabel: t.save,
+      cancelLabel: t.cancel,
+      danger: true,
+    });
   };
 
   const saveButton = locked ? null : (
@@ -451,7 +472,7 @@ export function CampaignEditorPage() {
       className="btn"
       disabled={!canSave || saveDraft.isPending}
       onClick={() => {
-        if (confirmApprovedEdit()) saveDraft.mutate();
+        void confirmApprovedEdit().then((ok) => ok && saveDraft.mutate());
       }}
     >
       {saveDraft.isPending ? t.saving : t.saveDraft}
@@ -470,7 +491,7 @@ export function CampaignEditorPage() {
       {/* what is saved vs what I'm editing */}
       <div className="editor-status">
         {saved && <CampaignChip status={saved.review_status} />}
-        {saved && <span className="save-state">v{saved.review_version}</span>}
+        {saved && <span className="save-state">{t.versionLabel} {saved.review_version}</span>}
         {baseline && (
           <span className={`save-state ${dirty ? "dirty" : saved ? "saved" : ""}`}>
             {dirty ? t.unsavedChanges : saved ? t.savedLabel : ""}
@@ -518,7 +539,7 @@ export function CampaignEditorPage() {
           <span>
             <IconSave size={14} /> {t.restoredEdits} · {formatDateTime(new Date(restoredAt).toISOString(), locale)}
           </span>
-          <div className="row" style={{ marginTop: 8 }}>
+          <div className="row mt-8">
             <button className="btn small primary" onClick={() => setRestoredAt(null)}>
               {t.keepEditsBtn}
             </button>
@@ -529,14 +550,14 @@ export function CampaignEditorPage() {
         </div>
       )}
 
-      {/* stage stepper */}
+      {/* stage stepper — forward jumps are gated on stage validity */}
       <div className="status-filter" role="group" aria-label={t.newCampaign}>
         {stages.map((label, i) => (
           <button
             key={label}
             className="filter-chip"
             aria-current={stage === i ? "step" : undefined}
-            aria-pressed={stage === i}
+            disabled={stage !== i && !stageReachable(i)}
             onClick={() => setStage(i)}
           >
             {i + 1}. {label}
@@ -546,9 +567,8 @@ export function CampaignEditorPage() {
 
       {/* ---------------- stage 1: content ---------------- */}
       {stage === 0 && (
-        <fieldset className="form-section" disabled={locked} style={{ borderTop: "none", marginTop: 8, paddingTop: 0 }}>
+        <fieldset className="form-section flush" disabled={locked}>
           <h3 className="section-title">
-            <span className="section-num">1</span>
             {t.secContent}
           </h3>
 
@@ -562,6 +582,9 @@ export function CampaignEditorPage() {
               maxLength={200}
               aria-describedby={fieldErrors.headline ? "ce-headline-err" : undefined}
             />
+            <span className="field-hint field-counter" aria-hidden="true">
+              {headline.length}/200
+            </span>
             {fieldErrors.headline && (
               <span className="field-error" id="ce-headline-err" role="alert">
                 {fieldErrors.headline}
@@ -584,22 +607,45 @@ export function CampaignEditorPage() {
             <span className="field-hint" id="ce-banner-hint">
               {t.bannerFormats}
             </span>
-            {bannerUrl && <img className="banner-preview" src={bannerUrl} alt="" />}
-            <input
-              id="ce-banner"
-              className="file-input"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              aria-describedby="ce-banner-hint"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
+            <div
+              className={`drop-zone${dragOver ? " over" : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files?.[0];
                 if (file && file.type.startsWith("image/")) {
                   setRawFile(file);
                   setEditingBanner(true);
                 }
-                e.target.value = "";
               }}
-            />
+            >
+              <input
+                id="ce-banner"
+                className="file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                aria-describedby="ce-banner-hint"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && file.type.startsWith("image/")) {
+                    setRawFile(file);
+                    setEditingBanner(true);
+                  }
+                  e.target.value = "";
+                }}
+              />
+              {rawFile && (
+                <span className="drop-zone-meta muted-2">
+                  {rawFile.name} · {formatBytes(rawFile.size, locale)}
+                </span>
+              )}
+            </div>
+            {bannerUrl && <img className="banner-preview" src={bannerUrl} alt="" />}
             {rawFile && !editingBanner && (
               <button
                 type="button"
@@ -619,7 +665,11 @@ export function CampaignEditorPage() {
                 onClose={() => setEditingBanner(false)}
               />
             )}
-            {upload.isPending && <p className="muted-2">{t.loading}</p>}
+            {upload.isPending && (
+              <p className="muted-2 uploading-row">
+                <span className="spinner" aria-hidden="true" /> {t.loading}
+              </p>
+            )}
             {fieldErrors.banner_key && (
               <span className="field-error" role="alert">
                 {fieldErrors.banner_key}
@@ -631,19 +681,27 @@ export function CampaignEditorPage() {
             <span />
             <div className="row">
               {saveButton}
-              <button className="btn primary" onClick={() => setStage(1)}>
+              <button
+                className="btn primary"
+                disabled={!headlineOk}
+                onClick={() => setStage(1)}
+              >
                 {t.next} <IconArrowRight size={14} />
               </button>
             </div>
           </div>
+          {stage1Hint && (
+            <p className="field-hint stage-hint">
+              <IconAlert size={12} /> {stage1Hint}
+            </p>
+          )}
         </fieldset>
       )}
 
       {/* ---------------- stage 2: placement ---------------- */}
       {stage === 1 && (
-        <fieldset className="form-section" disabled={locked} style={{ borderTop: "none", marginTop: 8, paddingTop: 0 }}>
+        <fieldset className="form-section flush" disabled={locked}>
           <h3 className="section-title">
-            <span className="section-num">2</span>
             {t.secBranches}
             {selected.size > 0 && (
               <span className="chip blue">
@@ -651,10 +709,10 @@ export function CampaignEditorPage() {
               </span>
             )}
           </h3>
-          <p className="field-hint" style={{ marginBottom: 10 }}>{t.placementHint}</p>
+          <p className="field-hint mb-10">{t.placementHint}</p>
           {locations && locations.length === 0 && (
             <p className="callout">
-              ℹ️ {t.noBranches} — <Link to="/app/locations">{t.addBranch}</Link>
+              {t.noBranches} — <Link to="/app/locations">{t.addBranch}</Link>
             </p>
           )}
           <ul className="check-list">
@@ -672,8 +730,7 @@ export function CampaignEditorPage() {
             ))}
           </ul>
 
-          <h3 className="section-title" style={{ marginTop: 18 }}>
-            <span className="section-num">3</span>
+          <h3 className="section-title mt-18">
             {t.secSchedule}
           </h3>
           <div className="two-cols">
@@ -692,13 +749,59 @@ export function CampaignEditorPage() {
                 id="ce-end"
                 type="datetime-local"
                 value={end}
+                min={start}
                 onChange={(e) => setEnd(e.target.value)}
               />
+              {!scheduleOk && (
+                <span className="field-error" role="alert">
+                  {t.endAfterStart}
+                </span>
+              )}
             </div>
           </div>
 
-          <h3 className="section-title" style={{ marginTop: 18 }}>
-            <span className="section-num">4</span>
+          {/* Duration presets: the product sells 24h slots — offer the common
+              spans as one tap instead of manual datetime math. */}
+          <div className="duration-presets" role="group" aria-label={t.secSchedule}>
+            {[
+              { days: 1, label: t.duration24h },
+              { days: 3, label: t.duration3d },
+              { days: 7, label: t.duration7d },
+            ].map(({ days, label }) => (
+              <button
+                key={days}
+                type="button"
+                className="btn subtle small"
+                onClick={() => setEnd(addDays(start, days))}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Live cost estimate: the quote endpoint stays the source of
+              truth — this keeps the money decision informed, not final. */}
+          <div className="estimate-card" aria-live="polite">
+            <strong>{t.estimateTitle}</strong>
+            {estimate ? (
+              <>
+                <span className="estimate-amount">
+                  {formatMinor(estimate.total, estimate.currency, locale)}
+                </span>
+                <span className="muted-2">
+                  {selected.size} {t.estimateLocations} × {estimateDays} {t.estimateDaysLabel}{" · "}
+                  {formatMinor(tariff!.amount_per_24h, tariff!.currency, locale)} {t.perDay}
+                </span>
+                <span className="muted-2">{t.estimateNote}</span>
+              </>
+            ) : selected.size === 0 ? (
+              <span className="muted-2">{t.placementHint}</span>
+            ) : (
+              <span className="muted-2">{t.estimateNoTariff}</span>
+            )}
+          </div>
+
+          <h3 className="section-title mt-18">
             {t.secRenewal}
           </h3>
           <label className="check-row">
@@ -717,19 +820,27 @@ export function CampaignEditorPage() {
             </button>
             <div className="row">
               {saveButton}
-              <button className="btn primary" onClick={() => setStage(2)}>
+              <button
+                className="btn primary"
+                disabled={!scheduleOk}
+                onClick={() => setStage(2)}
+              >
                 {t.next} <IconArrowRight size={14} />
               </button>
             </div>
           </div>
+          {!scheduleOk && (
+            <p className="field-hint stage-hint">
+              <IconAlert size={12} /> {t.endAfterStart}
+            </p>
+          )}
         </fieldset>
       )}
 
       {/* ---------------- stage 3: preview & submit ---------------- */}
       {stage === 2 && (
-        <div className="form-section" style={{ borderTop: "none", marginTop: 8, paddingTop: 0 }}>
+        <div className="form-section flush">
           <h3 className="section-title">
-            <span className="section-num">5</span>
             {t.previewTitle}
           </h3>
 
@@ -753,10 +864,15 @@ export function CampaignEditorPage() {
           {cardPreview ? (
             <div className="preview-frame">
               <div className="ad-card">
-                <img src={bannerUrl} alt="" />
+                <FallImg src={bannerUrl || undefined} alt="" />
                 <div className="ad-card-body">
                   <strong>{headline}</strong>
                   <span className="muted-2">{business.name}</span>
+                  {scheduleOk && (
+                    <span className="muted-2">
+                      {formatDate(start, locale)} → {formatDate(end, locale)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -781,6 +897,12 @@ export function CampaignEditorPage() {
 
           {approved && dirty && (
             <p className="callout danger"><IconAlert size={14} /> {t.reReviewWarning}</p>
+          )}
+
+          {!canQuote && !locked && saved && ["draft", "rejected"].includes(saved.review_status) && (
+            <p className="field-hint stage-hint">
+              <IconAlert size={12} /> {t.quoteNeedsSubmit}
+            </p>
           )}
 
           <div className="stage-actions">
@@ -811,17 +933,6 @@ export function CampaignEditorPage() {
           </div>
           {canSubmit && !bannerKey && <p className="field-hint"><IconAlert size={12} /> {t.bannerRequired}</p>}
         </div>
-      )}
-
-      {status && !submit.isSuccess && (
-        <p className="ok" role="status">
-          {status}
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
       )}
     </section>
   );

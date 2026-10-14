@@ -32,6 +32,14 @@ export interface MapAdapter {
   /** Smoothly move the camera; `offset` shifts the target in screen pixels
    *  so the pin stays visible beside the results panel / bottom sheet. */
   flyTo(center: [number, number], zoom?: number, offset?: [number, number]): void;
+  /** Fit the viewport to bounds (search-result framing), with asymmetric
+   *  padding so the results panel / sheet does not cover the pins. */
+  fitBounds(
+    bounds: LatLngBounds,
+    padding?: Partial<Record<"top" | "bottom" | "left" | "right", number>>,
+  ): void;
+  /** Zoom in one step (zoom-out hint action). */
+  zoomIn(): void;
   /** Highlight the selected pin on the map; null clears the highlight. */
   setSelected(id: string | null): void;
   /** Show the user-location dot at the given coordinates. */

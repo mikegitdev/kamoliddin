@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,8 +9,9 @@ import {
   useRenewals,
 } from "@/shared/api/queries";
 import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
-import { CampaignChip } from "@/shared/ui";
-import { formatDateTime, formatMinor } from "@/shared/format";
+import { confirmDialog } from "@/shared/dialog";
+import { CampaignChip, OrderChip, PlacementChip, FallImg } from "@/shared/ui";
+import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import {
   IconAlert,
@@ -29,7 +30,7 @@ import {
 /** "2 дня 3 ч" / "45 мин" remaining for an active placement. */
 function remainingLabel(endIso: string, t: { daysShort: string; hoursShort: string; minutesShort: string }): string {
   const ms = new Date(endIso).getTime() - Date.now();
-  if (ms <= 0) return "0 " + t.minutesShort;
+  if (ms <= 0) return `<1 ${t.minutesShort}`;
   const minutes = Math.floor(ms / 60_000);
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
@@ -41,14 +42,15 @@ function remainingLabel(endIso: string, t: { daysShort: string; hoursShort: stri
   return parts.join(" ") || `<1 ${t.minutesShort}`;
 }
 
-const PLACEMENT_STATE_CLASS: Record<string, string> = {
-  active: "green",
-  scheduled: "blue",
-  pending: "orange",
-  expired: "gray",
-  cancelled: "gray",
-  blocked: "red",
-};
+/** Re-render once a minute so "remaining" chips stay honest without a timer
+ *  per row. */
+function useMinuteTick() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((v) => v + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+}
 
 /** Campaign detail in the cabinet: content, placements timeline, orders. */
 export function CampaignDetailPage() {
@@ -66,12 +68,21 @@ export function CampaignDetailPage() {
   const lang = locale as "ru" | "uz";
   const agreement = (renewals ?? []).find((r) => r.campaign === id);
   const [busy, setBusy] = useState(false);
+  useMinuteTick();
 
   const toggleRenewal = async () => {
     if (!agreement) return;
+    const cancelling = agreement.status === "active";
+    const ok = await confirmDialog({
+      t,
+      body: cancelling ? t.confirmCancelRenewal : t.confirmEnableRenewal,
+      confirmLabel: cancelling ? t.cancelRenewal : t.enableRenewal,
+      cancelLabel: t.cancel,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
-      if (agreement.status === "active") {
+      if (cancelling) {
         await cancelRenewal(agreement.id);
       } else {
         await enableRenewal(agreement.id);
@@ -102,11 +113,14 @@ export function CampaignDetailPage() {
 
   const campaignOrders = (orders ?? []).filter((o) => o.campaign === campaign.id);
   const activePlacements = (placements ?? []).filter((p) => p.state === "active");
-  const editable = campaign.review_status === "draft" || campaign.review_status === "rejected";
+  // Draft/rejected edit freely; approved content is editable too (the
+  // editor re-enters moderation with an explicit warning) — the affordance
+  // must match the actual capability.
+  const editable = ["draft", "rejected", "approved"].includes(campaign.review_status);
 
   return (
     <section>
-      <div className="row-between" style={{ marginBottom: 14 }}>
+      <div className="row-between mb-14">
         <Link className="btn small" to="/app/campaigns">
           <IconArrowLeft size={14} /> {t.campaigns}
         </Link>
@@ -142,19 +156,17 @@ export function CampaignDetailPage() {
       )}
 
       <div className="review-card">
-        <img className="review-banner" src={campaign.banner_url} alt="" />
+        <FallImg className="review-banner" src={campaign.banner_url || undefined} alt="" />
         <div className="review-body">
           <div className="row-between">
-            <strong style={{ overflowWrap: "anywhere" }}>{campaign.headline}</strong>
+            <strong className="wrap-anywhere">{campaign.headline}</strong>
             <CampaignChip status={campaign.review_status} />
           </div>
           {campaign.body && (
-            <p className="muted-2" style={{ whiteSpace: "pre-wrap" }}>
-              {campaign.body}
-            </p>
+            <p className="muted-2 pre-wrap">{campaign.body}</p>
           )}
           <div className="muted-2">
-            <IconBag size={12} /> {campaign.business_name} · v{campaign.review_version} ·{" "}
+            <IconBag size={12} /> {campaign.business_name} · {t.versionLabel} {campaign.review_version} ·{" "}
             {formatDateTime(campaign.created_at, lang)}
           </div>
           {activePlacements.length > 0 && (
@@ -163,7 +175,7 @@ export function CampaignDetailPage() {
         </div>
       </div>
 
-      <h2 style={{ marginTop: 22 }}>{t.whereShown}</h2>
+      <h2 className="mt-22">{t.whereShown}</h2>
       {placements?.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noPlacements}</p>}
       <div className="table-wrap">
         <table className="table">
@@ -181,29 +193,27 @@ export function CampaignDetailPage() {
               const start = p.actual_start_at ?? p.start_at;
               return (
                 <tr key={p.id}>
-                  <td>
+                  <td data-label={t.branch}>
                     <strong>{p.location_name}</strong>
                     <div className="muted-2">{p.location_business}</div>
                   </td>
-                  <td className="muted-2">
+                  <td className="muted-2" data-label={t.interval}>
                     {formatDateTime(start, lang)} → {formatDateTime(end, lang)}
                     {p.state === "active" && (
-                      <div className="chip green" style={{ marginTop: 4 }}>
+                      <div className="chip green mt-1">
                         <IconClock size={14} /> {remainingLabel(end, t)} {t.left}
                       </div>
                     )}
                   </td>
-                  <td>
-                    <span className={`chip ${PLACEMENT_STATE_CLASS[p.state] ?? "gray"}`}>
-                      {p.state}
-                    </span>
+                  <td data-label={t.status}>
+                    <PlacementChip state={p.state} />
                     {p.source_type === "grant" && (
-                      <span className="chip orange" style={{ marginLeft: 4 }}>
+                      <span className="chip orange ml-1">
                         <IconGift size={14} /> {t.grantLabel}
                       </span>
                     )}
                   </td>
-                  <td className="muted-2">
+                  <td className="muted-2" data-label={t.total}>
                     {p.charge_days} × 24{t.hoursShort}
                   </td>
                 </tr>
@@ -214,20 +224,20 @@ export function CampaignDetailPage() {
       </div>
 
       {agreement && (
-        <div className="card" style={{ marginTop: 22 }}>
+        <div className="card mt-22">
           <div className="row-between">
             <div>
               <h2 className="h-icon"><IconCard size={20} /> {t.secRenewal}</h2>
               <div className="muted-2">
-                <IconPin size={12} /> {agreement.locations_count} · {agreement.charge_days} × 24{t.hoursShort}
+                <IconPin size={12} /> {agreement.locations_count} · {agreement.charge_days} {t.daysShort}
               </div>
               {agreement.status === "active" && agreement.next_run_at && (
-                <div className="chip blue" style={{ marginTop: 6 }}>
-                  {t.nextCharge}: {formatDateTime(agreement.next_run_at, lang)}
+                <div className="chip blue mt-6">
+                  {t.nextCharge}: {formatRelative(agreement.next_run_at, locale)}
                 </div>
               )}
               {agreement.status === "alert" && (
-                <div className="chip red" style={{ marginTop: 6 }}>
+                <div className="chip red mt-6">
                   <IconAlert size={14} /> {t.renewalAlert}
                 </div>
               )}
@@ -248,7 +258,7 @@ export function CampaignDetailPage() {
         </div>
       )}
 
-      <h2 style={{ marginTop: 22 }}>{t.ordersSection}</h2>
+      <h2 className="mt-22">{t.ordersSection}</h2>
       {campaignOrders.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noOrders}</p>}
       <div className="table-wrap">
         <table className="table">
@@ -263,12 +273,14 @@ export function CampaignDetailPage() {
           <tbody>
             {campaignOrders.map((o) => (
               <tr key={o.id}>
-                <td className="muted-2">…{o.id.slice(0, 8)}</td>
-                <td>{formatMinor(o.amount_total, o.currency, lang)}</td>
-                <td>
-                  <span className="chip gray">{o.state}</span>
+                <td className="muted-2" data-label={t.order}>
+                  <Link to={`/app/orders/${o.id}`} title={o.id}>…{o.id.slice(0, 8)}</Link>
                 </td>
-                <td className="muted-2">
+                <td data-label={t.total}>{formatMinor(o.amount_total, o.currency, lang)}</td>
+                <td data-label={t.status}>
+                  <OrderChip state={o.state} />
+                </td>
+                <td className="muted-2" data-label={t.secSchedule}>
                   {formatDateTime(o.interval_start_at, lang)} →{" "}
                   {formatDateTime(o.interval_end_at, lang)}
                 </td>
