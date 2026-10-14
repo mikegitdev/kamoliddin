@@ -8,8 +8,36 @@ const INK = "#000000";
 const LABEL_FONT = ["Open Sans Semibold"];
 const LABEL_MAX = 22;
 
-/** Logical px from the anchor to the badge's top edge (badge radius + ring). */
-const BADGE_LIFT = 15;
+/** Badge ring radius (logical px) at full size. Every location with ads gets
+ *  the SAME badge size — no paid prominence (spec §10 [C]: no paid ranking
+ *  boost in MVP); the count is shown as a number, not as size. The image is
+ *  drawn at this size and only ever scaled down (stays crisp). */
+const BADGE_R = 18;
+
+/** Density factor: few badges on screen ⇒ full size; a crowded view shrinks
+ *  every badge equally so they don't pile up. */
+const DENSITY_FEW = 12;
+const DENSITY_MANY = 120;
+const DENSITY_MIN = 0.8;
+
+function densityFactor(badges: number): number {
+  const t = Math.min(1, Math.max(0, (badges - DENSITY_FEW) / (DENSITY_MANY - DENSITY_FEW)));
+  return Math.round((1 - t * (1 - DENSITY_MIN)) * 100) / 100;
+}
+
+/** Badge, count, name-tag and gray-dot sizes for one density factor. */
+function badgeSizing(density: number) {
+  return {
+    iconSize: density,
+    // Count text ≈ 44% of the ring diameter.
+    textSize: Math.round(BADGE_R * 2 * 0.44 * density * 10) / 10,
+    // Name tag rides on the badge's top edge: text bottom at -(ring radius +
+    // 2px ring/shadow + 15px fit padding & pointer), in ems of the 13px label.
+    calloutOffset: [0, -(BADGE_R * density + 2 + 15) / 13] as [number, number],
+    // No-ads gray dot: 5px in crowded views, up to 7px when sparse.
+    dotRadius: 5 + ((density - DENSITY_MIN) / (1 - DENSITY_MIN)) * 2,
+  };
+}
 
 function calloutLabel(m: MapMarker): string {
   const name = m.label ?? "";
@@ -55,22 +83,26 @@ function calloutImage(fill: string): { image: ImageData; options: Partial<maplib
   };
 }
 
-/** Ad-count badge: filled circle, white ring, soft shadow (2x, 36px logical). */
+/** Ad-count badge: filled circle, white ring, soft shadow — drawn at 2x at
+ *  full size (ring radius BADGE_R); icon-size scales it down when crowded. */
 function badgeImage(fill: string): { image: ImageData; options: Partial<maplibregl.StyleImageMetadata> } {
-  const ctx = canvas2x(72, 72);
+  const r = BADGE_R * 2; // device px
+  const size = r * 2 + 16; // + shadow room
+  const c = size / 2;
+  const ctx = canvas2x(size, size);
   ctx.shadowColor = "rgba(0,0,0,0.22)";
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 2;
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(36, 35, 26, 0, Math.PI * 2);
+  ctx.arc(c, c - 2, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowColor = "transparent";
   ctx.fillStyle = fill;
   ctx.beginPath();
-  ctx.arc(36, 35, 21, 0, Math.PI * 2);
+  ctx.arc(c, c - 2, r * 0.81, 0, Math.PI * 2);
   ctx.fill();
-  return { image: ctx.getImageData(0, 0, 72, 72), options: { pixelRatio: 2 } };
+  return { image: ctx.getImageData(0, 0, size, size), options: { pixelRatio: 2 } };
 }
 
 /**
@@ -89,6 +121,8 @@ export class MapLibreAdapter implements MapAdapter {
   private selectedId: string | null = null;
   private userMarker: maplibregl.Marker | null = null;
   private pulseFrame = 0;
+  /** Density factor the badge layers were last sized for (see badgeSizing). */
+  private density = 1;
 
   // Style with a raster tile source; replaced by a licensed provider in prod.
   private static style(tilesUrl: string): maplibregl.StyleSpecification {
@@ -110,11 +144,11 @@ export class MapLibreAdapter implements MapAdapter {
           id: "tiles",
           type: "raster",
           source: "tiles",
-          // Calm base map (Joymee-style): the brand callouts carry the color.
+          // Bright, lightly muted base map: real colors stay readable while
+          // the brand callouts still pop.
           paint: {
-            "raster-saturation": -0.75,
-            "raster-contrast": -0.12,
-            "raster-brightness-min": 0.06,
+            "raster-saturation": -0.2,
+            "raster-brightness-min": 0.04,
             "raster-fade-duration": 200,
           },
         },
@@ -221,7 +255,7 @@ export class MapLibreAdapter implements MapAdapter {
       if (!this.map) return;
       const t = ((now - start) % 1600) / 1600; // 0→1 every 1.6s
       const ease = 1 - (1 - t) ** 3;
-      this.map.setPaintProperty("pin-pulse", "circle-radius", 13 + ease * 22);
+      this.map.setPaintProperty("pin-pulse", "circle-radius", 16 + ease * 26);
       this.map.setPaintProperty("pin-pulse", "circle-opacity", 0.55 * (1 - t));
       this.pulseFrame = requestAnimationFrame(tick);
     };
@@ -284,11 +318,27 @@ export class MapLibreAdapter implements MapAdapter {
       return;
     }
 
+    const density = densityFactor(markers.filter((m) => m.activeAdsCount > 0).length);
+    const sizing = badgeSizing(density);
+
     if (map.getSource("pins")) {
       (map.getSource("pins") as maplibregl.GeoJSONSource).setData(this.toGeoJson(markers));
+      // Re-layout only when the density bucket actually moved.
+      if (density !== this.density) {
+        this.density = density;
+        for (const id of ["pin-badges", "pin-badge-selected"]) {
+          map.setLayoutProperty(id, "icon-size", sizing.iconSize);
+          map.setLayoutProperty(id, "text-size", sizing.textSize);
+        }
+        for (const id of ["pin-callouts", "pin-callout-selected"]) {
+          map.setLayoutProperty(id, "text-offset", sizing.calloutOffset);
+        }
+        map.setPaintProperty("pins", "circle-radius", sizing.dotRadius);
+      }
       this.markReady();
       return;
     }
+    this.density = density;
 
     map.addSource("pins", {
       type: "geojson",
@@ -349,13 +399,13 @@ export class MapLibreAdapter implements MapAdapter {
     const single: maplibregl.FilterSpecification = ["!", ["has", "point_count"]];
     const withAds: maplibregl.FilterSpecification = [">", ["get", "active_ads_count"], 0];
     // Name tag sits above the badge. icon-text-fit wraps the (lifted) text,
-    // so the text offset alone positions it: text bottom at -(LIFT+15)px +
-    // 4px fit padding + 11px pointer = tip exactly on the badge's top edge.
+    // so the text offset alone positions it: 4px fit padding + 11px pointer
+    // puts the tip exactly on the badge's top edge (follows the density size).
     const calloutLayout = {
       "icon-text-fit": "both",
       "icon-text-fit-padding": [5, 9, 4, 9],
       "text-anchor": "bottom",
-      "text-offset": [0, -(BADGE_LIFT + 15) / 13],
+      "text-offset": sizing.calloutOffset,
       "text-field": ["get", "label"],
       "text-font": LABEL_FONT,
       "text-size": 13,
@@ -371,7 +421,9 @@ export class MapLibreAdapter implements MapAdapter {
       "text-allow-overlap": true,
       "text-field": ["to-string", ["get", "active_ads_count"]],
       "text-font": LABEL_FONT,
-      "text-size": 13,
+      // One size for every badge; shrinks only when the view is crowded.
+      "icon-size": sizing.iconSize,
+      "text-size": sizing.textSize,
       "text-offset": [0, 0.02],
       // Overlapping badges: the larger count draws on top.
       "symbol-sort-key": ["get", "active_ads_count"],
@@ -399,7 +451,7 @@ export class MapLibreAdapter implements MapAdapter {
       filter: ["all", single, ["!", withAds]],
       paint: {
         "circle-color": "#8a8a8a",
-        "circle-radius": 5,
+        "circle-radius": sizing.dotRadius,
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff",
       },
