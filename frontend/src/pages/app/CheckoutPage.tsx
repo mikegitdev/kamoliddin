@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useOrder } from "@/shared/api/queries";
+import { isAwaitingProvider, useOrder } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { checkoutOrder, completeFakePayment } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
@@ -71,7 +71,9 @@ export function CheckoutPage() {
 
   const unpaid = ["draft_quote", "awaiting_payment"].includes(order.state);
   const isPaid = order.state === "paid";
-  const processing = order.state === "payment_processing";
+  // Returned from the provider page (no local checkout session) while its
+  // callback is still outstanding — useOrder polls until it resolves.
+  const processing = isAwaitingProvider(order) && !checkoutRes;
   const showFakePay = !!checkoutRes && checkoutRes.provider === "fake";
   const showExternal = !!checkoutRes && checkoutRes.provider !== "fake";
   // The single most time-critical element gets emphasis as expiry nears.

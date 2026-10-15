@@ -32,6 +32,31 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class QuoteSerializer(OrderSerializer):
+    """Quote response: the draft order plus its id under the quote alias."""
+
+    quote_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + ("quote_id",)  # type: ignore[assignment]
+
+
+class CheckoutResponseSerializer(serializers.Serializer):
+    order_id = serializers.UUIDField(read_only=True)
+    provider = serializers.CharField(read_only=True)
+    provider_payment_id = serializers.CharField(read_only=True)
+    amount_minor = serializers.IntegerField(read_only=True)
+    currency = serializers.CharField(read_only=True)
+    redirect_url = serializers.CharField(read_only=True)
+    order_state = serializers.CharField(read_only=True)
+
+
+class RefundRequestResultSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    state = serializers.CharField(read_only=True)
+    amount = serializers.IntegerField(read_only=True)
+
+
 class PaymentAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentAttempt

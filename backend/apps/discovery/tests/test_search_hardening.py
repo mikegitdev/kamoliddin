@@ -85,7 +85,7 @@ def test_relevance_tiers_name_beats_business_beats_headline(
     client = APIClient()
     response = client.get(
         SEARCH_URL,
-        {"q": "pizza", "lat": 41.312, "lon": 69.210},  # nearest: business_match
+        {"q": "pizza", "lat": "41.312", "lon": "69.210"},  # nearest: business_match
     )
     names = [row["name"] for row in response.json()["locations"]]
     assert names[:3] == ["Pizza House", "Downtown Branch", "Suburb Branch"]

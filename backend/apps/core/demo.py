@@ -737,6 +737,7 @@ def _banner_image(name: str, headline: str, phone: str) -> str:
 
     img = Image.new("RGB", (width, height))
     px = img.load()
+    assert px is not None
     ca, cb = hsv_rgb(*hue_a), hsv_rgb(*hue_b)
     for x in range(width):
         t = x / width
@@ -938,7 +939,7 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
                     reason="Нерабочий номер телефона в объявлении",
                 )
                 refund = request_refund(user=owner, order_id=order.id, reason="Кампания отклонена")
-                process_refund(staff=staff, refund_id=refund.id, decision="approve")
+                process_refund(staff=staff, refund_id=str(refund.id), decision="approve")
             elif scenario == "auto_renew":
                 purchase(campaign, locations[:1], days=1, auto_renew=True)
                 approve_campaign(campaign=campaign, reviewer=staff)

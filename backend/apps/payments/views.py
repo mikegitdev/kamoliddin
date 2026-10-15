@@ -9,10 +9,12 @@ implemented and verified (spec §19 [E]).
 import json
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.http import Http404
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -63,6 +65,15 @@ def _apply_verified_event(provider: str, result: WebhookResult) -> Response:
         event.validated_payload_digest = result.raw_digest
         event.save(update_fields=["payment_attempt", "validated_payload_digest"])
 
+        # SUCCEEDED is terminal: a late/out-of-order failure callback must never
+        # fail a settled order or release its placements (money already moved).
+        if attempt.status == PaymentAttempt.Status.SUCCEEDED and not result.succeeded:
+            logger.warning(
+                "Ignoring failure event %s for already-succeeded attempt %s",
+                result.event_id, attempt.id,
+            )
+            return Response({"detail": "ignored: attempt already succeeded"})
+
         attempt.status = (
             PaymentAttempt.Status.SUCCEEDED
             if result.succeeded
@@ -71,10 +82,10 @@ def _apply_verified_event(provider: str, result: WebhookResult) -> Response:
         attempt.response_digest = result.raw_digest
         attempt.save(update_fields=["status", "response_digest", "updated_at"])
 
-        if attempt.status == PaymentAttempt.Status.FAILED:
+        order = attempt.order
+        if attempt.status == PaymentAttempt.Status.FAILED and order.state != Order.State.PAID:
             # Spec §7.2: a permanently failed payment fails the order and
             # releases its capacity reservations (ADR-0003) — no squatting.
-            order = attempt.order
             order.state = Order.State.FAILED
             order.save(update_fields=["state", "updated_at"])
             from apps.placements.services import release_order_reservations
@@ -93,7 +104,21 @@ class ProviderWebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @extend_schema(
+        tags=["Payments"],
+        summary="Provider payment callback",
+        description="Body is provider-specific and verified by the provider gateway.",
+        request={"application/json": OpenApiTypes.OBJECT},
+        responses=inline_serializer("WebhookAck", fields={
+            "detail": serializers.CharField(),
+            "order_state": serializers.CharField(required=False),
+        }),
+    )
     def post(self, request: Request, provider: str):
+        # The fake gateway verifies nothing: accept its webhooks only on stacks
+        # actually configured for it (dev/test), never next to a real provider.
+        if provider == "fake" and settings.PAYMENT_PROVIDER != "fake":
+            raise Http404
         try:
             gateway = get_payment_gateway(provider)
         except (LookupError, NotImplementedError) as exc:
@@ -115,7 +140,9 @@ class FakeCheckoutCompleteView(APIView):
 
     @extend_schema(exclude=True)
     def post(self, request, provider_payment_id: str):
-        attempt = PaymentAttempt.objects.filter(
+        if settings.PAYMENT_PROVIDER != "fake":
+            raise Http404
+        attempt =PaymentAttempt.objects.filter(
             provider="fake", provider_payment_id=provider_payment_id
         ).first()
         if attempt is None:

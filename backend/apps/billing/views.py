@@ -11,9 +11,12 @@ from apps.accounts.models import User
 from .models import Order
 from .serializers import (
     CheckoutRequestSerializer,
+    CheckoutResponseSerializer,
     OrderDetailSerializer,
     OrderSerializer,
     QuoteRequestSerializer,
+    QuoteSerializer,
+    RefundRequestResultSerializer,
 )
 from .services import (
     CheckoutError,
@@ -70,6 +73,8 @@ class OrderDetailView(RetrieveAPIView):
         summary="Price quote for dates and branches",
         description="Server-side pricing with immutable snapshot (spec §6, §12). "
                     "Response is the draft quote order; the frontend never sets prices.",
+        request=QuoteRequestSerializer,
+        responses={201: QuoteSerializer},
     )
 )
 class QuoteView(APIView):
@@ -90,15 +95,15 @@ class QuoteView(APIView):
             )
         except PermissionDenied:
             raise
-        except CheckoutError as exc:
+        except ValueError as exc:  # e.g. no active tariff configured
             raise ValidationError(str(exc))
-        data = OrderSerializer(order).data
-        data["quote_id"] = str(order.id)
-        return Response(data, status=status.HTTP_201_CREATED)
+        return Response(QuoteSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema_view(
-    post=extend_schema(tags=["Orders"], summary="Create idempotent provider checkout")
+    post=extend_schema(tags=["Orders"], summary="Create idempotent provider checkout",
+                       request=CheckoutRequestSerializer,
+                       responses=CheckoutResponseSerializer)
 )
 class CheckoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -138,7 +143,9 @@ class RefundRequestSerializer(serializers.Serializer):
 
 @extend_schema_view(
     post=extend_schema(tags=["Orders"],
-                       summary="Request a refund for a rejected/suspended paid order")
+                       summary="Request a refund for a rejected/suspended paid order",
+                       request=RefundRequestSerializer,
+                       responses={201: RefundRequestResultSerializer})
 )
 class RefundRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]

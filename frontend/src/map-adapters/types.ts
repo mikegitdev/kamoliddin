@@ -49,9 +49,12 @@ export interface MapAdapter {
   /** Fires once when the map style has loaded — the earliest point where
    *  setMarkers/setClusters can add their layers. */
   onReady(cb: () => void): void;
-  /** Plain markers, no clustering. */
+  /** Plain markers, no clustering. Array order is display priority: earlier
+   *  markers keep their name tag on collision and draw on top. Callers pass
+   *  a neutral order (relevance / distance), never ad volume (spec §10 [C]). */
   setMarkers(markers: MapMarker[]): void;
-  /** Clustered markers when zoomed out (spec §10). */
+  /** Clustered markers when zoomed out (spec §10). Same ordering rule as
+   *  setMarkers. */
   setClusters(markers: MapMarker[]): void;
   /** Single draggable placement pin (branch picker, spec §13). Null clears
    *  it; onChange fires when the user finishes dragging the pin. */

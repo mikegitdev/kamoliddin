@@ -425,8 +425,9 @@ export class MapLibreAdapter implements MapAdapter {
       "icon-size": sizing.iconSize,
       "text-size": sizing.textSize,
       "text-offset": [0, 0.02],
-      // Overlapping badges: the larger count draws on top.
-      "symbol-sort-key": ["get", "active_ads_count"],
+      // Overlapping badges: the higher-priority (lower rank) one draws on
+      // top — allow-overlap layers paint higher sort keys last.
+      "symbol-sort-key": ["-", 0, ["get", "rank"]],
     } satisfies maplibregl.SymbolLayerSpecification["layout"];
     // Selection pulse + halo (under everything): kept in sync with setSelected().
     map.addLayer({
@@ -481,7 +482,9 @@ export class MapLibreAdapter implements MapAdapter {
       layout: {
         ...calloutLayout,
         "icon-image": "callout",
-        "symbol-sort-key": ["-", 0, ["get", "active_ads_count"]],
+        // Colliding tags: lower rank is placed first and keeps its tag.
+        // Neutral by contract (relevance / distance), never ad volume.
+        "symbol-sort-key": ["get", "rank"],
       },
       paint: { "text-color": INK },
     });
@@ -557,7 +560,7 @@ export class MapLibreAdapter implements MapAdapter {
   private toGeoJson(markers: MapMarker[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
     return {
       type: "FeatureCollection",
-      features: markers.map((m) => ({
+      features: markers.map((m, i) => ({
         type: "Feature",
         id: m.id,
         geometry: { type: "Point", coordinates: [m.lng, m.lat] },
@@ -565,6 +568,8 @@ export class MapLibreAdapter implements MapAdapter {
           id: m.id,
           active_ads_count: m.activeAdsCount,
           label: calloutLabel(m),
+          // Display priority = caller's order (0 = highest); see MapAdapter.
+          rank: i,
         },
       })),
     };

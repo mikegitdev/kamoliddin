@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
@@ -14,8 +15,10 @@ class BusinessListCreateView(ListCreateAPIView):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):  # schema generation
             return Business.objects.none()
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return (
-            Business.objects.filter(owner=self.request.user)
+            Business.objects.filter(owner=user)
             .select_related("owner", "category")
             .order_by("-created_at")
         )
@@ -31,4 +34,6 @@ class BusinessDetailView(RetrieveUpdateAPIView):
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
-        return Business.objects.filter(owner=self.request.user).select_related("owner", "category")
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
+        return Business.objects.filter(owner=user).select_related("owner", "category")

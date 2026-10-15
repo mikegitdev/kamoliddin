@@ -1,4 +1,5 @@
 """Owner-facing placement timeline: where and when a campaign actually runs."""
+from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, serializers
 from rest_framework.generics import ListAPIView
@@ -29,7 +30,9 @@ class CampaignPlacementListView(ListAPIView):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):  # schema generation
             return Placement.objects.none()
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return Placement.objects.filter(
             campaign_id=self.kwargs["id"],
-            campaign__business__owner=self.request.user,
+            campaign__business__owner=user,
         ).select_related("location", "location__business").order_by("-start_at")

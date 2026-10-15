@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -51,6 +52,6 @@ class LocationDetailView(RetrieveUpdateAPIView):
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
-        return Location.objects.filter(business__owner=self.request.user).select_related(
-            "business"
-        )
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
+        return Location.objects.filter(business__owner=user).select_related("business")

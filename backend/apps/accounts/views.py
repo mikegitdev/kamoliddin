@@ -7,7 +7,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.serializers import DetailSerializer
+
 from .serializers import (
+    OTPAcceptedSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
     PhoneChangeRequestSerializer,
@@ -41,7 +44,8 @@ def _accepted_response(detail: str, challenge) -> Response:
         summary="Request a phone OTP",
         description="Rate-limited. Always returns the same shape whether or not "
         "the phone number is known (anti-enumeration).",
-        responses={202: None},
+        request=OTPRequestSerializer,
+        responses={202: OTPAcceptedSerializer},
     )
 )
 class OTPRequestView(APIView):
@@ -65,7 +69,7 @@ class OTPRequestView(APIView):
 
 @extend_schema_view(
     post=extend_schema(tags=["Auth"], summary="Verify OTP and open a session",
-                       responses={200: SessionUserSerializer})
+                       request=OTPVerifySerializer, responses={200: SessionUserSerializer})
 )
 class OTPVerifyView(APIView):
     permission_classes = [AllowAny]
@@ -88,7 +92,7 @@ class OTPVerifyView(APIView):
 
 @extend_schema_view(
     post=extend_schema(tags=["Auth"], summary="Terminate the current session",
-                      responses={204: None})
+                       request=None, responses={204: None})
 )
 class LogoutView(APIView):
     def post(self, request):
@@ -96,6 +100,10 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["Auth"], summary="Set the CSRF cookie",
+                      responses={200: DetailSerializer})
+)
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class CsrfView(APIView):
     """GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
@@ -133,7 +141,8 @@ class MeView(APIView):
         summary="Request a phone-change code (sent to the NEW phone)",
         description="Rate-limited. Always returns the same shape whether or not "
                     "the new phone is available (anti-enumeration, spec §9).",
-        responses={202: None},
+        request=PhoneChangeRequestSerializer,
+        responses={202: OTPAcceptedSerializer},
     )
 )
 class PhoneChangeRequestView(APIView):
@@ -159,6 +168,7 @@ class PhoneChangeRequestView(APIView):
 
 @extend_schema_view(
     post=extend_schema(tags=["Auth"], summary="Verify phone-change code and switch phone",
+                       request=PhoneChangeVerifySerializer,
                        responses={200: SessionUserSerializer}),
 )
 class PhoneChangeVerifyView(APIView):

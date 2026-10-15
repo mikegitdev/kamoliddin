@@ -127,13 +127,15 @@ export function AccountPage() {
                 placeholder="+998 90 123 45 67"
               />
             </div>
-            <button
-              className="btn primary"
-              type="submit"
-              disabled={busy || newPhone.replace(/\D/g, "").length < 9}
-            >
-              {busy ? t.sending : t.sendCode}
-            </button>
+            <div className="form-actions">
+              <button
+                className="btn primary"
+                type="submit"
+                disabled={busy || newPhone.replace(/\D/g, "").length < 9}
+              >
+                {busy ? t.sending : t.sendCode}
+              </button>
+            </div>
             {error && (
               <p className="error mt-10" role="alert">
                 {error}
@@ -214,14 +216,16 @@ export function AccountPage() {
             autoComplete="off"
           />
         </div>
-        <button
-          className="btn danger"
-          type="button"
-          onClick={remove}
-          disabled={busy || !deleteConfirmed}
-        >
-          {t.deleteAccount}
-        </button>
+        <div className="form-actions">
+          <button
+            className={`btn ${deleteConfirmed ? "danger-solid" : "danger"}`}
+            type="button"
+            onClick={remove}
+            disabled={busy || !deleteConfirmed}
+          >
+            {t.deleteAccount}
+          </button>
+        </div>
       </div>
 
     </section>

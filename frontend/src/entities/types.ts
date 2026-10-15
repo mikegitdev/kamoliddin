@@ -212,14 +212,3 @@ export interface ApiRenewal {
   created_at: string;
   updated_at: string;
 }
-
-export interface ApiRefundRequestResult {
-  id: string;
-  state: string;
-  amount: number;
-}
-
-export interface ApiErrorShape {
-  error: { code: string; message: string; fields?: Record<string, string[]> };
-  request_id?: string;
-}

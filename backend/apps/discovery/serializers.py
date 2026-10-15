@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.moderation.models import Report
+
 
 class PublicLocationSerializer(serializers.Serializer):
     """Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
@@ -107,3 +109,37 @@ class CategorySerializer(serializers.Serializer):
     slug = serializers.CharField(read_only=True)
     name_ru = serializers.CharField(read_only=True)
     name_uz = serializers.CharField(read_only=True)
+
+
+class PublicSearchLocationSerializer(PublicLocationSerializer):
+    distance_m = serializers.IntegerField(
+        read_only=True, required=False, help_text="Present only when lat/lon are given"
+    )
+
+
+class PublicSearchCampaignSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    headline = serializers.CharField(read_only=True)
+    business_name = serializers.CharField(read_only=True)
+    banner_url = serializers.CharField(read_only=True)
+
+
+class PublicSearchResultSerializer(serializers.Serializer):
+    locations = PublicSearchLocationSerializer(many=True, read_only=True)
+    campaigns = PublicSearchCampaignSerializer(many=True, read_only=True)
+
+
+class PublicTariffSerializer(serializers.Serializer):
+    currency = serializers.CharField(read_only=True)
+    amount_per_24h = serializers.IntegerField(read_only=True, help_text="Minor units (tiyin)")
+    valid_from = serializers.DateTimeField(read_only=True)
+
+
+class PublicPricingSerializer(serializers.Serializer):
+    tariff = PublicTariffSerializer(read_only=True, allow_null=True)
+
+
+class PublicReportRequestSerializer(serializers.Serializer):
+    entity = serializers.ChoiceField(choices=Report.Entity.choices)
+    entity_id = serializers.UUIDField()
+    reason = serializers.CharField(max_length=2000)

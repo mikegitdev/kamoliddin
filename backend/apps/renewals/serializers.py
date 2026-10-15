@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import RenewalAgreement, RenewalAttempt
+from .models import RenewalAgreement
 
 
 class RenewalAgreementSerializer(serializers.ModelSerializer):
@@ -19,12 +19,6 @@ class RenewalAgreementSerializer(serializers.ModelSerializer):
 
     def get_locations_count(self, obj) -> int:
         return len(obj.locations_snapshot)
-
-
-class RenewalAttemptSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = RenewalAttempt
-        fields = ("id", "agreement", "renewal_period_key", "order", "state", "attempted_at")
 
 
 class RenewalEnableSerializer(serializers.Serializer):

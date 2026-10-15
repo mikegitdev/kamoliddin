@@ -11,10 +11,61 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description GET /admin/activity — immutable audit trail tail. */
+        /** @description GET /admin/activity — filterable, paginated immutable audit trail. */
         get: operations["api_v1_admin_activity_list"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/activity/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit trail as CSV (same filters, max 10000 rows) */
+        get: operations["api_v1_admin_activity_export_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/businesses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/businesses?q=&status=&owner= */
+        get: operations["api_v1_admin_businesses_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/businesses/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable/enable a business (hides all its ads live) */
+        post: operations["api_v1_admin_businesses_status_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28,7 +79,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description GET /admin/campaigns?q=&status= — searchable oversight list. */
+        /** @description GET /admin/campaigns?q=&status=&business= — searchable, paginated. */
         get: operations["api_v1_admin_campaigns_list"];
         put?: never;
         post?: never;
@@ -107,6 +158,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/locations?q=&status=&business= */
+        get: operations["api_v1_admin_locations_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/locations/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable/enable one branch */
+        post: operations["api_v1_admin_locations_status_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders": {
         parameters: {
             query?: never;
@@ -114,7 +199,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description GET /admin/orders — recent platform orders (read-only oversight). */
+        /** @description GET /admin/orders?state=&q=&business= — platform orders (read-only). */
         get: operations["api_v1_admin_orders_list"];
         put?: never;
         post?: never;
@@ -138,6 +223,89 @@ export interface paths {
         get: operations["api_v1_admin_overview_retrieve"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/payment-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/payment-events?provider=&q= — raw provider callbacks. */
+        get: operations["api_v1_admin_payment_events_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/payments?status=&provider=&q=&order= */
+        get: operations["api_v1_admin_payments_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/placements?q=&state=&source=&visible=1&business=&location=&campaign= */
+        get: operations["api_v1_admin_placements_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/placements/{id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_v1_admin_placements_block_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/placements/{id}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_v1_admin_placements_unblock_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -171,6 +339,23 @@ export interface paths {
         put?: never;
         /** Manually process a refund request */
         post: operations["api_v1_admin_refunds_process_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/renewals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/renewals?state=&agreement_status=&q= */
+        get: operations["api_v1_admin_renewals_list"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -246,6 +431,72 @@ export interface paths {
         patch: operations["api_v1_admin_settings_ad_limit_partial_update"];
         trace?: never;
     };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /admin/users?q=&status=active|blocked|staff|deleted */
+        get: operations["api_v1_admin_users_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One account with its businesses, recent orders and activity */
+        get: operations["api_v1_admin_users_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_v1_admin_users_block_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{id}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_v1_admin_users_unblock_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/csrf": {
         parameters: {
             query?: never;
@@ -254,6 +505,7 @@ export interface paths {
             cookie?: never;
         };
         /**
+         * Set the CSRF cookie
          * @description GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
          *     X-CSRFToken on authenticated mutations (spec §9).
          */
@@ -565,6 +817,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Upload a banner/logo (validated, re-encoded, metadata stripped) */
         post: operations["api_v1_media_upload_create"];
         delete?: never;
         options?: never;
@@ -668,7 +921,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description POST /api/v1/payments/{provider}/webhook — provider-initiated callbacks. */
+        /**
+         * Provider payment callback
+         * @description Body is provider-specific and verified by the provider gateway.
+         */
         post: operations["api_v1_payments_webhook_create"];
         delete?: never;
         options?: never;
@@ -902,7 +1158,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Activity: {
+        AdLimitValue: {
+            readonly key: string;
+            readonly value: number;
+        };
+        AdminActivity: {
             /** Format: uuid */
             readonly id: string;
             action: string;
@@ -913,30 +1173,203 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
         };
+        AdminBusiness: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            slug: string;
+            status?: components["schemas"]["EntityStatusEnum"];
+            readonly category_ru: string;
+            readonly category_uz: string;
+            /** Format: uuid */
+            readonly owner_id: string;
+            readonly owner_phone: string;
+            readonly owner_active: boolean;
+            readonly locations_count: number;
+            readonly campaigns_count: number;
+            readonly live_ads: number;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
         AdminCampaign: {
             /** Format: uuid */
             readonly id: string;
             headline: string;
             review_status?: components["schemas"]["ReviewStatusEnum"];
             review_version?: number;
+            /** Format: uuid */
+            readonly business_id: string;
             readonly business_name: string;
             readonly owner_phone: string;
             readonly banner_url: string;
             /** Format: date-time */
             readonly updated_at: string;
         };
+        AdminLocation: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            address: string;
+            city?: string;
+            status?: components["schemas"]["EntityStatusEnum"];
+            risk_flags?: unknown;
+            /** Format: uuid */
+            readonly business_id: string;
+            readonly business_name: string;
+            readonly business_status: string;
+            /** Format: double */
+            readonly lat: number;
+            /** Format: double */
+            readonly lng: number;
+            readonly live_ads: number;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
         AdminOrder: {
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly business_id: string;
             readonly business_name: string;
+            /** Format: uuid */
+            readonly campaign_id: string;
             readonly campaign_headline: string;
             /** Format: int64 */
             amount_total: number;
             currency?: string;
-            state?: components["schemas"]["State16aEnum"];
+            state?: components["schemas"]["OrderStateEnum"];
+            /** @description Advertiser consent to auto-renewal captured at quote time */
+            auto_renew?: boolean;
+            readonly attempts_count: number;
             /** Format: date-time */
             readonly created_at: string;
         };
+        AdminOverview: {
+            queue_depth: number;
+            open_reports: number;
+            refunds_requested: number;
+            campaigns: {
+                [key: string]: number;
+            };
+            active_placements: number;
+            revenue: components["schemas"]["_Revenue"];
+            owners: number;
+            attention: components["schemas"]["_Attention"];
+        };
+        AdminPayment: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly order_id: string;
+            readonly order_state: string;
+            provider: string;
+            /** @default  */
+            provider_payment_id: string;
+            /** Format: int64 */
+            amount: number;
+            status?: components["schemas"]["PaymentAttemptStatusEnum"];
+            readonly business_name: string;
+            readonly campaign_headline: string;
+            readonly events_count: number;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+        };
+        AdminPaymentEvent: {
+            /** Format: uuid */
+            readonly id: string;
+            provider: string;
+            event_id: string;
+            /** Format: uuid */
+            readonly payment_attempt_id: string | null;
+            readonly payment_status: string;
+            /** Format: uuid */
+            readonly order_id: string;
+            validated_payload_digest: string;
+            /** Format: date-time */
+            readonly received_at: string;
+        };
+        AdminPlacement: {
+            /** Format: uuid */
+            readonly id: string;
+            state?: components["schemas"]["PlacementStateEnum"];
+            source_type?: components["schemas"]["SourceTypeEnum"];
+            /** @description Why a BLOCKED placement was blocked (e.g. capacity_conflict) */
+            block_reason?: string;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            end_at: string;
+            charge_days: number;
+            /** Format: uuid */
+            readonly order_id: string | null;
+            /** Format: uuid */
+            readonly campaign_id: string;
+            readonly campaign_headline: string;
+            readonly campaign_status: string;
+            readonly banner_url: string;
+            /** Format: uuid */
+            readonly location_id: string;
+            readonly location_name: string;
+            /** Format: uuid */
+            readonly business_id: string;
+            readonly business_name: string;
+            readonly visible: boolean;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        AdminRenewalAttempt: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly agreement_id: string;
+            readonly agreement_status: string;
+            /** @description e.g. 2026-W43; one charge per period */
+            renewal_period_key: string;
+            state?: components["schemas"]["AdminRenewalAttemptStateEnum"];
+            /** Format: uuid */
+            readonly order_id: string | null;
+            readonly amount: number;
+            readonly business_name: string;
+            readonly campaign_headline: string;
+            /** Format: date-time */
+            readonly attempted_at: string;
+        };
+        /**
+         * @description * `pending` - Pending
+         *     * `succeeded` - Succeeded
+         *     * `failed` - Failed
+         *     * `reconciliation` - Ambiguous — reconciliation required
+         * @enum {string}
+         */
+        AdminRenewalAttemptStateEnum: "pending" | "succeeded" | "failed" | "reconciliation";
+        AdminUser: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Phone (E.164) */
+            phone_e164: string;
+            is_active?: boolean;
+            is_staff?: boolean;
+            readonly is_deleted: boolean;
+            readonly businesses_count: number;
+            /** Format: date-time */
+            last_login?: string | null;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        AdminUserDetail: {
+            user: components["schemas"]["AdminUser"];
+            businesses: components["schemas"]["_UserBusiness"][];
+            orders: components["schemas"]["_UserOrder"][];
+            activity: components["schemas"]["AdminActivity"][];
+        };
+        /**
+         * @description * `approve` - approve
+         *     * `reject` - reject
+         * @enum {string}
+         */
+        ApproveRejectDecisionEnum: "approve" | "reject";
         Business: {
             /** Format: uuid */
             readonly id: string;
@@ -951,7 +1384,7 @@ export interface components {
             whatsapp?: string;
             /** Format: uri */
             site?: string;
-            readonly status: components["schemas"]["Status6daEnum"];
+            readonly status: components["schemas"]["EntityStatusEnum"];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -988,20 +1421,24 @@ export interface components {
         CampaignReview: {
             /** Format: uuid */
             readonly id: string;
-            readonly decision: components["schemas"]["CampaignReviewDecisionEnum"];
+            readonly decision: components["schemas"]["ReviewDecisionEnum"];
             readonly reason: string;
             readonly content_version: number;
             /** Format: date-time */
             readonly created_at: string;
         };
-        /**
-         * @description * `approved` - Approved
-         *     * `rejected` - Rejected
-         * @enum {string}
-         */
-        CampaignReviewDecisionEnum: "approved" | "rejected";
+        /** @description Body returned by review/suspend/unsuspend (schema documentation). */
+        CampaignStatusResult: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly review_status: string;
+            readonly review_version: number;
+        };
         CampaignSuspend: {
             reason: string;
+        };
+        CampaignUnsuspend: {
+            reason?: string;
         };
         Category: {
             /** Format: uuid */
@@ -1010,18 +1447,40 @@ export interface components {
             readonly name_ru: string;
             readonly name_uz: string;
         };
-        /**
-         * @description * `approve` - approve
-         *     * `reject` - reject
-         * @enum {string}
-         */
-        Decision55fEnum: "approve" | "reject";
+        CheckoutRequest: {
+            /**
+             * Format: uri
+             * @default
+             */
+            return_url: string;
+        };
+        CheckoutResponse: {
+            /** Format: uuid */
+            readonly order_id: string;
+            readonly provider: string;
+            readonly provider_payment_id: string;
+            readonly amount_minor: number;
+            readonly currency: string;
+            readonly redirect_url: string;
+            readonly order_state: string;
+        };
+        /** @description Plain acknowledgement body: {"detail": "..."}. */
+        Detail: {
+            readonly detail: string;
+        };
         /**
          * @description * `location` - Location
          *     * `campaign` - Campaign
          * @enum {string}
          */
         EntityEnum: "location" | "campaign";
+        /**
+         * @description * `active` - Active
+         *     * `under_review` - Under review
+         *     * `disabled` - Disabled
+         * @enum {string}
+         */
+        EntityStatusEnum: "active" | "under_review" | "disabled";
         Grant: {
             /** Format: uuid */
             campaign_id: string;
@@ -1032,6 +1491,15 @@ export interface components {
             /** Format: date-time */
             end_at: string;
             reason: string;
+        };
+        GrantCreated: {
+            /** Format: uuid */
+            id: string;
+        };
+        GrantOptions: {
+            campaigns: components["schemas"]["_GrantCampaignOption"][];
+            locations: components["schemas"]["_GrantLocationOption"][];
+            grants: components["schemas"]["_GrantRow"][];
         };
         Location: {
             /** Format: uuid */
@@ -1050,12 +1518,44 @@ export interface components {
             telegram?: string;
             whatsapp?: string;
             hours?: unknown;
-            readonly status: components["schemas"]["Status6daEnum"];
+            readonly status: components["schemas"]["EntityStatusEnum"];
             readonly risk_flags: unknown;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
+        };
+        /** @description Response shape of GET /auth/me/summary (schema documentation only). */
+        MeSummary: {
+            /** @description Campaign count per review status */
+            campaigns: {
+                [key: string]: number;
+            };
+            active_placements: number;
+            expiring_soon: components["schemas"]["_ExpiringPlacement"][];
+            spend: components["schemas"]["_Spend"];
+            next_renewal: components["schemas"]["_NextRenewal"] | null;
+        };
+        MediaUploadResult: {
+            key: string;
+            url: string;
+        };
+        /** @description Uniform 202 body for OTP requests (anti-enumeration). */
+        OTPAccepted: {
+            readonly detail: string;
+            /** @description Dev/test stacks only (fake SMS + OTP_DEV_ECHO); never present in prod. */
+            readonly dev_code: string;
+        };
+        OTPRequest: {
+            phone: string;
+        };
+        OTPVerify: {
+            phone: string;
+            code: string;
+        };
+        Ok: {
+            id: string;
+            status: string;
         };
         Order: {
             /** Format: uuid */
@@ -1069,7 +1569,7 @@ export interface components {
             readonly campaign_status: string;
             readonly amount_total: number;
             readonly currency: string;
-            readonly state: components["schemas"]["State16aEnum"];
+            readonly state: components["schemas"]["OrderStateEnum"];
             /** Format: date-time */
             readonly quote_expires_at: string | null;
             /**
@@ -1103,7 +1603,7 @@ export interface components {
             readonly campaign_status: string;
             readonly amount_total: number;
             readonly currency: string;
-            readonly state: components["schemas"]["State16aEnum"];
+            readonly state: components["schemas"]["OrderStateEnum"];
             /** Format: date-time */
             readonly quote_expires_at: string | null;
             /**
@@ -1141,6 +1641,166 @@ export interface components {
             /** Format: int64 */
             line_total: number;
         };
+        /**
+         * @description * `draft_quote` - Draft quote
+         *     * `awaiting_payment` - Awaiting payment
+         *     * `payment_processing` - Payment processing
+         *     * `paid` - Paid
+         *     * `failed` - Failed
+         *     * `expired` - Expired
+         * @enum {string}
+         */
+        OrderStateEnum: "draft_quote" | "awaiting_payment" | "payment_processing" | "paid" | "failed" | "expired";
+        PaginatedAdminActivityList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminActivity"][];
+        };
+        PaginatedAdminBusinessList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminBusiness"][];
+        };
+        PaginatedAdminCampaignList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminCampaign"][];
+        };
+        PaginatedAdminLocationList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminLocation"][];
+        };
+        PaginatedAdminOrderList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminOrder"][];
+        };
+        PaginatedAdminPaymentEventList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminPaymentEvent"][];
+        };
+        PaginatedAdminPaymentList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminPayment"][];
+        };
+        PaginatedAdminPlacementList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminPlacement"][];
+        };
+        PaginatedAdminRenewalAttemptList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminRenewalAttempt"][];
+        };
+        PaginatedAdminUserList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=400&limit=100
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?offset=200&limit=100
+             */
+            previous?: string | null;
+            results: components["schemas"]["AdminUser"][];
+        };
         PatchedAdLimit: {
             value?: number;
         };
@@ -1158,7 +1818,7 @@ export interface components {
             whatsapp?: string;
             /** Format: uri */
             site?: string;
-            readonly status?: components["schemas"]["Status6daEnum"];
+            readonly status?: components["schemas"]["EntityStatusEnum"];
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -1205,7 +1865,7 @@ export interface components {
             telegram?: string;
             whatsapp?: string;
             hours?: unknown;
-            readonly status?: components["schemas"]["Status6daEnum"];
+            readonly status?: components["schemas"]["EntityStatusEnum"];
             readonly risk_flags?: unknown;
             /** Format: date-time */
             readonly created_at?: string;
@@ -1230,6 +1890,13 @@ export interface components {
          * @enum {string}
          */
         PaymentAttemptStatusEnum: "pending" | "succeeded" | "failed";
+        PhoneChangeRequest: {
+            new_phone: string;
+        };
+        PhoneChangeVerify: {
+            new_phone: string;
+            code: string;
+        };
         Placement: {
             /** Format: uuid */
             readonly id: string;
@@ -1346,6 +2013,51 @@ export interface components {
             readonly category: string;
             readonly active_ads: components["schemas"]["PublicCampaign"][];
         };
+        PublicPricing: {
+            readonly tariff: components["schemas"]["PublicTariff"] | null;
+        };
+        PublicReportRequest: {
+            entity: components["schemas"]["EntityEnum"];
+            /** Format: uuid */
+            entity_id: string;
+            reason: string;
+        };
+        PublicSearchCampaign: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly headline: string;
+            readonly business_name: string;
+            readonly banner_url: string;
+        };
+        /**
+         * @description Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
+         *     (spec §10) — not historical ones.
+         */
+        PublicSearchLocation: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            /** Format: double */
+            readonly lon: number;
+            /** Format: double */
+            readonly lat: number;
+            readonly category: string;
+            readonly business_name: string;
+            readonly active_ads_count: number;
+            /** @description Present only when lat/lon are given */
+            readonly distance_m: number;
+        };
+        PublicSearchResult: {
+            readonly locations: components["schemas"]["PublicSearchLocation"][];
+            readonly campaigns: components["schemas"]["PublicSearchCampaign"][];
+        };
+        PublicTariff: {
+            readonly currency: string;
+            /** @description Minor units (tiyin) */
+            readonly amount_per_24h: number;
+            /** Format: date-time */
+            readonly valid_from: string;
+        };
         /** @description Campaign awaiting review, with the context a moderator needs (spec §12). */
         QueueCampaign: {
             /** Format: uuid */
@@ -1360,6 +2072,58 @@ export interface components {
             readonly locations: string[];
             /** Format: date-time */
             readonly updated_at: string;
+        };
+        /** @description Quote response: the draft order plus its id under the quote alias. */
+        Quote: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly business: string;
+            readonly business_name: string;
+            /** Format: uuid */
+            readonly campaign: string;
+            readonly campaign_headline: string;
+            readonly campaign_status: string;
+            readonly amount_total: number;
+            readonly currency: string;
+            readonly state: components["schemas"]["OrderStateEnum"];
+            /** Format: date-time */
+            readonly quote_expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description Requested advertising interval start (quote snapshot)
+             */
+            readonly interval_start_at: string | null;
+            /**
+             * Format: date-time
+             * @description Requested advertising interval end (quote snapshot)
+             */
+            readonly interval_end_at: string | null;
+            /** @description Advertiser consent to auto-renewal captured at quote time */
+            readonly auto_renew: boolean;
+            readonly items: components["schemas"]["OrderItem"][];
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: uuid */
+            readonly quote_id: string;
+        };
+        QuoteRequest: {
+            /** Format: uuid */
+            business_id: string;
+            /** Format: uuid */
+            campaign_id: string;
+            location_ids: string[];
+            /** Format: date-time */
+            requested_start_at: string;
+            /** Format: date-time */
+            requested_end_at: string;
+            /** @default false */
+            auto_renew: boolean;
+        };
+        Reason: {
+            reason: string;
         };
         Refund: {
             /** Format: uuid */
@@ -1382,10 +2146,19 @@ export interface components {
             readonly created_at: string;
         };
         RefundProcess: {
-            decision: components["schemas"]["Decision55fEnum"];
+            decision: components["schemas"]["ApproveRejectDecisionEnum"];
             /** @default  */
             provider_ref: string;
             amount?: number;
+        };
+        RefundRequest: {
+            reason: string;
+        };
+        RefundRequestResult: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly state: string;
+            readonly amount: number;
         };
         /**
          * @description * `refund_requested` - Refund requested
@@ -1438,6 +2211,10 @@ export interface components {
          * @enum {string}
          */
         RenewalAgreementStatusEnum: "active" | "alert" | "disabled" | "pending_token";
+        RenewalEnable: {
+            /** Format: uuid */
+            agreement_id: string;
+        };
         Report: {
             /** Format: uuid */
             readonly id: string;
@@ -1452,17 +2229,17 @@ export interface components {
             /** Format: date-time */
             readonly resolved_at: string | null;
         };
-        ReportProcess: {
-            decision: components["schemas"]["ReportProcessDecisionEnum"];
-            /** @default  */
-            note: string;
-        };
         /**
          * @description * `resolve` - resolve
          *     * `dismiss` - dismiss
          * @enum {string}
          */
-        ReportProcessDecisionEnum: "resolve" | "dismiss";
+        ReportDecisionEnum: "resolve" | "dismiss";
+        ReportProcess: {
+            decision: components["schemas"]["ReportDecisionEnum"];
+            /** @default  */
+            note: string;
+        };
         /**
          * @description * `open` - Open
          *     * `resolved` - Resolved (action taken)
@@ -1471,10 +2248,16 @@ export interface components {
          */
         ReportStateEnum: "open" | "resolved" | "dismissed";
         Review: {
-            decision: components["schemas"]["Decision55fEnum"];
+            decision: components["schemas"]["ApproveRejectDecisionEnum"];
             /** @default  */
             reason: string;
         };
+        /**
+         * @description * `approved` - Approved
+         *     * `rejected` - Rejected
+         * @enum {string}
+         */
+        ReviewDecisionEnum: "approved" | "rejected";
         /**
          * @description * `draft` - Draft
          *     * `submitted` - Submitted
@@ -1498,23 +2281,113 @@ export interface components {
          * @enum {string}
          */
         SourceTypeEnum: "paid" | "grant";
+        StatusChange: {
+            status: components["schemas"]["StatusChangeStatusEnum"];
+            reason: string;
+        };
         /**
-         * @description * `draft_quote` - Draft quote
-         *     * `awaiting_payment` - Awaiting payment
-         *     * `payment_processing` - Payment processing
-         *     * `paid` - Paid
-         *     * `failed` - Failed
-         *     * `expired` - Expired
+         * @description * `active` - active
+         *     * `disabled` - disabled
          * @enum {string}
          */
-        State16aEnum: "draft_quote" | "awaiting_payment" | "payment_processing" | "paid" | "failed" | "expired";
-        /**
-         * @description * `active` - Active
-         *     * `under_review` - Under review
-         *     * `disabled` - Disabled
-         * @enum {string}
-         */
-        Status6daEnum: "active" | "under_review" | "disabled";
+        StatusChangeStatusEnum: "active" | "disabled";
+        WebhookAck: {
+            detail: string;
+            order_state?: string;
+        };
+        _Attention: {
+            /** @description Agreements in ALERT */
+            renewal_alerts: number;
+            /** @description Renewal attempts with an ambiguous provider outcome */
+            renewal_reconciliation: number;
+            /** @description Paid placements blocked by a capacity conflict (refund queue) */
+            capacity_blocked: number;
+            /** @description Placements taken down by staff */
+            staff_blocked: number;
+            blocked_users: number;
+            disabled_businesses: number;
+            disabled_locations: number;
+        };
+        _ExpiringPlacement: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            campaign_id: string;
+            headline: string;
+            location: string;
+            /** Format: date-time */
+            ends_at: string;
+        };
+        _GrantCampaignOption: {
+            /** Format: uuid */
+            id: string;
+            headline: string;
+            business_name: string;
+        };
+        _GrantLocationOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            business_name: string;
+        };
+        _GrantRow: {
+            /** Format: uuid */
+            id: string;
+            campaign_headline: string;
+            business_name: string;
+            location_name: string;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            end_at: string;
+            reason: string;
+            admin_phone: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        _NextRenewal: {
+            /** Format: uuid */
+            agreement_id: string;
+            campaign_headline: string;
+            /** Format: date-time */
+            next_run_at: string;
+            locations_count: number;
+            charge_days: number;
+        };
+        _Revenue: {
+            /** @description Paid minus refunded, minor units */
+            total: number;
+            /** @description This month, net of refunds, minor units */
+            month: number;
+        };
+        _Spend: {
+            /** @description Minor units (tiyin) */
+            total: number;
+            /** @description Minor units (tiyin) */
+            month: number;
+            currency: string;
+        };
+        _UserBusiness: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            status?: components["schemas"]["EntityStatusEnum"];
+            readonly locations_count: number;
+            readonly campaigns_count: number;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        _UserOrder: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly campaign_headline: string;
+            /** Format: int64 */
+            amount_total: number;
+            currency?: string;
+            state?: components["schemas"]["OrderStateEnum"];
+            /** Format: date-time */
+            readonly created_at: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1526,7 +2399,25 @@ export type $defs = Record<string, never>;
 export interface operations {
     api_v1_admin_activity_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description action substring, e.g. 'refund.' */
+                action?: string;
+                /** @description actor phone substring, or 'system' */
+                actor?: string;
+                /** @description exact entity, e.g. campaign */
+                entity?: string;
+                entity_id?: string;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+                /** @description free text across action/entity id/metadata */
+                q?: string;
+                /** @description ISO date/datetime */
+                since?: string;
+                /** @description ISO date/datetime (inclusive day) */
+                until?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1538,14 +2429,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Activity"][];
+                    "application/json": components["schemas"]["PaginatedAdminActivityList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_activity_export_retrieve: {
+        parameters: {
+            query?: {
+                /** @description action substring, e.g. 'refund.' */
+                action?: string;
+                /** @description actor phone substring, or 'system' */
+                actor?: string;
+                /** @description exact entity, e.g. campaign */
+                entity?: string;
+                entity_id?: string;
+                /** @description free text across action/entity id/metadata */
+                q?: string;
+                /** @description ISO date/datetime */
+                since?: string;
+                /** @description ISO date/datetime (inclusive day) */
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    api_v1_admin_businesses_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminBusinessList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_businesses_status_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["StatusChange"];
+                "multipart/form-data": components["schemas"]["StatusChange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
         };
     };
     api_v1_admin_campaigns_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1557,7 +2537,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminCampaign"][];
+                    "application/json": components["schemas"]["PaginatedAdminCampaignList"];
                 };
             };
         };
@@ -1579,12 +2559,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CampaignStatusResult"];
+                };
             };
         };
     };
@@ -1605,12 +2586,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CampaignStatusResult"];
+                };
             };
         };
     };
@@ -1623,14 +2605,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CampaignUnsuspend"];
+                "application/x-www-form-urlencoded": components["schemas"]["CampaignUnsuspend"];
+                "multipart/form-data": components["schemas"]["CampaignUnsuspend"];
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CampaignStatusResult"];
+                };
             };
         };
     };
@@ -1643,12 +2632,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["GrantOptions"];
+                };
             };
         };
     };
@@ -1667,18 +2657,24 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["GrantCreated"];
+                };
             };
         };
     };
-    api_v1_admin_orders_list: {
+    api_v1_admin_locations_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1690,7 +2686,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminOrder"][];
+                    "application/json": components["schemas"]["PaginatedAdminLocationList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_locations_status_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["StatusChange"];
+                "multipart/form-data": components["schemas"]["StatusChange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    api_v1_admin_orders_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminOrderList"];
                 };
             };
         };
@@ -1704,12 +2751,139 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AdminOverview"];
+                };
+            };
+        };
+    };
+    api_v1_admin_payment_events_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminPaymentEventList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_payments_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminPaymentList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_placements_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminPlacementList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_placements_block_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    api_v1_admin_placements_unblock_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
             };
         };
     };
@@ -1749,12 +2923,37 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Refund"];
+                };
+            };
+        };
+    };
+    api_v1_admin_renewals_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminRenewalAttemptList"];
+                };
             };
         };
     };
@@ -1794,12 +2993,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Report"];
+                };
             };
         };
     };
@@ -1831,12 +3031,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AdLimitValue"];
+                };
             };
         };
     };
@@ -1855,12 +3056,112 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AdLimitValue"];
+                };
+            };
+        };
+    };
+    api_v1_admin_users_list: {
+        parameters: {
+            query?: {
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description The initial index from which to return the results. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAdminUserList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_users_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDetail"];
+                };
+            };
+        };
+    };
+    api_v1_admin_users_block_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    api_v1_admin_users_unblock_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
             };
         };
     };
@@ -1873,12 +3174,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
             };
         };
     };
@@ -1946,12 +3248,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MeSummary"];
+                };
             };
         };
     };
@@ -1962,14 +3265,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OTPRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["OTPRequest"];
+                "multipart/form-data": components["schemas"]["OTPRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OTPAccepted"];
+                };
             };
         };
     };
@@ -1980,7 +3290,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OTPVerify"];
+                "application/x-www-form-urlencoded": components["schemas"]["OTPVerify"];
+                "multipart/form-data": components["schemas"]["OTPVerify"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -1999,14 +3315,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneChangeRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PhoneChangeRequest"];
+                "multipart/form-data": components["schemas"]["PhoneChangeRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OTPAccepted"];
+                };
             };
         };
     };
@@ -2017,7 +3340,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneChangeVerify"];
+                "application/x-www-form-urlencoded": components["schemas"]["PhoneChangeVerify"];
+                "multipart/form-data": components["schemas"]["PhoneChangeVerify"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -2314,12 +3643,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Campaign"];
+                };
             };
         };
     };
@@ -2373,19 +3703,29 @@ export interface operations {
     };
     api_v1_media_upload_create: {
         parameters: {
-            query?: never;
+            query?: {
+                purpose?: "banners" | "logos";
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaUploadResult"];
+                };
             };
         };
     };
@@ -2438,14 +3778,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CheckoutRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["CheckoutRequest"];
+                "multipart/form-data": components["schemas"]["CheckoutRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CheckoutResponse"];
+                };
             };
         };
     };
@@ -2458,14 +3805,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["RefundRequest"];
+                "multipart/form-data": components["schemas"]["RefundRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RefundRequestResult"];
+                };
             };
         };
     };
@@ -2476,14 +3830,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["QuoteRequest"];
+                "multipart/form-data": components["schemas"]["QuoteRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
             };
         };
     };
@@ -2496,14 +3857,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WebhookAck"];
+                };
             };
         };
     };
@@ -2596,12 +3964,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublicPricing"];
+                };
             };
         };
     };
@@ -2612,32 +3981,46 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicReportRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PublicReportRequest"];
+                "multipart/form-data": components["schemas"]["PublicReportRequest"];
+            };
+        };
         responses: {
-            /** @description No response body */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
             };
         };
     };
     api_v1_public_search_retrieve: {
         parameters: {
-            query?: never;
+            query?: {
+                category?: string;
+                lat?: number;
+                lon?: number;
+                /** @description At least 2 characters */
+                q?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublicSearchResult"];
+                };
             };
         };
     };
@@ -2671,12 +4054,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RenewalAgreement"];
+                };
             };
         };
     };
@@ -2687,14 +4071,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenewalEnable"];
+                "application/x-www-form-urlencoded": components["schemas"]["RenewalEnable"];
+                "multipart/form-data": components["schemas"]["RenewalEnable"];
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RenewalAgreement"];
+                };
             };
         };
     };

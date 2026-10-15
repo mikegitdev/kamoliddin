@@ -5,10 +5,14 @@ Ordering: relevance first, then distance. No paid ranking boost in MVP.
 All public responses expose ONLY currently-eligible content; expired/blocked
 campaigns are invisible everywhere, including direct URLs (spec §7.1, §14).
 """
+import uuid
+
 from django.contrib.gis.geos import Polygon
-from django.db.models import Count, Q
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -18,6 +22,7 @@ from rest_framework.views import APIView
 
 from apps.businesses.models import Business, BusinessCategory
 from apps.campaigns.models import Campaign
+from apps.core.serializers import DetailSerializer
 from apps.locations.models import Location
 from apps.placements.models import Placement, eligible_now_q
 
@@ -27,6 +32,21 @@ from . import serializers
 MAX_BBOX_AREA = 1.0  # deg^2; roughly a ~100km square around Tashkent
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 100
+
+
+def _active_ads_count(now):
+    """Eligible-placement count per location as a correlated subquery. A plain
+    Count("placements") gets multiplied by the business->campaigns join that
+    text search adds, inflating map-pin counts whenever `q` is present."""
+    counts = (
+        Placement.objects.filter(location=OuterRef("pk"))
+        .filter(eligible_now_q(now))
+        .order_by()
+        .values("location")
+        .annotate(n=Count("pk"))
+        .values("n")
+    )
+    return Coalesce(Subquery(counts, output_field=IntegerField()), 0)
 
 
 def _relevance_annotation(q: str):
@@ -96,10 +116,9 @@ class PublicLocationListView(ListAPIView):
         now = timezone.now()
         qs = (
             Location.objects.filter(status=Location.Status.ACTIVE)
-            .filter(business__status=Location.Status.ACTIVE)
+            .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
-            .annotate(active_ads_count=Count("placements",
-                                             filter=eligible_now_q(now, prefix="placements__")))
+            .annotate(active_ads_count=_active_ads_count(now))
             .filter(point__contained=envelope)
         )
 
@@ -234,7 +253,15 @@ class CategoryListView(ListAPIView):
 @extend_schema_view(
     get=extend_schema(tags=["Public"], summary="Search locations and campaigns",
                       description="Relevance first (name/business/ad headline match),"
-                                  " then distance from the optional lat/lon.")
+                                  " then distance from the optional lat/lon.",
+                      parameters=[
+                          OpenApiParameter("q", OpenApiTypes.STR,
+                                           description="At least 2 characters"),
+                          OpenApiParameter("category", OpenApiTypes.STR),
+                          OpenApiParameter("lat", OpenApiTypes.NUMBER),
+                          OpenApiParameter("lon", OpenApiTypes.NUMBER),
+                      ],
+                      responses=serializers.PublicSearchResultSerializer)
 )
 class PublicSearchView(APIView):
     permission_classes = [AllowAny]
@@ -255,11 +282,7 @@ class PublicSearchView(APIView):
             Location.objects.filter(status=Location.Status.ACTIVE)
             .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
-            .annotate(
-                active_ads_count=Count(
-                    "placements", filter=eligible_now_q(now, prefix="placements__")
-                )
-            )
+            .annotate(active_ads_count=_active_ads_count(now))
             .filter(_text_match_q(q))
             # Relevance first, then distance when an origin is given,
             # otherwise name (spec §10, acceptance #12).
@@ -316,7 +339,8 @@ class PublicSearchView(APIView):
 
 
 @extend_schema_view(
-    get=extend_schema(tags=["Public"], summary="Current ad price per location per 24h")
+    get=extend_schema(tags=["Public"], summary="Current ad price per location per 24h",
+                      responses=serializers.PublicPricingSerializer)
 )
 class PublicPricingView(APIView):
     """GET /public/pricing — the current Tariff, so the campaign editor can
@@ -344,7 +368,9 @@ class PublicPricingView(APIView):
 
 
 @extend_schema_view(
-    post=extend_schema(tags=["Public"], summary="Report a suspicious business/ad")
+    post=extend_schema(tags=["Public"], summary="Report a suspicious business/ad",
+                       request=serializers.PublicReportRequestSerializer,
+                       responses={202: DetailSerializer})
 )
 class PublicReportView(APIView):
     permission_classes = [AllowAny]
@@ -367,6 +393,7 @@ class PublicReportView(APIView):
         # The referenced entity must exist — otherwise the public endpoint is a
         # spam sink (spec §12 rate-limited, but still garbage-in).
         try:
+            entity_id = str(uuid.UUID(entity_id))  # malformed ids would 500 in the ORM
             if entity == "location":
                 if not Location.objects.filter(pk=entity_id).exists():
                     raise LookupError

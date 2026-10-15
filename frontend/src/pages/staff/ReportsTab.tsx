@@ -14,6 +14,7 @@ import {
   IconPin,
   IconScale,
 } from "@/shared/icons";
+import { useStaffLink } from "./controls";
 
 export function ReportsTab({
   onError,
@@ -29,6 +30,7 @@ export function ReportsTab({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const lang = locale as "ru" | "uz";
+  const link = useStaffLink();
 
   const process = async (id: string, decision: "resolve" | "dismiss") => {
     setBusy(true);
@@ -119,6 +121,22 @@ export function ReportsTab({
                       onClick={() => setProcessing(r.id)}
                     >
                       <IconScale size={12} /> {t.process}
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={() =>
+                        link.go("placements", r.entity === "campaign"
+                          ? { campaign: r.entity_id }
+                          : { location: r.entity_id })
+                      }
+                    >
+                      {t.viewPlacements}
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={() => link.go("logs", { entity: r.entity, entity_id: r.entity_id })}
+                    >
+                      {t.viewLog}
                     </button>
                     {r.entity === "campaign" ? (
                       <Link className="btn subtle small" to={`/ads/${r.entity_id}`} target="_blank" rel="noreferrer">

@@ -128,3 +128,24 @@ def test_failed_payment_fails_order_and_releases_reservation(
     order.refresh_from_db()
     assert order.state == Order.State.FAILED
     assert not Placement.objects.filter(order=order, state=Placement.State.PENDING).exists()
+
+
+def test_late_failure_event_cannot_undo_a_succeeded_payment(
+    client, owner, tariff, business, campaign, location
+):
+    order, attempt = _checkout(owner, tariff, business, campaign, location)
+    ok = _event(attempt, event_id="evt-ok", amount=attempt.amount)
+    assert client.post(WEBHOOK_URL, data=ok, content_type="application/json").status_code == 200
+    late = _event(attempt, event_id="evt-late-fail", amount=attempt.amount, succeeded=False)
+    assert client.post(WEBHOOK_URL, data=late, content_type="application/json").status_code == 200
+
+    attempt.refresh_from_db()
+    order.refresh_from_db()
+    assert attempt.status == PaymentAttempt.Status.SUCCEEDED
+    assert order.state == Order.State.PAID
+    assert Placement.objects.filter(order=order, state=Placement.State.PENDING).exists()
+
+
+def test_fake_endpoints_disabled_when_a_real_provider_is_configured(client, settings):
+    settings.PAYMENT_PROVIDER = "click"
+    assert client.post(WEBHOOK_URL, data="{}", content_type="application/json").status_code == 404

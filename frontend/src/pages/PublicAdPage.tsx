@@ -1,12 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { api, ApiError } from "@/shared/api/client";
-import { IconFlag, IconLock, IconPin } from "@/shared/icons";
+import { useCategories, useLocationDetail } from "@/shared/api/queries";
+import { MiniMap } from "@/shared/mini-map";
+import { IconArrowRight, IconClock, IconFlag, IconLock, IconPin } from "@/shared/icons";
 import { reportDialog } from "@/shared/dialog";
 import type { ApiCampaignDetail } from "@/entities/types";
 import { plural, useI18n } from "@/shared/i18n";
 import { formatDate } from "@/shared/format";
 import {
+  AdCard,
   BackLink,
   ContactActions,
   FallImg,
@@ -36,6 +39,12 @@ export function PublicAdPage() {
     retry: false,
     enabled: !!id,
   });
+  // Featured branch detail: category name, live pin count and the branch's
+  // other offers. Same cache entry as the location page.
+  const featuredId =
+    data?.locations?.find((l) => l.id === fromLocationId)?.id ?? data?.locations?.[0]?.id;
+  const { data: featuredDetail } = useLocationDetail(featuredId);
+  const { data: categories } = useCategories();
 
   if (isLoading) {
     return (
@@ -78,9 +87,12 @@ export function PublicAdPage() {
   const featured = locations.find((l) => l.id === fromLocationId) ?? locations[0];
   const others = locations.filter((l) => l.id !== featured?.id);
   const featuredDirections = featured ? directionsUrl(featured.lon, featured.lat) : undefined;
+  const daysLeft = data.ends_at ? daysUntil(data.ends_at) : null;
+  const categoryName = categories?.find((c) => c.slug === featuredDetail?.category);
+  const moreOffers = (featuredDetail?.active_ads ?? []).filter((ad) => ad.id !== data.id);
 
   return (
-    <div className={`page${featured ? " with-sticky" : ""}`}>
+    <div className={`page ad-page${featured ? " with-sticky" : ""}`}>
       <nav className="row-between">
         <BackLink fallbackTo="/" />
         <div className="row">
@@ -97,75 +109,121 @@ export function PublicAdPage() {
         </div>
       </nav>
 
-      <div className="ad-banner">
-        <FallImg src={data.banner_url} alt={data.headline} />
-      </div>
-      {/* Ad disclosure: visitors must always see this is paid placement. */}
-      <p className="ad-eyebrow">{t.adLabel}</p>
-      <h1>{data.headline}</h1>
-      <p className="muted ad-validity">
-        {data.business_name}
-        {data.ends_at &&
-          ` · ${t.validUntil} ${formatDate(data.ends_at, locale)}`}
-      </p>
-      <p className="ad-body">{data.body}</p>
+      <div className="ad-layout">
+        <article className="ad-main">
+          <div className="ad-banner ad-hero">
+            <FallImg src={data.banner_url} alt={data.headline} />
+          </div>
 
-      {featured && (
-        <section className="branch-section" aria-labelledby="branch-heading">
-          <h2 id="branch-heading">{t.offerLocations}</h2>
-          <div className="card branch-card">
-            <div className="branch-head">
-              <strong>{featured.name}</strong>
+          {/* 1. Business identity */}
+          <div className="ad-business">
+            <span className="ad-business-tile" aria-hidden="true">
+              {data.business_name.trim().charAt(0).toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <strong>{data.business_name}</strong>
+              {categoryName && (
+                <span className="muted-2">{locale === "uz" ? categoryName.name_uz : categoryName.name_ru}</span>
+              )}
+            </div>
+          </div>
+
+          {/* 2. Offer. Ad disclosure: visitors must always see this is paid placement. */}
+          <div className="ad-meta">
+            <span className="chip gray">{t.adLabel}</span>
+            {daysLeft !== null && daysLeft > 0 && (
+              <span className="chip ad-countdown">
+                <IconClock size={13} />
+                {daysLeft === 1
+                  ? t.endsToday
+                  : `${t.endsIn} ${daysLeft} ${plural(locale, "days", daysLeft)}`}
+              </span>
+            )}
+            {data.ends_at && (
+              <span className="muted-2">
+                {t.validUntil} {formatDate(data.ends_at, locale)}
+              </span>
+            )}
+          </div>
+          <h1 className="ad-title">{data.headline}</h1>
+          <p className="ad-body">{data.body}</p>
+        </article>
+
+        {/* 3. Address / hours / contact for the featured branch */}
+        {featured && (
+          <aside className="ad-aside" aria-labelledby="branch-heading">
+            <div className="ad-aside-head">
+              <h2 id="branch-heading">{t.offerLocations}</h2>
               {locations.length > 1 && (
-                <span className="chip orange">
+                <span className="chip gray">
                   {locations.length} {plural(locale, "locations", locations.length)}
                 </span>
               )}
             </div>
-            <div className="info-grid">
-              <div className="info-card">
-                <div className="label">{t.address}</div>
-                <div className="value">{featured.address}</div>
-                <Link to={`/?pin=${featured.id}`} className="btn small map-link">
-                  <IconPin size={14} /> {t.showOnMap}
+            <div className="card ad-panel">
+              {featuredDetail && (
+                <MiniMap
+                  id={featured.id}
+                  lon={featured.lon}
+                  lat={featured.lat}
+                  label={featured.name}
+                  activeAdsCount={featuredDetail.active_ads.length}
+                />
+              )}
+              <div className="ad-panel-body">
+                <Link to={`/locations/${featured.id}`} className="ad-panel-name">
+                  <strong>{featured.name}</strong>
+                  <IconArrowRight size={16} />
                 </Link>
+                <p className="ad-panel-address">
+                  <IconPin size={15} />
+                  <span>{featured.address}</span>
+                </p>
+                <HoursList hours={featured.hours} />
+                <ContactActions
+                  hiddenOnMobile
+                  shortDirections
+                  directionsUrl={featuredDirections}
+                  phone={featured.phone}
+                  telegram={featured.telegram}
+                  whatsapp={featured.whatsapp}
+                  site={featured.business_site}
+                />
               </div>
-              <HoursList hours={featured.hours} />
             </div>
-            <ContactActions
-              hiddenOnMobile
-              directionsUrl={featuredDirections}
-              phone={featured.phone}
-              telegram={featured.telegram}
-              whatsapp={featured.whatsapp}
-              site={featured.business_site}
-            />
-            <div className="row">
-              <Link to={`/locations/${featured.id}`} className="btn subtle small">
-                {t.toBranch}
-              </Link>
-            </div>
-          </div>
 
-          {others.length > 0 && (
-            <div className="branch-others">
-              <strong className="muted">
-                {t.otherBranches} ({others.length})
-              </strong>
-              <ul>
-                {others.map((loc) => (
-                  <li key={loc.id}>
-                    <Link to={`/locations/${loc.id}`}>
-                      <strong>{loc.name}</strong>
-                      <span className="muted-2">{loc.address}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+            {others.length > 0 && (
+              <div className="branch-others">
+                <strong className="muted">
+                  {t.otherBranches} ({others.length})
+                </strong>
+                <ul>
+                  {others.map((loc) => (
+                    <li key={loc.id}>
+                      <Link to={`/locations/${loc.id}`}>
+                        <strong>{loc.name}</strong>
+                        <span className="muted-2">{loc.address}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </aside>
+        )}
+
+        {/* 4. Keep browsing: other live offers at the same branch */}
+        {featured && moreOffers.length > 0 && (
+          <section className="ad-more" aria-labelledby="more-heading">
+            <h2 id="more-heading">{t.moreOffersHere}</h2>
+            <div className="ad-cards">
+              {moreOffers.map((ad) => (
+                <AdCard key={ad.id} ad={ad} fromLocationId={featured.id} hideBusiness />
+              ))}
             </div>
-          )}
-        </section>
-      )}
+          </section>
+        )}
+      </div>
 
       {featured && (
         <StickyContactActions
@@ -178,4 +236,9 @@ export function PublicAdPage() {
       )}
     </div>
   );
+}
+
+/** Whole days until `iso`, rounded up: 1 = ends within the next 24h. */
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
 }

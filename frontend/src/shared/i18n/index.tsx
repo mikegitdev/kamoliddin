@@ -20,18 +20,20 @@ interface I18n {
 const I18nContext = createContext<I18n>({ locale: "ru", t: ru, setLocale: () => {} });
 
 /** Plural word forms per locale: ru = [one, few, many], uz = [one, many]. */
-const PLURAL_FORMS: Record<Locale, Record<"locations" | "ads", [string, string, string?]>> = {
+const PLURAL_FORMS: Record<Locale, Record<"locations" | "ads" | "days", [string, string, string?]>> = {
   ru: {
     locations: ["точка", "точки", "точек"],
     ads: ["объявление", "объявления", "объявлений"],
+    days: ["день", "дня", "дней"],
   },
   uz: {
     locations: ["nuqta", "nuqta"],
     ads: ["e'lon", "e'lon"],
+    days: ["kun", "kun"],
   },
 };
 
-export function plural(locale: Locale, kind: "locations" | "ads", n: number): string {
+export function plural(locale: Locale, kind: "locations" | "ads" | "days", n: number): string {
   const forms = PLURAL_FORMS[locale][kind];
   if (locale === "uz") return forms[n === 1 ? 0 : 1] ?? forms[0];
   const mod10 = n % 10;

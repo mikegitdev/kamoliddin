@@ -10,14 +10,15 @@ primary moderation UI; these endpoints serve the same operations over REST.
 - GET  /admin/refunds                 refund queue
 - POST /admin/refunds/{id}/process    approve|reject refund
 - GET  /admin/orders                  recent orders (oversight)
-- GET  /admin/activity                audit trail tail
 - GET  /admin/overview                dashboard counters
 - PATCH /admin/settings/ad-limit      max simultaneous ads per location
+
+Users, businesses, branches, placements and logs live in control_api.py.
 """
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -25,10 +26,12 @@ from rest_framework.views import APIView
 
 from apps.billing.models import Order, OrderItem, Refund
 from apps.billing.services import RefundError, process_refund
+from apps.businesses.models import Business
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
 from apps.moderation.models import ActivityEvent, PlatformSetting, Report
 from apps.moderation.services import (
+    ADMIN_BLOCK_REASON,
     ModerationError,
     approve_campaign,
     reject_campaign,
@@ -36,12 +39,84 @@ from apps.moderation.services import (
     unsuspend_campaign,
 )
 from apps.placements.models import FreeGrant, Placement
-from apps.placements.services import issue_free_grant
+from apps.placements.services import issue_free_grant, max_active_ads
+from apps.renewals.models import RenewalAgreement, RenewalAttempt
 
 
 class IsAdminUser(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+
+
+class CampaignStatusResultSerializer(serializers.Serializer):
+    """Body returned by review/suspend/unsuspend (schema documentation)."""
+
+    id = serializers.UUIDField(read_only=True)
+    review_status = serializers.CharField(read_only=True)
+    review_version = serializers.IntegerField(read_only=True, required=False)
+
+
+class AdLimitValueSerializer(serializers.Serializer):
+    key = serializers.CharField(read_only=True)
+    value = serializers.IntegerField(read_only=True)
+
+
+class _GrantCampaignOptionSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    headline = serializers.CharField()
+    business_name = serializers.CharField()
+
+
+class _GrantLocationOptionSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    business_name = serializers.CharField()
+
+
+class _GrantRowSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    campaign_headline = serializers.CharField()
+    business_name = serializers.CharField()
+    location_name = serializers.CharField()
+    start_at = serializers.DateTimeField()
+    end_at = serializers.DateTimeField()
+    reason = serializers.CharField()
+    admin_phone = serializers.CharField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class GrantOptionsSerializer(serializers.Serializer):
+    campaigns = _GrantCampaignOptionSerializer(many=True)
+    locations = _GrantLocationOptionSerializer(many=True)
+    grants = _GrantRowSerializer(many=True)
+
+
+class _RevenueSerializer(serializers.Serializer):
+    total = serializers.IntegerField(help_text="Paid minus refunded, minor units")
+    month = serializers.IntegerField(help_text="This month, net of refunds, minor units")
+
+
+class _AttentionSerializer(serializers.Serializer):
+    renewal_alerts = serializers.IntegerField(help_text="Agreements in ALERT")
+    renewal_reconciliation = serializers.IntegerField(
+        help_text="Renewal attempts with an ambiguous provider outcome")
+    capacity_blocked = serializers.IntegerField(
+        help_text="Paid placements blocked by a capacity conflict (refund queue)")
+    staff_blocked = serializers.IntegerField(help_text="Placements taken down by staff")
+    blocked_users = serializers.IntegerField()
+    disabled_businesses = serializers.IntegerField()
+    disabled_locations = serializers.IntegerField()
+
+
+class AdminOverviewSerializer(serializers.Serializer):
+    queue_depth = serializers.IntegerField()
+    open_reports = serializers.IntegerField()
+    refunds_requested = serializers.IntegerField()
+    campaigns = serializers.DictField(child=serializers.IntegerField())
+    active_placements = serializers.IntegerField()
+    revenue = _RevenueSerializer()
+    owners = serializers.IntegerField()
+    attention = _AttentionSerializer()
 
 
 class QueueCampaignSerializer(serializers.ModelSerializer):
@@ -89,7 +164,7 @@ class CampaignReviewView(APIView):
     permission_classes = [IsAdminUser]
 
     @extend_schema(tags=["Admin"], summary="Approve/reject a campaign version",
-                   request=ReviewSerializer)
+                   request=ReviewSerializer, responses=CampaignStatusResultSerializer)
     def post(self, request, id):
         serializer = ReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -129,7 +204,9 @@ class GrantView(APIView):
     permission_classes = [IsAdminUser]
 
     @extend_schema(tags=["Admin"], summary="Issue a zero-charge placement grant",
-                   request=GrantSerializer)
+                   request=GrantSerializer,
+                   responses={201: inline_serializer("GrantCreated", fields={
+                       "id": serializers.UUIDField()})})
     def post(self, request):
         serializer = GrantSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -154,7 +231,8 @@ class GrantView(APIView):
             )
         return Response({"id": str(grant.id)}, status=status.HTTP_201_CREATED)
 
-    @extend_schema(tags=["Admin"], summary="Grant form options and recent grants")
+    @extend_schema(tags=["Admin"], summary="Grant form options and recent grants",
+                   responses=GrantOptionsSerializer)
     def get(self, request):
         campaigns = Campaign.objects.filter(
             review_status=Campaign.ReviewStatus.APPROVED
@@ -218,14 +296,14 @@ class RefundListView(ListAPIView):
 class RefundProcessSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=["approve", "reject"])
     provider_ref = serializers.CharField(required=False, allow_blank=True, default="")
-    amount = serializers.IntegerField(required=False, min_value=0)
+    amount = serializers.IntegerField(required=False, min_value=1)
 
 
 class RefundProcessView(APIView):
     permission_classes = [IsAdminUser]
 
     @extend_schema(tags=["Admin"], summary="Manually process a refund request",
-                   request=RefundProcessSerializer)
+                   request=RefundProcessSerializer, responses=RefundSerializer)
     def post(self, request, id):
         serializer = RefundProcessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -252,14 +330,13 @@ class AdLimitSerializer(serializers.Serializer):
 class AdLimitView(APIView):
     permission_classes = [IsAdminUser]
 
-    @extend_schema(tags=["Admin"], summary="Current max simultaneous ads per location")
+    @extend_schema(tags=["Admin"], summary="Current max simultaneous ads per location",
+                   responses=AdLimitValueSerializer)
     def get(self, request):
-        setting = PlatformSetting.objects.filter(key="max_active_ads_per_location").first()
-        return Response({"key": "max_active_ads_per_location",
-                         "value": setting.value_json if setting else 5})
+        return Response({"key": "max_active_ads_per_location", "value": max_active_ads()})
 
     @extend_schema(tags=["Admin"], summary="Change max simultaneous ads per location",
-                   request=AdLimitSerializer)
+                   request=AdLimitSerializer, responses=AdLimitValueSerializer)
     def patch(self, request):
         serializer = AdLimitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -313,7 +390,7 @@ class ReportProcessView(APIView):
     permission_classes = [IsAdminUser]
 
     @extend_schema(tags=["Admin"], summary="Resolve or dismiss a report",
-                   request=ReportProcessSerializer)
+                   request=ReportProcessSerializer, responses=ReportSerializer)
     def post(self, request, id):
         serializer = ReportProcessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -354,18 +431,18 @@ class AdminCampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
         fields = ("id", "headline", "review_status", "review_version",
-                  "business_name", "owner_phone", "banner_url", "updated_at")
+                  "business_id", "business_name", "owner_phone", "banner_url",
+                  "updated_at")
 
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.banner_key}" if obj.banner_key else ""
 
 
 class AdminCampaignListView(ListAPIView):
-    """GET /admin/campaigns?q=&status= — searchable oversight list."""
+    """GET /admin/campaigns?q=&status=&business= — searchable, paginated."""
 
     serializer_class = AdminCampaignSerializer
     permission_classes = [IsAdminUser]
-    pagination_class = None
 
     def get_queryset(self):
         qs = Campaign.objects.select_related(
@@ -379,7 +456,9 @@ class AdminCampaignListView(ListAPIView):
             )
         if status_param:
             qs = qs.filter(review_status=status_param)
-        return qs[:100]
+        if business := self.request.query_params.get("business", "").strip():
+            qs = qs.filter(business_id=business)
+        return qs
 
 
 class CampaignSuspendSerializer(serializers.Serializer):
@@ -390,7 +469,7 @@ class CampaignSuspendView(APIView):
     permission_classes = [IsAdminUser]
 
     @extend_schema(tags=["Admin"], summary="Suspend (takedown) an approved campaign",
-                   request=CampaignSuspendSerializer)
+                   request=CampaignSuspendSerializer, responses=CampaignStatusResultSerializer)
     def post(self, request, id):
         serializer = CampaignSuspendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -414,10 +493,16 @@ class CampaignSuspendView(APIView):
                          "review_status": campaign.review_status})
 
 
+class CampaignUnsuspendSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
 class CampaignUnsuspendView(APIView):
     permission_classes = [IsAdminUser]
 
-    @extend_schema(tags=["Admin"], summary="Restore a suspended campaign")
+    @extend_schema(tags=["Admin"], summary="Restore a suspended campaign",
+                   request=CampaignUnsuspendSerializer,
+                   responses=CampaignStatusResultSerializer)
     def post(self, request, id):
         campaign = Campaign.objects.filter(pk=id).first()
         if campaign is None:
@@ -427,7 +512,8 @@ class CampaignUnsuspendView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            unsuspend_campaign(campaign=campaign, staff=request.user)
+            unsuspend_campaign(campaign=campaign, staff=request.user,
+                               reason=str(request.data.get("reason", ""))[:500])
         except ModerationError as exc:
             return Response(
                 {"error": {"code": "invalid_transition", "message": str(exc),
@@ -444,44 +530,33 @@ class AdminOrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ("id", "business_name", "campaign_headline", "amount_total",
-                  "currency", "state", "created_at")
+        fields = ("id", "business_id", "business_name", "campaign_id",
+                  "campaign_headline", "amount_total", "currency", "state",
+                  "auto_renew", "attempts_count", "created_at")
+
+    attempts_count = serializers.IntegerField(read_only=True)
 
 
 class AdminOrderListView(ListAPIView):
-    """GET /admin/orders — recent platform orders (read-only oversight)."""
+    """GET /admin/orders?state=&q=&business= — platform orders (read-only)."""
 
     serializer_class = AdminOrderSerializer
     permission_classes = [IsAdminUser]
-    pagination_class = None
 
     def get_queryset(self):
-        return Order.objects.select_related(
-            "business", "campaign"
-        ).order_by("-created_at")[:100]
-
-
-class ActivitySerializer(serializers.ModelSerializer):
-    actor_phone = serializers.CharField(source="actor.phone_e164",
-                                        read_only=True, default=None)
-
-    class Meta:
-        model = ActivityEvent
-        fields = ("id", "action", "entity", "entity_id", "actor_phone",
-                  "metadata", "created_at")
-
-
-class ActivityListView(ListAPIView):
-    """GET /admin/activity — immutable audit trail tail."""
-
-    serializer_class = ActivitySerializer
-    permission_classes = [IsAdminUser]
-    pagination_class = None
-
-    def get_queryset(self):
-        return ActivityEvent.objects.select_related("actor").order_by(
-            "-created_at"
-        )[:100]
+        qs = Order.objects.select_related("business", "campaign").annotate(
+            attempts_count=Count("attempts")
+        ).order_by("-created_at")
+        params = self.request.query_params
+        if state := params.get("state", "").strip():
+            qs = qs.filter(state=state)
+        if business := params.get("business", "").strip():
+            qs = qs.filter(business_id=business)
+        if q := params.get("q", "").strip():
+            qs = qs.filter(Q(business__name__icontains=q)
+                           | Q(campaign__headline__icontains=q)
+                           | Q(id__startswith=q))
+        return qs
 
 
 class AdminOverviewView(APIView):
@@ -489,7 +564,8 @@ class AdminOverviewView(APIView):
 
     permission_classes = [IsAdminUser]
 
-    @extend_schema(tags=["Admin"], summary="Platform moderation overview")
+    @extend_schema(tags=["Admin"], summary="Platform moderation overview",
+                   responses=AdminOverviewSerializer)
     def get(self, request):
         now = timezone.now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -499,6 +575,13 @@ class AdminOverviewView(APIView):
         for row in Campaign.objects.values("review_status").annotate(n=Count("id")):
             by_status[row["review_status"]] = row["n"]
         paid = Order.objects.filter(state=Order.State.PAID)
+        # Refunded orders stay PAID (payment records are never erased), so
+        # revenue is reported net of completed refunds.
+        refunded = Refund.objects.filter(state=Refund.State.REFUNDED)
+
+        def _sum(qs, field: str) -> int:
+            return qs.aggregate(s=Sum(field))["s"] or 0
+
         return Response({
             "queue_depth": by_status["submitted"] + by_status["under_review"],
             "open_reports": Report.objects.filter(state=Report.State.OPEN).count(),
@@ -510,9 +593,27 @@ class AdminOverviewView(APIView):
                 state=Placement.State.ACTIVE, end_at__gt=now
             ).count(),
             "revenue": {
-                "total": paid.aggregate(s=Sum("amount_total"))["s"] or 0,
-                "month": paid.filter(created_at__gte=month_start)
-                             .aggregate(s=Sum("amount_total"))["s"] or 0,
+                "total": _sum(paid, "amount_total") - _sum(refunded, "amount"),
+                "month": _sum(paid.filter(created_at__gte=month_start), "amount_total")
+                - _sum(refunded.filter(completed_at__gte=month_start), "amount"),
             },
             "owners": get_user_model().objects.filter(is_staff=False).count(),
+            "attention": {
+                "renewal_alerts": RenewalAgreement.objects.filter(
+                    status=RenewalAgreement.Status.ALERT).count(),
+                "renewal_reconciliation": RenewalAttempt.objects.filter(
+                    state=RenewalAttempt.State.RECONCILIATION).count(),
+                "capacity_blocked": Placement.objects.filter(
+                    state=Placement.State.BLOCKED,
+                    block_reason="capacity_conflict").count(),
+                "staff_blocked": Placement.objects.filter(
+                    state=Placement.State.BLOCKED,
+                    block_reason=ADMIN_BLOCK_REASON).count(),
+                "blocked_users": get_user_model().objects.filter(
+                    is_active=False, deleted_at__isnull=True).count(),
+                "disabled_businesses": Business.objects.filter(
+                    status=Business.Status.DISABLED).count(),
+                "disabled_locations": Location.objects.filter(
+                    status=Location.Status.DISABLED).count(),
+            },
         })

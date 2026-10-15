@@ -12,7 +12,7 @@ import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
 import { confirmDialog } from "@/shared/dialog";
 import { CampaignChip, OrderChip, PlacementChip, FallImg } from "@/shared/ui";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
-import { useI18n } from "@/shared/i18n";
+import { useI18n, plural } from "@/shared/i18n";
 import {
   IconAlert,
   IconArrowLeft,
@@ -194,16 +194,20 @@ export function CampaignDetailPage() {
               return (
                 <tr key={p.id}>
                   <td data-label={t.branch}>
-                    <strong>{p.location_name}</strong>
-                    <div className="muted-2">{p.location_business}</div>
+                    <div>
+                      <strong>{p.location_name}</strong>
+                      <div className="muted-2">{p.location_business}</div>
+                    </div>
                   </td>
                   <td className="muted-2" data-label={t.interval}>
-                    {formatDateTime(start, lang)} → {formatDateTime(end, lang)}
-                    {p.state === "active" && (
-                      <div className="chip green mt-1">
-                        <IconClock size={14} /> {remainingLabel(end, t)} {t.left}
-                      </div>
-                    )}
+                    <div>
+                      <div>{formatDateTime(start, lang)} → {formatDateTime(end, lang)}</div>
+                      {p.state === "active" && (
+                        <div className="chip green mt-1">
+                          <IconClock size={14} /> {remainingLabel(end, t)} {t.left}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td data-label={t.status}>
                     <PlacementChip state={p.state} />
@@ -214,7 +218,7 @@ export function CampaignDetailPage() {
                     )}
                   </td>
                   <td className="muted-2" data-label={t.total}>
-                    {p.charge_days} × 24{t.hoursShort}
+                    {p.charge_days} × 24 {t.hoursShort}
                   </td>
                 </tr>
               );
@@ -229,7 +233,8 @@ export function CampaignDetailPage() {
             <div>
               <h2 className="h-icon"><IconCard size={20} /> {t.secRenewal}</h2>
               <div className="muted-2">
-                <IconPin size={12} /> {agreement.locations_count} · {agreement.charge_days} {t.daysShort}
+                <IconPin size={12} /> {agreement.locations_count}{" "}
+                {plural(locale, "locations", agreement.locations_count)} · {agreement.charge_days} {t.daysShort}
               </div>
               {agreement.status === "active" && agreement.next_run_at && (
                 <div className="chip blue mt-6">

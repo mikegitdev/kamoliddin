@@ -56,7 +56,8 @@ def test_echo_off_keeps_generic_response():
 @override_settings(OTP_DEV_ECHO=True, SMS_PROVIDER="fake")
 def test_wrong_otp_attempts_are_persisted_and_capped():
     challenge = request_otp(PHONE)
-    wrong_code = "000000" if challenge.dev_code != "000000" else "000001"
+    dev_code = challenge.dev_code  # type: ignore[attr-defined]  # in-memory echo
+    wrong_code = "000000" if dev_code != "000000" else "000001"
 
     for _ in range(5):
         with pytest.raises(OTPError):
@@ -65,6 +66,6 @@ def test_wrong_otp_attempts_are_persisted_and_capped():
     challenge.refresh_from_db()
     assert challenge.attempts == 5
     with pytest.raises(OTPError):
-        verify_otp(PHONE, challenge.dev_code)
+        verify_otp(PHONE, dev_code)
     challenge.refresh_from_db()
     assert challenge.attempts == 5

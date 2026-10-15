@@ -27,13 +27,27 @@ export function OtpInput({
 
   const focusAt = (i: number) => refs.current[Math.max(0, Math.min(LENGTH - 1, i))]?.focus();
 
+  // The value is a gapless string, so edits work on string positions:
+  // clearing a box removes that digit (later digits shift left), and typing
+  // past the end lands in the first empty box.
+  const removeAt = (i: number) => {
+    if (i < 0 || i >= value.length) return;
+    onChange(value.slice(0, i) + value.slice(i + 1));
+    focusAt(Math.min(i, value.length - 1));
+  };
+
   const setDigit = (i: number, raw: string) => {
     const digit = raw.replace(/\D/g, "").slice(-1);
-    if (!digit) return;
+    if (!digit) {
+      // Box emptied (Backspace/Delete/cut on a filled box).
+      if (raw === "") removeAt(i);
+      return;
+    }
+    const at = Math.min(i, value.length);
     const next = digits.slice();
-    next[i] = digit;
-    onChange(next.join(""));
-    if (i < LENGTH - 1) focusAt(i + 1);
+    next[at] = digit;
+    onChange(next.join("").slice(0, LENGTH));
+    focusAt(at + 1);
   };
 
   return (
@@ -55,11 +69,9 @@ export function OtpInput({
           onChange={(e) => setDigit(i, e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Backspace" && !digits[i] && i > 0) {
+              // Empty box: delete the last entered digit before it.
               e.preventDefault();
-              const next = digits.slice();
-              next[i - 1] = "";
-              onChange(next.join(""));
-              focusAt(i - 1);
+              removeAt(Math.min(i - 1, value.length - 1));
             } else if (e.key === "ArrowLeft" && i > 0) {
               e.preventDefault();
               focusAt(i - 1);

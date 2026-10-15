@@ -1,0 +1,1 @@
+[]what colors are used in the application? 

@@ -419,13 +419,23 @@ export function FallImg({
   );
 }
 
-export function AdCard({ ad, fromLocationId }: { ad: ApiActiveAd; fromLocationId?: string }) {
+/** `hideBusiness`: on pages that are already about one business, the name
+ *  on every card is noise. */
+export function AdCard({
+  ad,
+  fromLocationId,
+  hideBusiness = false,
+}: {
+  ad: ApiActiveAd;
+  fromLocationId?: string;
+  hideBusiness?: boolean;
+}) {
   return (
     <Link to={`/ads/${ad.id}`} className="ad-card" state={{ fromLocationId }}>
       <FallImg src={ad.banner_url} alt="" className="" />
       <div className="ad-card-body">
         <strong>{ad.headline}</strong>
-        <span className="muted-2">{ad.business_name}</span>
+        {!hideBusiness && <span className="muted-2">{ad.business_name}</span>}
       </div>
     </Link>
   );

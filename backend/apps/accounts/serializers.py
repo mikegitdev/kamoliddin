@@ -19,6 +19,16 @@ class PhoneChangeVerifySerializer(serializers.Serializer):
     code = serializers.CharField(max_length=8)
 
 
+class OTPAcceptedSerializer(serializers.Serializer):
+    """Uniform 202 body for OTP requests (anti-enumeration)."""
+
+    detail = serializers.CharField(read_only=True)
+    dev_code = serializers.CharField(
+        read_only=True, required=False,
+        help_text="Dev/test stacks only (fake SMS + OTP_DEV_ECHO); never present in prod.",
+    )
+
+
 class SessionUserSerializer(serializers.Serializer):
     """Response payload describing the authenticated user."""
 

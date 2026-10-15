@@ -42,3 +42,7 @@ backend/*.sqlite3
 .vscode/
 .DS_Store
 codedb.snapshot
+
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/

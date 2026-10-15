@@ -391,6 +391,9 @@ svg.ico {
 /* ---------- Chips / badges (localized labels, sentence case) ---------- */
 .chip {
   display: inline-flex;
+  /* Hug content even as a grid / flex-column child (no full-width stretch). */
+  width: fit-content;
+  max-width: 100%;
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
@@ -440,7 +443,8 @@ svg.ico {
 }
 .review-card {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 300px 1fr;
+  align-items: start;
   gap: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -449,8 +453,10 @@ svg.ico {
   padding: 14px;
 }
 .review-banner {
+  /* Banners are 3:1 — a fixed height cropped their text. */
   width: 100%;
-  height: 120px;
+  height: auto;
+  aspect-ratio: 3 / 1;
   object-fit: cover;
   border-radius: var(--radius-sm);
   background: var(--bg);
@@ -474,7 +480,7 @@ svg.ico {
     grid-template-columns: 1fr;
   }
   .review-banner {
-    height: 140px;
+    height: auto;
   }
 }
 
@@ -1556,7 +1562,7 @@ svg.ico {
 }
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 .stat-card {
@@ -1591,6 +1597,9 @@ svg.ico {
   gap: 4px;
   box-shadow: var(--shadow-xs);
   min-width: 0;
+}
+.card .list:last-child {
+  margin-bottom: 0;
 }
 .list > li.row-between {
   flex-direction: row;
@@ -2044,6 +2053,15 @@ svg.ico {
   margin-bottom: 6px;
   overflow: hidden;
 }
+/* The full-screen map offsets its controls below the floating header;
+   an embedded picker has no header, so pin them to the corner. */
+.map-picker .maplibregl-ctrl-top-right {
+  margin: 0;
+}
+.stack-text {
+  display: grid;
+  gap: 2px;
+}
 
 /* ---------- Tables ---------- */
 .table-wrap {
@@ -2147,6 +2165,9 @@ svg.ico {
   .table-wrap td:empty {
     display: none;
   }
+  .table-wrap td.max-w-220 {
+    max-width: none;
+  }
   .table-wrap tfoot td[data-label=""] {
     display: none;
   }
@@ -2185,7 +2206,8 @@ svg.ico {
   border-color: var(--primary);
   color: var(--primary);
 }
-.filter-chip[aria-pressed="true"] {
+.filter-chip[aria-pressed="true"],
+.filter-chip[aria-current="step"] {
   background: var(--ink);
   border-color: var(--ink);
   color: #fff;
@@ -2306,6 +2328,20 @@ svg.ico {
   margin: -28px 0 24px;
   border-bottom: 1px solid var(--border);
 }
+/* Phones: keep brand and utilities on one row — the brand text may wrap
+   to two lines instead of pushing the language switcher to a second row. */
+@media (max-width: 479px) {
+  .app-header {
+    flex-wrap: nowrap;
+  }
+  .app-header .brand {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .app-header > .row {
+    flex: none;
+  }
+}
 .app-user {
   display: inline-flex;
   align-items: center;
@@ -2336,7 +2372,8 @@ svg.ico {
   padding: 4px;
   margin-bottom: 28px;
 }
-.app-nav a {
+.app-nav a,
+.app-nav button {
   display: inline-flex;
   align-items: center;
   min-height: 40px;
@@ -2348,7 +2385,14 @@ svg.ico {
   transition: background var(--motion-fast);
   white-space: nowrap;
 }
-.app-nav a:hover {
+.app-nav button {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+.app-nav a:hover,
+.app-nav button:not(.active):hover {
   color: var(--ink);
   background: var(--fill-hover);
 }
@@ -2573,10 +2617,11 @@ svg.ico {
   transform: translateY(-2px);
   color: var(--ink);
 }
+/* Banners are 3:1 artwork with text: show all of it, never crop. */
 .ad-card img {
   width: 100%;
-  height: 116px;
-  object-fit: cover;
+  aspect-ratio: 3 / 1;
+  object-fit: contain;
   background: var(--border);
   display: block;
 }
@@ -2705,9 +2750,6 @@ svg.ico {
 }
 
 /* ---------- Misc ---------- */
-.section-gap {
-  margin-top: 28px;
-}
 .divider {
   border: none;
   border-top: 1px solid var(--border);
@@ -2739,31 +2781,6 @@ svg.ico {
   white-space: pre-line;
 }
 
-/* Branch context card on the public ad page (direct/shared links included) */
-.branch-section {
-  margin-top: 26px;
-}
-.branch-section h2 {
-  margin-bottom: 10px;
-}
-.branch-card {
-  display: grid;
-  gap: 12px;
-}
-.branch-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.branch-head strong {
-  font-size: 1.06rem;
-  overflow-wrap: anywhere;
-}
-.branch-card .info-grid {
-  margin: 0;
-}
 .branch-others {
   margin-top: 12px;
   display: grid;
@@ -2797,6 +2814,200 @@ svg.ico {
 }
 .branch-others a .muted-2 {
   overflow-wrap: anywhere;
+}
+
+/* Public ad page: offer column + sticky branch panel on desktop; one column
+ * on phones (offer → branch → more offers). Flat surfaces, no gradients. */
+.page.ad-page {
+  max-width: 1120px;
+}
+.ad-layout {
+  display: grid;
+  gap: 28px;
+}
+.ad-layout > * {
+  min-width: 0;
+}
+.ad-hero {
+  margin-bottom: 18px;
+}
+.ad-business {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ad-business-tile {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: var(--on-brand);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+.ad-business .min-w-0 {
+  display: grid;
+  gap: 1px;
+}
+.ad-business strong {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.ad-business .muted-2 {
+  font-size: 0.85rem;
+}
+.ad-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.chip.ad-countdown {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.ad-title {
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 14px 0 12px;
+  overflow-wrap: anywhere;
+}
+.ad-main .ad-body {
+  font-size: 1.08rem;
+  color: var(--ink-2);
+  margin: 0;
+}
+.ad-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ad-aside-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.card.ad-panel {
+  padding: 0;
+  overflow: hidden;
+}
+.ad-minimap {
+  position: relative;
+  display: block;
+  height: 180px;
+  background: var(--fill);
+}
+.ad-minimap > div {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ad-minimap .maplibregl-ctrl-top-right {
+  display: none;
+}
+.ad-minimap-cta {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--motion-fast);
+}
+.ad-minimap:hover .ad-minimap-cta {
+  background: var(--brand);
+}
+.ad-panel-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+.ad-panel-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink);
+}
+.ad-panel-name strong {
+  font-size: 1.06rem;
+  overflow-wrap: anywhere;
+}
+.ad-panel-name:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.ad-panel-address {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.ad-panel-address svg {
+  flex: none;
+  margin-top: 2px;
+}
+.ad-panel .contact-actions {
+  flex-wrap: wrap;
+}
+.ad-panel .contact-actions .btn {
+  flex: 1 1 auto;
+}
+/* Hours sit flat inside the panel — no gray tile nested in a card. */
+.ad-panel .info-card {
+  background: none;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+/* Location page reuses the ad-page shell; its business name is the H1. */
+.location-head h1 {
+  font-size: clamp(1.4rem, 1.1rem + 1.2vw, 1.9rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.location-head .ad-business-tile {
+  width: 56px;
+  height: 56px;
+  font-size: 1.4rem;
+}
+.ad-more h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+@media (min-width: 960px) {
+  .ad-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    column-gap: 40px;
+    row-gap: 36px;
+  }
+  .ad-aside {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    position: sticky;
+    top: 20px;
+  }
+  .ad-more {
+    grid-column: 1;
+  }
 }
 
 /* Directions/call/messaging pinned above the safe area on phones; the page
@@ -2880,9 +3091,6 @@ svg.ico {
 }
 .attention-item.quiet {
   border-left-color: var(--muted-2);
-}
-.attention-more {
-  font-size: 0.88rem;
 }
 .all-quiet {
   margin: 12px 2px;
@@ -3093,9 +3301,6 @@ svg.ico {
 }
 
 /* ---------- Detail pages ---------- */
-.map-link {
-  margin-top: 10px;
-}
 .hours-label {
   display: flex;
   align-items: center;
@@ -3105,9 +3310,6 @@ svg.ico {
 .hours-row.today {
   font-weight: 700;
   color: var(--ink);
-}
-.ad-validity {
-  margin-bottom: 12px;
 }
 
 /* ---------- Login OTP ---------- */
@@ -3204,9 +3406,15 @@ svg.ico {
 }
 
 /* ---------- Danger zone (account deletion) ---------- */
-.danger-zone {
-  border-color: var(--danger);
+.form-section.danger-zone {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
   background: var(--danger-soft);
+  padding: 16px 18px 18px;
+  margin-top: 28px;
+}
+.danger-zone .section-title {
+  color: var(--danger);
 }
 .btn.danger-solid {
   background: var(--danger);
@@ -3669,7 +3877,7 @@ section > label,
 }
 .ad-card .img-fallback {
   width: 100%;
-  height: 116px;
+  aspect-ratio: 3 / 1;
 }
 .ad-banner .img-fallback {
   width: 100%;
@@ -3683,7 +3891,8 @@ section > label,
    (staff review cards, map sheet ads, campaign result rows). */
 .review-banner.img-fallback {
   width: 100%;
-  height: 120px;
+  height: auto;
+  aspect-ratio: 3 / 1;
 }
 .sheet-ad .img-fallback {
   width: 44px;
@@ -3696,21 +3905,6 @@ section > label,
   height: 34px;
   flex: none;
   border-radius: var(--radius-sm);
-}
-
-/* ---------- Ad disclosure eyebrow ---------- */
-.ad-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 700;
 }
 
 /* ---------- Cabinet: user menu, nav scrolling, staff divider ---------- */
@@ -3769,6 +3963,59 @@ section > label,
 }
 .user-menu-pop button {
   color: var(--danger);
+}
+/* ---------- Staff control room ---------- */
+.staff-pager {
+  justify-content: center;
+  margin-top: 14px;
+}
+.staff-filter-pill {
+  gap: 6px;
+}
+.staff-filter-pill .link-button {
+  display: inline-flex;
+  color: inherit;
+}
+.staff-row-selected td {
+  background: var(--primary-soft);
+}
+.staff-detail h4 {
+  margin: 16px 0 6px;
+}
+.staff-attn-grid {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+/* `.stat-card .num` outranks the `.num-lg` utility — restore it for money. */
+.stat-card .num.num-lg {
+  font-size: 1.1rem;
+}
+.staff-attn {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast);
+}
+.staff-attn:hover {
+  background: var(--fill-hover);
+}
+.staff-attn.urgent {
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+.staff-phone {
+  white-space: nowrap;
+}
+.staff-meta {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--border);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .app-nav .nav-staff {
   margin-left: auto;
@@ -3836,6 +4083,23 @@ section > label,
 .drop-zone.over {
   border-color: var(--primary);
   background: var(--primary-soft);
+}
+.drop-zone {
+  position: relative;
+}
+/* Native file control renders browser-language text ("Choose File");
+   keep it focusable but invisible and show the localized label button. */
+.form .drop-zone .file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+.drop-zone .file-input:focus-visible + .btn {
+  box-shadow: 0 0 0 3px rgb(254 224 42 / 0.6);
 }
 .drop-zone-meta {
   font-size: 0.82rem;

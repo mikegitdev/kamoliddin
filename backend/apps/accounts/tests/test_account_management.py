@@ -37,7 +37,7 @@ def test_phone_change_switches_phone_and_blocks_old(owner, other_owner):
         request_phone_change(owner, other_owner.phone_e164)  # taken
 
     issued = request_phone_change(owner, NEW_PHONE)
-    code = issued.dev_code  # in-memory dev echo; DB stores hashes only
+    code = issued.dev_code  # type: ignore[attr-defined]  # in-memory dev echo; DB stores hashes only
     with pytest.raises(OTPError):
         # a LOGIN-purpose verify must not consume a PHONE_CHANGE challenge
         verify_otp(NEW_PHONE, code)
@@ -63,7 +63,7 @@ def test_phone_change_rejects_late_taker(owner, db):
     User.objects.create_user(phone_e164=NEW_PHONE)  # claimed after code was sent
 
     with pytest.raises(PhoneTakenError):
-        complete_phone_change(owner, NEW_PHONE, issued.dev_code)
+        complete_phone_change(owner, NEW_PHONE, issued.dev_code)  # type: ignore[attr-defined]
     owner.refresh_from_db()
     assert owner.phone_e164 == OLD_PHONE  # unchanged
 
@@ -92,8 +92,8 @@ def test_delete_account_anonymizes_stops_charges_retains_records(
 
     delete_account(owner)
 
-    owner.refresh_from_db(), business.refresh_from_db()
-    order.refresh_from_db(), agreement.refresh_from_db()
+    for obj in (owner, business, order, agreement):
+        obj.refresh_from_db()
     assert owner.deleted_at is not None and not owner.is_active
     assert owner.phone_e164 != OLD_PHONE and owner.phone_e164.startswith("+998000")
     assert business.status == Business.Status.DISABLED

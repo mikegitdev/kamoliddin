@@ -333,6 +333,11 @@ def issue_free_grant(
         raise ValueError("Location does not belong to the campaign's business")
     now = timezone.now()
     charge_days = compute_charge_days(start_at, end_at)
+    # Grants occupy a slot like paid placements: the per-location cap holds.
+    try:
+        assert_capacity(location, start_at=start_at, end_at=end_at, lock=True)
+    except CapacityExhausted as exc:
+        raise ValueError(str(exc)) from exc
     state = Placement.State.SCHEDULED if start_at > now else Placement.State.ACTIVE
     Placement.objects.get_or_create(
         campaign=campaign,

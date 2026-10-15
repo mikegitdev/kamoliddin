@@ -41,6 +41,15 @@ def approve_campaign(*, campaign: Campaign, reviewer) -> CampaignReview:
     )
     # Separate gate (spec §7.2): approval activates already-paid placements.
     from apps.placements.services import on_campaign_approved
+    from apps.renewals.models import RenewalAgreement
+    from apps.renewals.services import content_hash
+
+    # Renewals charge only for approved content: once an edited version is
+    # re-approved, it becomes the content the agreement renews (otherwise the
+    # agreement would fail "content_changed_needs_re_review" forever).
+    RenewalAgreement.objects.filter(campaign=campaign).update(
+        content_version_hash=content_hash(campaign)
+    )
 
     moved = on_campaign_approved(campaign)
     if moved:
@@ -124,7 +133,7 @@ def suspend_campaign(*, campaign: Campaign, staff, reason: str) -> None:
 
 
 @transaction.atomic
-def unsuspend_campaign(*, campaign: Campaign, staff) -> None:
+def unsuspend_campaign(*, campaign: Campaign, staff, reason: str = "") -> None:
     if campaign.review_status != Campaign.ReviewStatus.SUSPENDED:
         raise ModerationError(
             f"Cannot unsuspend campaign in status {campaign.review_status!r}"
@@ -133,7 +142,7 @@ def unsuspend_campaign(*, campaign: Campaign, staff) -> None:
     campaign.save(update_fields=["review_status", "updated_at"])
     ActivityEvent.objects.create(
         actor=staff, action="campaign.unsuspend", entity="campaign",
-        entity_id=str(campaign.id), metadata={},
+        entity_id=str(campaign.id), metadata={"reason": reason} if reason else {},
     )
 
 
@@ -149,3 +158,125 @@ def set_business_status(*, business, staff, status: str, reason: str) -> None:
         actor=staff, action=f"business.{status}", entity="business",
         entity_id=str(business.id), metadata={"reason": reason},
     )
+
+
+@transaction.atomic
+def set_location_status(*, location, staff, status: str, reason: str) -> None:
+    """Disable/enable one branch: the live eligibility filter
+    (location__status=active) hides its placements; renewals touching it fail
+    their `locations_inactive` gate. Sibling branches are untouched (spec §14)."""
+    if status not in {"active", "disabled"}:
+        raise ModerationError(f"Unsupported status {status!r}")
+    location.status = status
+    location.save(update_fields=["status", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action=f"location.{status}", entity="location",
+        entity_id=str(location.id), metadata={"reason": reason},
+    )
+
+
+@transaction.atomic
+def set_user_blocked(*, user, staff, blocked: bool, reason: str) -> None:
+    """Block/unblock an advertiser's login. `is_active=False` rejects OTP
+    login and voids live sessions (auth backends treat inactive users as
+    anonymous). Staff accounts and deleted accounts are out of scope: staff
+    management stays in Django Admin, deletion is irreversible by design."""
+    if user.is_staff:
+        raise ModerationError("Staff accounts are managed in Django Admin")
+    if user.deleted_at:
+        raise ModerationError("Deleted accounts cannot be changed")
+    if user.is_active != blocked:
+        raise ModerationError(
+            "User is already blocked" if blocked else "User is not blocked"
+        )
+    user.is_active = not blocked
+    user.save(update_fields=["is_active", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action="user.block" if blocked else "user.unblock",
+        entity="user", entity_id=str(user.id), metadata={"reason": reason},
+    )
+
+
+# block_reason marker for staff takedowns — distinct from the settlement-time
+# `capacity_conflict`, which belongs to the refund queue and is never unblocked.
+ADMIN_BLOCK_REASON = "admin_takedown"
+
+
+@transaction.atomic
+def block_placement(*, placement_id, staff, reason: str):
+    """Take one live/scheduled placement down (state -> BLOCKED). BLOCKED is
+    excluded from public eligibility and frees its capacity slot. No money
+    moves: refunds stay a separate, owner-initiated flow."""
+    from apps.placements.models import Placement
+
+    placement = Placement.objects.select_for_update().filter(pk=placement_id).first()
+    if placement is None:
+        raise ModerationError("Placement not found")
+    if placement.state not in (Placement.State.SCHEDULED, Placement.State.ACTIVE):
+        raise ModerationError(f"Cannot block placement in state {placement.state!r}")
+    previous = placement.state
+    placement.state = Placement.State.BLOCKED
+    placement.block_reason = ADMIN_BLOCK_REASON
+    placement.save(update_fields=["state", "block_reason", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff, action="placement.block", entity="placement",
+        entity_id=str(placement.id),
+        metadata={"reason": reason, "previous_state": previous},
+    )
+    return placement
+
+
+@transaction.atomic
+def unblock_placement(*, placement_id, staff, reason: str):
+    """Restore a staff-blocked placement into its original interval (not
+    extended — the takedown time is not credited back). Its slot was freed
+    while blocked, so capacity is re-checked under the per-location lock; a
+    refunded order's placement is never resurrected."""
+    from apps.billing.models import Refund
+    from apps.placements.models import Placement
+    from apps.placements.services import CapacityExhausted, assert_capacity
+
+    placement = (
+        Placement.objects.select_for_update()
+        .select_related("location").filter(pk=placement_id).first()
+    )
+    if placement is None:
+        raise ModerationError("Placement not found")
+    if (placement.state != Placement.State.BLOCKED
+            or placement.block_reason != ADMIN_BLOCK_REASON):
+        raise ModerationError("Only staff-blocked placements can be unblocked")
+    if placement.order_id and Refund.objects.filter(
+        order_id=placement.order_id,
+        state__in=[Refund.State.PROVIDER_REFUND_PROCESSING, Refund.State.REFUNDED],
+    ).exists():
+        raise ModerationError("The order of this placement was refunded")
+
+    now = timezone.now()
+    if placement.end_at <= now:
+        placement.state = Placement.State.EXPIRED
+        placement.actual_end_at = placement.actual_end_at or now
+    else:
+        try:
+            assert_capacity(
+                placement.location,
+                start_at=max(placement.start_at, now),
+                end_at=placement.end_at,
+                lock=True,
+            )
+        except CapacityExhausted as exc:
+            raise ModerationError(str(exc)) from exc
+        if placement.start_at <= now:
+            placement.state = Placement.State.ACTIVE
+            placement.actual_start_at = placement.actual_start_at or now
+        else:
+            placement.state = Placement.State.SCHEDULED
+    placement.block_reason = ""
+    placement.save(update_fields=[
+        "state", "block_reason", "actual_start_at", "actual_end_at", "updated_at",
+    ])
+    ActivityEvent.objects.create(
+        actor=staff, action="placement.unblock", entity="placement",
+        entity_id=str(placement.id),
+        metadata={"reason": reason, "restored_state": placement.state},
+    )
+    return placement

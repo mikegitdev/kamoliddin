@@ -340,7 +340,7 @@ export function BranchesPage() {
           const chip = statusLabel(loc.status, t);
           return (
             <li key={loc.id} className="row-between">
-              <div className="min-w-0">
+              <div className="min-w-0 stack-text">
                 <strong>{loc.name}</strong>
                 <span className="muted">{loc.address}</span>
                 {loc.phone && <span className="muted-2"><IconPhone size={12} /> {loc.phone}</span>}
@@ -477,7 +477,7 @@ export function BranchesPage() {
               onPick={(lng, lat) => setForm((f) => ({ ...f, point: { lng, lat } }))}
             />
           </div>
-          {form.point ? (
+          {form.point && (
             <p className="pin-confirm">
               <IconCheck size={12} /> {t.pinConfirmed}
               {form.address.trim() && <span>· <IconPin size={12} /> {form.address.trim()}</span>}
@@ -485,8 +485,6 @@ export function BranchesPage() {
                 {form.point.lng.toFixed(5)}, {form.point.lat.toFixed(5)}
               </span>
             </p>
-          ) : (
-            <p className="field-hint"><IconAlert size={12} /> {t.pinHint}</p>
           )}
           {fieldErrors.lat && (
             <span className="field-error" role="alert">

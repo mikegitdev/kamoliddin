@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.db.models import Count, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import permissions
+from rest_framework import permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,10 +16,45 @@ from apps.renewals.models import RenewalAgreement
 EXPIRING_WINDOW = timedelta(hours=48)
 
 
+class _ExpiringPlacementSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    campaign_id = serializers.UUIDField()
+    headline = serializers.CharField()
+    location = serializers.CharField()
+    ends_at = serializers.DateTimeField()
+
+
+class _SpendSerializer(serializers.Serializer):
+    total = serializers.IntegerField(help_text="Minor units (tiyin)")
+    month = serializers.IntegerField(help_text="Minor units (tiyin)")
+    currency = serializers.CharField()
+
+
+class _NextRenewalSerializer(serializers.Serializer):
+    agreement_id = serializers.UUIDField()
+    campaign_headline = serializers.CharField()
+    next_run_at = serializers.DateTimeField()
+    locations_count = serializers.IntegerField()
+    charge_days = serializers.IntegerField()
+
+
+class MeSummarySerializer(serializers.Serializer):
+    """Response shape of GET /auth/me/summary (schema documentation only)."""
+
+    campaigns = serializers.DictField(
+        child=serializers.IntegerField(), help_text="Campaign count per review status"
+    )
+    active_placements = serializers.IntegerField()
+    expiring_soon = _ExpiringPlacementSerializer(many=True)
+    spend = _SpendSerializer()
+    next_renewal = _NextRenewalSerializer(allow_null=True)
+
+
 class MeSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(tags=["Auth"], summary="Owner dashboard summary")
+    @extend_schema(tags=["Auth"], summary="Owner dashboard summary",
+                   responses=MeSummarySerializer)
     def get(self, request):
         owner = request.user
         now = timezone.now()

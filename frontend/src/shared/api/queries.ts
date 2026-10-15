@@ -245,40 +245,25 @@ export interface ApiAdminCampaign {
   headline: string;
   review_status: string;
   review_version: number;
+  business_id: string;
   business_name: string;
   owner_phone: string;
   banner_url: string;
   updated_at: string;
 }
 
-export function useAdminCampaigns(enabled: boolean, q: string, status: string) {
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (status) params.set("status", status);
-  const qs = params.toString();
-  return useQuery({
-    queryKey: ["staff", "campaigns", q, status],
-    queryFn: () => api<ApiAdminCampaign[]>(`/api/v1/admin/campaigns${qs ? `?${qs}` : ""}`),
-    enabled,
-  });
-}
-
 export interface ApiAdminOrder {
   id: string;
+  business_id: string;
   business_name: string;
+  campaign_id: string;
   campaign_headline: string;
   amount_total: number;
   currency: string;
   state: string;
+  auto_renew: boolean;
+  attempts_count: number;
   created_at: string;
-}
-
-export function useAdminOrders(enabled: boolean) {
-  return useQuery({
-    queryKey: ["staff", "orders"],
-    queryFn: () => api<ApiAdminOrder[]>("/api/v1/admin/orders"),
-    enabled,
-  });
 }
 
 export interface ApiActivity {
@@ -291,12 +276,162 @@ export interface ApiActivity {
   created_at: string;
 }
 
-export function useActivity(enabled: boolean) {
+// ---------- Staff control room (users, businesses, placements, logs) ----------
+
+export interface Paged<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export const STAFF_PAGE_SIZE = 50;
+
+/** Server-paginated staff list: `params` are the endpoint's filters (empty
+ *  values dropped), `offset` the LimitOffset cursor. */
+export function useStaffPage<T>(path: string, params: Record<string, string>, offset: number) {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) search.set(k, v);
+  search.set("limit", String(STAFF_PAGE_SIZE));
+  search.set("offset", String(offset));
+  const qs = search.toString();
   return useQuery({
-    queryKey: ["staff", "activity"],
-    queryFn: () => api<ApiActivity[]>("/api/v1/admin/activity"),
-    enabled,
+    queryKey: ["staff", path, qs],
+    queryFn: () => api<Paged<T>>(`/api/v1/admin/${path}?${qs}`),
+    placeholderData: (prev) => prev,
   });
+}
+
+export interface ApiAdminUser {
+  id: string;
+  phone_e164: string;
+  is_active: boolean;
+  is_staff: boolean;
+  is_deleted: boolean;
+  businesses_count: number;
+  last_login: string | null;
+  created_at: string;
+}
+
+export interface ApiAdminUserDetail {
+  user: ApiAdminUser;
+  businesses: {
+    id: string;
+    name: string;
+    status: string;
+    locations_count: number;
+    campaigns_count: number;
+    created_at: string;
+  }[];
+  orders: {
+    id: string;
+    campaign_headline: string;
+    amount_total: number;
+    currency: string;
+    state: string;
+    created_at: string;
+  }[];
+  activity: ApiActivity[];
+}
+
+export function useAdminUser(id: string | null) {
+  return useQuery({
+    queryKey: ["staff", "users", id],
+    queryFn: () => api<ApiAdminUserDetail>(`/api/v1/admin/users/${id}`),
+    enabled: !!id,
+  });
+}
+
+export interface ApiAdminBusiness {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  category_ru: string;
+  category_uz: string;
+  owner_id: string;
+  owner_phone: string;
+  owner_active: boolean;
+  locations_count: number;
+  campaigns_count: number;
+  live_ads: number;
+  created_at: string;
+}
+
+export interface ApiAdminLocation {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  status: string;
+  risk_flags: string[];
+  business_id: string;
+  business_name: string;
+  business_status: string;
+  lat: number;
+  lng: number;
+  live_ads: number;
+  created_at: string;
+}
+
+export interface ApiAdminPlacement {
+  id: string;
+  state: string;
+  source_type: "paid" | "grant";
+  block_reason: string;
+  start_at: string;
+  end_at: string;
+  charge_days: number;
+  order_id: string | null;
+  campaign_id: string;
+  campaign_headline: string;
+  campaign_status: string;
+  banner_url: string;
+  location_id: string;
+  location_name: string;
+  business_id: string;
+  business_name: string;
+  visible: boolean;
+  created_at: string;
+}
+
+export interface ApiAdminPayment {
+  id: string;
+  order_id: string;
+  order_state: string;
+  provider: string;
+  provider_payment_id: string;
+  amount: number;
+  status: string;
+  business_name: string;
+  campaign_headline: string;
+  events_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiAdminPaymentEvent {
+  id: string;
+  provider: string;
+  event_id: string;
+  payment_attempt_id: string | null;
+  payment_status: string | null;
+  order_id: string | null;
+  validated_payload_digest: string;
+  received_at: string;
+}
+
+export interface ApiAdminRenewalAttempt {
+  id: string;
+  agreement_id: string;
+  agreement_status: string;
+  renewal_period_key: string;
+  state: string;
+  order_id: string | null;
+  amount: number | null;
+  business_name: string;
+  campaign_headline: string;
+  attempted_at: string;
 }
 
 export interface ApiAdminOverview {
@@ -307,6 +442,15 @@ export interface ApiAdminOverview {
   active_placements: number;
   revenue: { total: number; month: number };
   owners: number;
+  attention: {
+    renewal_alerts: number;
+    renewal_reconciliation: number;
+    capacity_blocked: number;
+    staff_blocked: number;
+    blocked_users: number;
+    disabled_businesses: number;
+    disabled_locations: number;
+  };
 }
 
 export function useAdminOverview(enabled: boolean) {
@@ -357,15 +501,26 @@ export interface ApiOrderDetail extends ApiOrder {
   refund: { state: string; amount: number; reason: string; created_at: string } | null;
 }
 
+/** Checkout was started and the provider has not called back yet. The backend
+ *  keeps such orders in awaiting_payment with a pending attempt;
+ *  payment_processing is reserved for a future provider flow. */
+export function isAwaitingProvider(order: ApiOrderDetail | undefined): boolean {
+  if (!order) return false;
+  if (order.state === "payment_processing") return true;
+  return (
+    order.state === "awaiting_payment" && order.attempts.some((a) => a.status === "pending")
+  );
+}
+
 export function useOrder(id: string | undefined) {
   return useQuery({
     queryKey: ["order", id],
     queryFn: () => api<ApiOrderDetail>(`/api/v1/orders/${id}`),
     enabled: !!id,
     // Payment status resolves asynchronously (provider webhook): poll while
-    // the order sits in payment_processing so checkout resolves on its own.
-    refetchInterval: (query) =>
-      query.state.data?.state === "payment_processing" ? 3000 : false,
+    // the provider callback is outstanding so checkout resolves on its own.
+    // Stops once the order is paid/failed/expired; hidden tabs don't poll.
+    refetchInterval: (query) => (isAwaitingProvider(query.state.data) ? 3000 : false),
   });
 }
 

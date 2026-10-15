@@ -159,4 +159,4 @@ def get_sms_adapter() -> SMSAdapter:
     adapter_cls = _ADAPTERS.get(settings.SMS_PROVIDER)
     if adapter_cls is None:
         raise RuntimeError(f"Unknown SMS_PROVIDER: {settings.SMS_PROVIDER!r}")
-    return adapter_cls()  # type: ignore[return-value]
+    return adapter_cls()

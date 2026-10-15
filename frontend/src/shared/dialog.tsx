@@ -116,6 +116,71 @@ export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   });
 }
 
+/* ---------- Reason (staff actions: confirm + mandatory audit reason) ---------- */
+
+function ReasonBody({
+  options,
+  close,
+}: {
+  options: ConfirmOptions;
+  close: (v: string | null) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [close]);
+  const trimmed = reason.trim();
+  return (
+    <div className="dialog" role="alertdialog" aria-modal="true" aria-label={options.title ?? options.body}>
+      {options.title && <h3>{options.title}</h3>}
+      <p className="dialog-body">{options.body}</p>
+      <textarea
+        ref={inputRef}
+        className="report-note"
+        rows={3}
+        maxLength={500}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder={options.t.reasonRequired}
+        aria-label={options.t.reasonRequired}
+      />
+      <div className="dialog-actions">
+        <button className="btn" onClick={() => close(null)}>
+          {options.cancelLabel}
+        </button>
+        <button
+          className={`btn primary${options.danger ? " danger-solid" : ""}`}
+          disabled={!trimmed}
+          onClick={() => close(trimmed)}
+        >
+          {options.confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Confirm a staff action with a required reason; resolves the reason, or null. */
+export function reasonDialog(options: ConfirmOptions): Promise<string | null> {
+  return new Promise((resolve) => {
+    void mountDialog((close) => (
+      <ReasonBody
+        options={options}
+        close={(value) => {
+          close();
+          resolve(value);
+        }}
+      />
+    ));
+  });
+}
+
 /* ---------- Report (public moderation complaint) ---------- */
 
 export interface ReportOptions {

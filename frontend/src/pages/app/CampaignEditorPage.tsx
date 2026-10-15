@@ -35,6 +35,7 @@ import {
   IconEye,
   IconLock,
   IconPencil,
+  IconPlus,
   IconSave,
 } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
@@ -492,9 +493,9 @@ export function CampaignEditorPage() {
       <div className="editor-status">
         {saved && <CampaignChip status={saved.review_status} />}
         {saved && <span className="save-state">{t.versionLabel} {saved.review_version}</span>}
-        {baseline && (
+        {baseline && (dirty || saved) && (
           <span className={`save-state ${dirty ? "dirty" : saved ? "saved" : ""}`}>
-            {dirty ? t.unsavedChanges : saved ? t.savedLabel : ""}
+            {dirty ? t.unsavedChanges : t.savedLabel}
           </span>
         )}
       </div>
@@ -639,6 +640,10 @@ export function CampaignEditorPage() {
                   e.target.value = "";
                 }}
               />
+              <label htmlFor="ce-banner" className="btn small">
+                <IconPlus size={14} /> {t.upload}
+              </label>
+              {!rawFile && <span className="drop-zone-meta muted-2">{t.bannerDropHint}</span>}
               {rawFile && (
                 <span className="drop-zone-meta muted-2">
                   {rawFile.name} · {formatBytes(rawFile.size, locale)}

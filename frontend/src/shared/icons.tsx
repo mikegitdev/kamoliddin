@@ -68,13 +68,6 @@ export const IconDirections = (p: IconProps) => (
   <Line {...p}>{paths("M3 11 22 2l-9 19-2-8z")}</Line>
 );
 export const IconBack = (p: IconProps) => <Line {...p}>{paths("m12 19-7-7 7-7", "M19 12H5")}</Line>;
-export const IconLocate = (p: IconProps) => (
-  <Line {...p}>
-    {paths("M2 12h3", "M19 12h3", "M12 2v3", "M12 19v3")}
-    <circle cx="12" cy="12" r="7" />
-    <circle cx="12" cy="12" r="3" />
-  </Line>
-);
 export const IconPhone = (p: IconProps) => (
   <Line {...p}>
     {paths(

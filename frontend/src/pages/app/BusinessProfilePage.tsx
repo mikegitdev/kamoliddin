@@ -117,7 +117,7 @@ export function BusinessProfilePage() {
           <input id="biz-name" value={form.name} onChange={set("name")} placeholder="Osh Markazi" />
         </div>
         <div className="field">
-          <label htmlFor="biz-category">{t.allCategories}</label>
+          <label htmlFor="biz-category">{t.categoryLabel}</label>
           <select id="biz-category" value={form.category} onChange={set("category")}>
             <option value="">{t.categoryPlaceholder}</option>
             {categories?.map((c) => (

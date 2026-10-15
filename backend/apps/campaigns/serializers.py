@@ -44,7 +44,9 @@ class CampaignSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user and request.user.is_authenticated:
-            self.fields["business"].queryset = Business.objects.filter(owner=request.user)
+            business_field = self.fields["business"]
+            assert isinstance(business_field, serializers.SlugRelatedField)
+            business_field.queryset = Business.objects.filter(owner=request.user)
 
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.banner_key}" if obj.banner_key else ""

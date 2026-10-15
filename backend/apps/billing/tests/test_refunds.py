@@ -75,7 +75,7 @@ def test_refund_disables_renewal_agreement(
     assert RenewalAgreement.objects.filter(campaign=campaign).count() == 0
     reject_campaign(campaign=campaign, reviewer=staff, reason="takedown")
     refund = request_refund(user=owner, order_id=order.id, reason="please")
-    processed = processed = process_refund(
+    processed = process_refund(
         staff=staff, refund_id=str(refund.id), decision="approve"
     )
     # No agreement existed; the filter must simply be a no-op, not crash.
@@ -120,3 +120,20 @@ def test_reject_refund_keeps_payment_records(
     order.refresh_from_db()
     assert order.state == "paid"
     assert Placement.objects.filter(order=order).exists()
+
+
+def test_refunded_order_cannot_be_refunded_again_or_over_its_total(
+    owner, tariff, business, campaign, location, staff
+):
+    order, _ = _paid_order_with_shifted_placement(
+        owner, tariff, business, campaign, location, staff
+    )
+    reject_campaign(campaign=campaign, reviewer=staff, reason="takedown")
+    refund = request_refund(user=owner, order_id=order.id, reason="please")
+    with pytest.raises(RefundError):  # more than the customer paid
+        process_refund(staff=staff, refund_id=str(refund.id), decision="approve",
+                       amount=order.amount_total + 1)
+    process_refund(staff=staff, refund_id=str(refund.id), decision="approve")
+
+    with pytest.raises(RefundError):  # order stays PAID, but money already went back
+        request_refund(user=owner, order_id=order.id, reason="again")

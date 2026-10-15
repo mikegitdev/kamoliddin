@@ -20,6 +20,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.models import Order, OrderItem, Tariff
+from apps.businesses.models import Business
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
 from apps.moderation.models import ActivityEvent
@@ -67,9 +68,6 @@ def ensure_agreement_for_order(order: Order) -> RenewalAgreement | None:
         campaign=order.campaign
     ).first()
     if existing is not None:
-        if existing.status == RenewalAgreement.Status.PENDING_TOKEN and not existing.token_ref:
-            # Token still absent; keep awaiting, but refresh the consent snapshot.
-            pass
         changed = (
             existing.locations_snapshot != snapshot
             or existing.charge_days != charge_days
@@ -163,6 +161,13 @@ def _check_and_charge(agreement: RenewalAgreement, attempt: RenewalAttempt, boun
         raise RenewalFailure("campaign_not_approved")
     if content_hash(campaign) != agreement.content_version_hash:
         raise RenewalFailure("content_changed_needs_re_review")
+    # Staff takedowns: never charge for ads the public filter hides, nor an
+    # owner who is blocked from managing (or cancelling) the agreement.
+    business = agreement.business
+    if business.status != Business.Status.ACTIVE:
+        raise RenewalFailure("business_disabled")
+    if not business.owner.is_active:
+        raise RenewalFailure("owner_blocked")
 
     locations = list(
         Location.objects.filter(

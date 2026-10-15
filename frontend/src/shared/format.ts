@@ -13,11 +13,51 @@ export function formatPhone(e164: string | null | undefined): string {
  *  (spec: money is never floating point). */
 const INTL_LOCALE: Record<Locale, string> = { ru: "ru-RU", uz: "uz-UZ" };
 
+/* Chrome ships no Uzbek ICU data: Intl with "uz-UZ" falls back to raw forms
+ * ("2026 M10 15", "tomorrow", "Mon", "46,260,000"). Numbers borrow ru-RU
+ * grouping (same space separator); dates, weekdays and relative time are
+ * spelled out by hand below. */
+const NUMBER_LOCALE: Record<Locale, string> = { ru: "ru-RU", uz: "ru-RU" };
+const UZ_MONTHS = ["yan", "fev", "mar", "apr", "may", "iyun", "iyul", "avg", "sen", "okt", "noy", "dek"];
+const UZ_WEEKDAYS: Record<string, string> = {
+  mon: "Du", tue: "Se", wed: "Ch", thu: "Pa", fri: "Ju", sat: "Sh", sun: "Ya",
+};
+
+/** Date parts in Asia/Tashkent, independent of locale data. */
+function tashkentParts(d: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    year: get("year"), month: Number(get("month")), day: Number(get("day")),
+    time: `${get("hour").replace("24", "00")}:${get("minute")}`,
+  };
+}
+
+function uzDate(d: Date, withTime: boolean): string {
+  const p = tashkentParts(d);
+  const date = `${p.day}-${UZ_MONTHS[p.month - 1]}, ${p.year}`;
+  return withTime ? `${date}, ${p.time}` : date;
+}
+
+const UZ_UNITS = { minute: "daqiqa", hour: "soat", day: "kun" } as const;
+function uzRelative(value: number, unit: keyof typeof UZ_UNITS): string {
+  if (unit === "day" && value === 1) return "ertaga";
+  if (unit === "day" && value === -1) return "kecha";
+  if (unit === "day" && value === 0) return "bugun";
+  if (unit === "minute" && value === 0) return "hozir";
+  const n = Math.abs(value);
+  return value > 0 ? `${n} ${UZ_UNITS[unit]}dan keyin` : `${n} ${UZ_UNITS[unit]} oldin`;
+}
+
 export function formatMinor(minor: number, currency = "UZS", locale: Locale = "ru"): string {
   const major = minor / 100;
   let formatted: string;
   try {
-    formatted = new Intl.NumberFormat(INTL_LOCALE[locale], {
+    formatted = new Intl.NumberFormat(NUMBER_LOCALE[locale], {
       maximumFractionDigits: 0,
     }).format(major);
   } catch {
@@ -30,6 +70,7 @@ export function formatMinor(minor: number, currency = "UZS", locale: Locale = "r
 export function formatDateTime(iso: string | null | undefined, locale: Locale = "ru"): string {
   if (!iso) return "—";
   try {
+    if (locale === "uz") return uzDate(new Date(iso), true);
     return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
       dateStyle: "medium",
       timeStyle: "short",
@@ -44,6 +85,7 @@ export function formatDateTime(iso: string | null | undefined, locale: Locale = 
 export function formatDate(iso: string | null | undefined, locale: Locale = "ru"): string {
   if (!iso) return "—";
   try {
+    if (locale === "uz") return uzDate(new Date(iso), false);
     return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
       dateStyle: "medium",
       timeZone: "Asia/Tashkent",
@@ -59,17 +101,6 @@ export function localInputToIso(value: string): string {
   return new Date(value).toISOString();
 }
 
-/** ISO string -> value usable in <input type="datetime-local">. */
-export function isoToLocalInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  );
-}
-
 /** Relative time like "через 2 дня" / "5 мин назад" (auto unit).
  *  Falls back to the absolute date for anything beyond a week. */
 export function formatRelative(iso: string | null | undefined, locale: Locale = "ru"): string {
@@ -79,16 +110,26 @@ export function formatRelative(iso: string | null | undefined, locale: Locale = 
   const diffMs = target - Date.now();
   const abs = Math.abs(diffMs);
   const rtf = new Intl.RelativeTimeFormat(INTL_LOCALE[locale], { numeric: "auto" });
+  const fmt = (value: number, unit: "minute" | "hour" | "day") =>
+    locale === "uz" ? uzRelative(value, unit) : rtf.format(value, unit);
   const min = 60_000;
-  if (abs < 10 * min) return rtf.format(Math.round(diffMs / min), "minute");
-  if (abs < 3_600_000 * 12) return rtf.format(Math.round(diffMs / 3_600_000), "hour");
-  if (abs < 86_400_000 * 7) return rtf.format(Math.round(diffMs / 86_400_000), "day");
+  if (abs < 10 * min) return fmt(Math.round(diffMs / min), "minute");
+  if (abs < 3_600_000 * 12) return fmt(Math.round(diffMs / 3_600_000), "hour");
+  if (abs < 86_400_000 * 7) {
+    // Calendar days in Tashkent, so 23:57 tonight reads "today", not "tomorrow".
+    const a = tashkentParts(new Date());
+    const b = tashkentParts(new Date(target));
+    const days = Math.round(
+      (Date.UTC(+b.year, b.month - 1, b.day) - Date.UTC(+a.year, a.month - 1, a.day)) / 86_400_000,
+    );
+    return fmt(days, "day");
+  }
   return formatDateTime(iso, locale);
 }
 
 /** Meters -> "850 м" / "2,4 км" (search result cards). */
 export function formatDistanceM(meters: number, locale: Locale = "ru"): string {
-  const nf = new Intl.NumberFormat(INTL_LOCALE[locale], { maximumFractionDigits: 1 });
+  const nf = new Intl.NumberFormat(NUMBER_LOCALE[locale], { maximumFractionDigits: 1 });
   if (meters < 1000) return `${nf.format(Math.max(1, Math.round(meters)))} м`;
   return `${nf.format(meters / 1000)} км`;
 }
@@ -100,7 +141,7 @@ const BYTE_UNITS: Record<Locale, { kb: string; mb: string }> = {
   uz: { kb: "KB", mb: "MB" },
 };
 export function formatBytes(bytes: number, locale: Locale = "ru"): string {
-  const nf = new Intl.NumberFormat(INTL_LOCALE[locale], { maximumFractionDigits: 1 });
+  const nf = new Intl.NumberFormat(NUMBER_LOCALE[locale], { maximumFractionDigits: 1 });
   if (bytes >= 1024 * 1024) return `${nf.format(bytes / (1024 * 1024))} ${BYTE_UNITS[locale].mb}`;
   return `${nf.format(Math.max(1, Math.round(bytes / 1024)))} ${BYTE_UNITS[locale].kb}`;
 }
@@ -126,6 +167,7 @@ const JS_DAY_TO_KEY: Record<number, WeekDay> = {
 
 /** Localized weekday abbreviation (Пн / Dush). */
 export function weekdayLabel(day: WeekDay, locale: Locale): string {
+  if (locale === "uz") return UZ_WEEKDAYS[day];
   // Fixed dates whose weekday is known: 2024-01-01 is a Monday.
   const dates: Record<WeekDay, string> = {
     mon: "2024-01-01", tue: "2024-01-02", wed: "2024-01-03", thu: "2024-01-04",

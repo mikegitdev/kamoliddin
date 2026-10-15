@@ -12,7 +12,10 @@ import { ReportsTab } from "./staff/ReportsTab";
 import { CampaignsTab } from "./staff/CampaignsTab";
 import { RefundsTab } from "./staff/RefundsTab";
 import { OrdersTab } from "./staff/OrdersTab";
-import { ActivityTab } from "./staff/ActivityTab";
+import { LogsTab } from "./staff/LogsTab";
+import { UsersTab } from "./staff/UsersTab";
+import { BusinessesTab } from "./staff/BusinessesTab";
+import { PlacementsTab } from "./staff/PlacementsTab";
 import { GrantsTab } from "./staff/GrantsTab";
 import { SettingsTab } from "./staff/SettingsTab";
 
@@ -21,19 +24,23 @@ type Tab =
   | "queue"
   | "reports"
   | "campaigns"
+  | "placements"
+  | "businesses"
+  | "users"
   | "refunds"
   | "orders"
-  | "activity"
   | "grants"
+  | "logs"
   | "settings";
 
 const TABS: Tab[] = [
-  "overview", "queue", "reports", "campaigns", "refunds",
-  "orders", "activity", "grants", "settings",
+  "overview", "queue", "reports", "campaigns", "placements", "businesses",
+  "users", "refunds", "orders", "grants", "logs", "settings",
 ];
 
-/** Staff moderation console (spec §12): review queue, refunds, grants, settings.
- *  Shell only — each tab lives in ./staff/*. */
+/** Staff control room (spec §12, extended): moderation queue, every account,
+ *  business, branch, placement and log, refunds, grants, settings.
+ *  Shell only — each tab lives in ./staff/*; drill-downs travel in the URL. */
 export function StaffPage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
@@ -60,10 +67,13 @@ export function StaffPage() {
     queue: t.reviewQueue,
     reports: t.reportsTab,
     campaigns: t.campaignsTab,
+    placements: t.placementsTab,
+    businesses: t.businessesTab,
+    users: t.usersTab,
     refunds: t.refunds,
     orders: t.ordersTab,
-    activity: t.activityTab,
     grants: t.grants,
+    logs: t.logsTab,
     settings: t.settings,
   };
 
@@ -161,11 +171,14 @@ export function StaffPage() {
       {tab === "overview" && <AdminOverviewTab />}
       {tab === "queue" && <QueueTab onError={setError} locale={locale} />}
       {tab === "reports" && <ReportsTab onError={setError} locale={locale} />}
-      {tab === "campaigns" && <CampaignsTab onError={setError} locale={locale} />}
+      {tab === "campaigns" && <CampaignsTab locale={locale} />}
+      {tab === "placements" && <PlacementsTab locale={locale} />}
+      {tab === "businesses" && <BusinessesTab locale={locale} />}
+      {tab === "users" && <UsersTab locale={locale} />}
       {tab === "refunds" && <RefundsTab onError={setError} locale={locale} />}
       {tab === "orders" && <OrdersTab locale={locale} />}
-      {tab === "activity" && <ActivityTab locale={locale} />}
       {tab === "grants" && <GrantsTab onError={setError} />}
+      {tab === "logs" && <LogsTab locale={locale} />}
       {tab === "settings" && <SettingsTab onError={setError} />}
     </>,
   );

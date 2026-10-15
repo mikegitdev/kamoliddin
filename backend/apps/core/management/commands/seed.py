@@ -35,4 +35,4 @@ class Command(BaseCommand):
         if options.get("demo"):
             from apps.core.demo import seed_demo
 
-            seed_demo(reset=options.get("reset"), log=self.stdout.write)
+            seed_demo(reset=bool(options.get("reset")), log=self.stdout.write)

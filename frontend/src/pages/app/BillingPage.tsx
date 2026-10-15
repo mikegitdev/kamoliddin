@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useOrders, useRenewals } from "@/shared/api/queries";
@@ -9,6 +10,8 @@ import { confirmDialog, mountDialog, RefundDialogBody } from "@/shared/dialog";
 import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiRenewal } from "@/entities/types";
+
+const PAGE_SIZE = 20;
 
 const RENEWAL_LABEL: Record<string, "renewalActive" | "renewalAlert" | "renewalDisabled"> = {
   active: "renewalActive",
@@ -60,7 +63,7 @@ function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
   return (
     <li className="renewal-row">
       <div className="row-between items-start">
-        <div className="min-w-0">
+        <div className="min-w-0 stack-text">
           <strong className="wrap-anywhere">{renewal.campaign_headline}</strong>
           <span className="muted-2">
             {renewal.locations_count} {t.locationsCount} · {renewal.charge_days} {t.days} ·{" "}
@@ -99,6 +102,7 @@ export function BillingPage() {
   const queryClient = useQueryClient();
   const { data: orders } = useOrders();
   const { data: renewals } = useRenewals();
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const refund = useMutation({
     mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
@@ -134,80 +138,91 @@ export function BillingPage() {
           <span className="muted">{t.paidTotal}:</span>{" "}
           <strong>
             {formatMinor(paidTotal, orders[0].currency, locale)}
-          </strong>
+          </strong>{" "}
           <span className="muted-2 billing-count">· {t.countLabel}: {orders.length}</span>
         </p>
       )}
 
       {orders && orders.length === 0 && <p className="muted">{t.noOrders}</p>}
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t.order}</th>
-              <th>{t.campaigns}</th>
-              <th>{t.total}</th>
-              <th>{t.status}</th>
-              <th>{t.refundState}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {orders?.map((order) => {
-              const refundable = order.state === "paid" && order.campaign_status === "rejected";
-              const refundDone = refund.isSuccess && refund.variables?.orderId === order.id;
-              return (
-                <tr key={order.id}>
-                  <td data-label={t.order}>
-                    <Link to={`/app/orders/${order.id}`} className="muted-2" title={order.id}>
-                      …{order.id.slice(0, 8)}
-                    </Link>
-                    <div className="muted-2">{formatDateTime(order.created_at, locale)}</div>
-                  </td>
-                  <td data-label={t.campaigns} className="max-w-220 wrap-anywhere">
-                    <Link to={`/app/orders/${order.id}`}>{order.campaign_headline}</Link>
-                  </td>
-                  <td data-label={t.total}>{formatMinor(order.amount_total, order.currency, locale)}</td>
-                  <td data-label={t.overview}>
-                    <OrderChip state={order.state} />
-                  </td>
-                  <td data-label={t.refundState}>
-                    {order.state === "expired" ? (
-                      <span className="muted-2">—</span>
-                    ) : refundable ? (
-                      <button
-                        className="btn small"
-                        disabled={refund.isPending && refund.variables?.orderId === order.id}
-                        onClick={() => openRefundDialog(order.id)}
-                      >
-                        {refund.isPending && refund.variables?.orderId === order.id
-                          ? t.sending
-                          : t.requestRefund}
-                      </button>
-                    ) : refundDone ? (
-                      <span className="ok"><IconCheck size={12} /> {t.refundSent}</span>
-                    ) : (
-                      <span className="muted-2">—</span>
-                    )}
-                    {refund.isError && refund.variables?.orderId === order.id && (
-                      <span className="error" role="alert">
-                        {refund.error instanceof ApiError ? refund.error.message : t.error}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {["draft_quote", "awaiting_payment"].includes(order.state) && (
-                      <Link className="btn small" to={`/app/checkout/${order.id}`}>
-                        {t.checkout}
-                      </Link>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {orders && orders.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t.order}</th>
+                <th>{t.campaigns}</th>
+                <th>{t.total}</th>
+                <th>{t.status}</th>
+                <th>{t.refundState}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {orders.slice(0, visibleCount).map((order) => {
+                const refundable = order.state === "paid" && order.campaign_status === "rejected";
+                const refundDone = refund.isSuccess && refund.variables?.orderId === order.id;
+                return (
+                  <tr key={order.id}>
+                    <td data-label={t.order}>
+                      <div>
+                        <Link to={`/app/orders/${order.id}`} className="muted-2" title={order.id}>
+                          …{order.id.slice(0, 8)}
+                        </Link>
+                        <div className="muted-2">{formatDateTime(order.created_at, locale)}</div>
+                      </div>
+                    </td>
+                    <td data-label={t.campaigns} className="max-w-220 wrap-anywhere">
+                      <Link to={`/app/orders/${order.id}`}>{order.campaign_headline}</Link>
+                    </td>
+                    <td data-label={t.total}>{formatMinor(order.amount_total, order.currency, locale)}</td>
+                    <td data-label={t.status}>
+                      <OrderChip state={order.state} />
+                    </td>
+                    <td data-label={t.refundState}>
+                      {order.state === "expired" ? (
+                        <span className="muted-2">—</span>
+                      ) : refundable ? (
+                        <button
+                          className="btn small"
+                          disabled={refund.isPending && refund.variables?.orderId === order.id}
+                          onClick={() => openRefundDialog(order.id)}
+                        >
+                          {refund.isPending && refund.variables?.orderId === order.id
+                            ? t.sending
+                            : t.requestRefund}
+                        </button>
+                      ) : refundDone ? (
+                        <span className="ok"><IconCheck size={12} /> {t.refundSent}</span>
+                      ) : (
+                        <span className="muted-2">—</span>
+                      )}
+                      {refund.isError && refund.variables?.orderId === order.id && (
+                        <span className="error" role="alert">
+                          {refund.error instanceof ApiError ? refund.error.message : t.error}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {["draft_quote", "awaiting_payment"].includes(order.state) && (
+                        <Link className="btn small" to={`/app/checkout/${order.id}`}>
+                          {t.checkout}
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {orders && orders.length > visibleCount && (
+        <p className="cc-more-row">
+          <button className="btn subtle small" onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}>
+            {t.showMore} ({orders.length - visibleCount})
+          </button>
+        </p>
+      )}
 
       {renewals && renewals.length > 0 && (
         <>

@@ -11,9 +11,10 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.http import FileResponse
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from PIL import Image, ImageOps
-from rest_framework import permissions
+from rest_framework import permissions, serializers
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -39,7 +40,7 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
     fresh encode of the pixel data, never the original bytes (spec §11).
     Raises ValueError with a user-facing message on policy violation."""
     try:
-        image = Image.open(io.BytesIO(data))
+        image: Image.Image = Image.open(io.BytesIO(data))
     except OSError as exc:  # includes PIL.UnidentifiedImageError
         raise ValueError("Not a recognizable image") from exc
     if image.format not in ALLOWED_FORMATS:
@@ -64,7 +65,7 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
     if fmt == "JPEG" and image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
     buf = io.BytesIO()
-    save_kwargs = {"optimize": True}
+    save_kwargs: dict[str, bool | int] = {"optimize": True}
     if fmt in ("JPEG", "WEBP"):
         save_kwargs["quality"] = 88
     image.save(buf, format=fmt, **save_kwargs)
@@ -75,6 +76,21 @@ class MediaUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser]
 
+    @extend_schema(
+        tags=["Media"],
+        summary="Upload a banner/logo (validated, re-encoded, metadata stripped)",
+        parameters=[OpenApiParameter("purpose", OpenApiTypes.STR, enum=sorted(ALLOWED_PURPOSES),
+                                     default="banners")],
+        request={"multipart/form-data": {
+            "type": "object",
+            "properties": {"file": {"type": "string", "format": "binary"}},
+            "required": ["file"],
+        }},
+        responses=inline_serializer("MediaUploadResult", fields={
+            "key": serializers.CharField(),
+            "url": serializers.CharField(),
+        }),
+    )
     def post(self, request):
         purpose = request.query_params.get("purpose", "banners")
         if purpose not in ALLOWED_PURPOSES:

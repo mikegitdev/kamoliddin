@@ -207,6 +207,8 @@ def request_refund(*, user, order_id: str, reason: str) -> Refund:
         ]
     ).exists():
         raise RefundError("A refund request already exists for this order")
+    if order.refunds.filter(state=Refund.State.REFUNDED).exists():
+        raise RefundError("This order has already been refunded")
 
     refund = Refund.objects.create(
         order=order, amount=order.amount_total, reason=reason,
@@ -260,6 +262,11 @@ def process_refund(
 
     refund.operator = staff
     if amount is not None:
+        if not 0 < amount <= refund.order.amount_total:
+            raise RefundError(
+                f"Refund amount must be between 1 and the order total "
+                f"({refund.order.amount_total})"
+            )
         refund.amount = amount
 
     if decision == "reject":

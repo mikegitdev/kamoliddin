@@ -87,8 +87,10 @@ Semantic colors (`--success`, `--danger`, `--warn`, `--accent` and their
   `prefers-reduced-motion`.
 - **Map:** every location with ads = brand count badge (white ring, soft
   shadow), always drawn, never hidden by collision; its name rides above in a
-  white tag when there's room (tags yield to badges, more ads = higher
-  priority). No ads = gray dot. Clusters = brand circle with black count.
+  white tag when there's room (tags yield to badges). All badges are one
+  size (shrinking together in crowded views); priority on collision is
+  neutral — result order in search, distance from the map center while
+  browsing — never ad volume (spec §10: no paid boost). No ads = gray dot. Clusters = brand circle with black count.
   Selected = black badge + black tag with brand text, plus a sonar pulse.
 
 ## 4. Layout

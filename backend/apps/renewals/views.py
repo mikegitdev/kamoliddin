@@ -28,7 +28,9 @@ class RenewalListView(ListAPIView):
 
 
 @extend_schema_view(
-    post=extend_schema(tags=["Renewals"], summary="Re-enable explicit recurrence")
+    post=extend_schema(tags=["Renewals"], summary="Re-enable explicit recurrence",
+                       request=RenewalEnableSerializer,
+                       responses=RenewalAgreementSerializer)
 )
 class RenewalEnableView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -46,12 +48,18 @@ class RenewalEnableView(APIView):
                            "fields": {}}},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except ValueError as exc:  # pending provider token — cannot enable yet
+            return Response(
+                {"error": {"code": "renewal_unavailable", "message": str(exc), "fields": {}}},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(RenewalAgreementSerializer(agreement).data)
 
 
 @extend_schema_view(
     post=extend_schema(tags=["Renewals"],
-                       summary="Disable future charge attempts (paid time remains)")
+                       summary="Disable future charge attempts (paid time remains)",
+                       request=None, responses=RenewalAgreementSerializer)
 )
 class RenewalCancelView(APIView):
     permission_classes = [permissions.IsAuthenticated]

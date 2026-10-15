@@ -64,10 +64,6 @@ class OTPChallenge(models.Model):
     def __str__(self) -> str:
         return f"OTP {self.phone_e164} ({self.purpose})"
 
-    @property
-    def is_consumed(self) -> bool:
-        return self.consumed_at is not None
-
 
 class PhoneChangeRecord(models.Model):
     """Audit + reclaim-block for phone changes and deletion anonymization.

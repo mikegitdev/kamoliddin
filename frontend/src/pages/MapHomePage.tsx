@@ -372,20 +372,34 @@ export function MapHomePage() {
   };
 
   // --- Pins on the map: clustered (adapter groups at low zoom) ---
-  // Must run after init AND whenever the visible result set changes (viewport
-  // pan, search, category). Without it the map is just tiles.
+  // Marker order is display priority (who keeps a name tag on collision,
+  // who draws on top). It must stay neutral — never ad volume (spec §10 [C]):
+  // search keeps result order (relevance, then distance); browsing ranks by
+  // distance from the map center, so priority follows where the visitor looks.
+  const rankCenter = searchActive ? null : camera?.center ?? null;
+  const markers = useMemo(() => {
+    let ordered = results;
+    if (rankCenter) {
+      const [cLon, cLat] = rankCenter;
+      const kx = Math.cos((cLat * Math.PI) / 180); // equirectangular is plenty at city scale
+      const dist = (p: ApiLocationPin) => ((p.lon - cLon) * kx) ** 2 + (p.lat - cLat) ** 2;
+      ordered = [...results].sort((a, b) => dist(a) - dist(b));
+    }
+    return ordered.map((p) => ({
+      id: p.id,
+      lng: p.lon,
+      lat: p.lat,
+      activeAdsCount: p.active_ads_count,
+      label: p.business_name,
+    }));
+  }, [results, rankCenter]);
+
+  // Must run after init AND whenever the visible result set or its order
+  // changes (viewport pan, search, category). Without it the map is just tiles.
   useEffect(() => {
     if (!mapReady) return;
-    adapterRef.current?.setClusters(
-      results.map((p) => ({
-        id: p.id,
-        lng: p.lon,
-        lat: p.lat,
-        activeAdsCount: p.active_ads_count,
-        label: p.business_name,
-      })),
-    );
-  }, [mapReady, results]);
+    adapterRef.current?.setClusters(markers);
+  }, [mapReady, markers]);
 
   // Keep the selection halo in sync when the pin set changes (e.g. new search).
   useEffect(() => {

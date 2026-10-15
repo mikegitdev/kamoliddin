@@ -8,7 +8,54 @@ paths:
   /api/v1/admin/activity:
     get:
       operationId: api_v1_admin_activity_list
-      description: GET /admin/activity — immutable audit trail tail.
+      description: GET /admin/activity — filterable, paginated immutable audit trail.
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+        description: action substring, e.g. 'refund.'
+      - in: query
+        name: actor
+        schema:
+          type: string
+        description: actor phone substring, or 'system'
+      - in: query
+        name: entity
+        schema:
+          type: string
+        description: exact entity, e.g. campaign
+      - in: query
+        name: entity_id
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: free text across action/entity id/metadata
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO date/datetime
+      - in: query
+        name: until
+        schema:
+          type: string
+        description: ISO date/datetime (inclusive day)
       tags:
       - api
       security:
@@ -18,14 +65,137 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Activity'
+                $ref: '#/components/schemas/PaginatedAdminActivityList'
+          description: ''
+  /api/v1/admin/activity/export:
+    get:
+      operationId: api_v1_admin_activity_export_retrieve
+      summary: Audit trail as CSV (same filters, max 10000 rows)
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+        description: action substring, e.g. 'refund.'
+      - in: query
+        name: actor
+        schema:
+          type: string
+        description: actor phone substring, or 'system'
+      - in: query
+        name: entity
+        schema:
+          type: string
+        description: exact entity, e.g. campaign
+      - in: query
+        name: entity_id
+        schema:
+          type: string
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: free text across action/entity id/metadata
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO date/datetime
+      - in: query
+        name: until
+        schema:
+          type: string
+        description: ISO date/datetime (inclusive day)
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: ''
+  /api/v1/admin/businesses:
+    get:
+      operationId: api_v1_admin_businesses_list
+      description: GET /admin/businesses?q=&status=&owner=
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminBusinessList'
+          description: ''
+  /api/v1/admin/businesses/{id}/status:
+    post:
+      operationId: api_v1_admin_businesses_status_create
+      summary: Disable/enable a business (hides all its ads live)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
           description: ''
   /api/v1/admin/campaigns:
     get:
       operationId: api_v1_admin_campaigns_list
-      description: GET /admin/campaigns?q=&status= — searchable oversight list.
+      description: GET /admin/campaigns?q=&status=&business= — searchable, paginated.
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
       tags:
       - api
       security:
@@ -35,9 +205,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AdminCampaign'
+                $ref: '#/components/schemas/PaginatedAdminCampaignList'
           description: ''
   /api/v1/admin/campaigns/{id}/review:
     post:
@@ -68,7 +236,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignStatusResult'
+          description: ''
   /api/v1/admin/campaigns/{id}/suspend:
     post:
       operationId: api_v1_admin_campaigns_suspend_create
@@ -98,7 +270,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignStatusResult'
+          description: ''
   /api/v1/admin/campaigns/{id}/unsuspend:
     post:
       operationId: api_v1_admin_campaigns_unsuspend_create
@@ -112,11 +288,26 @@ paths:
         required: true
       tags:
       - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUnsuspend'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CampaignUnsuspend'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CampaignUnsuspend'
       security:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignStatusResult'
+          description: ''
   /api/v1/admin/grants:
     get:
       operationId: api_v1_admin_grants_retrieve
@@ -127,7 +318,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantOptions'
+          description: ''
     post:
       operationId: api_v1_admin_grants_create
       summary: Issue a zero-charge placement grant
@@ -148,12 +343,29 @@ paths:
       security:
       - cookieAuth: []
       responses:
-        '200':
-          description: No response body
-  /api/v1/admin/orders:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantCreated'
+          description: ''
+  /api/v1/admin/locations:
     get:
-      operationId: api_v1_admin_orders_list
-      description: GET /admin/orders — recent platform orders (read-only oversight).
+      operationId: api_v1_admin_locations_list
+      description: GET /admin/locations?q=&status=&business=
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
       tags:
       - api
       security:
@@ -163,9 +375,69 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AdminOrder'
+                $ref: '#/components/schemas/PaginatedAdminLocationList'
+          description: ''
+  /api/v1/admin/locations/{id}/status:
+    post:
+      operationId: api_v1_admin_locations_status_create
+      summary: Disable/enable one branch
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+          description: ''
+  /api/v1/admin/orders:
+    get:
+      operationId: api_v1_admin_orders_list
+      description: GET /admin/orders?state=&q=&business= — platform orders (read-only).
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminOrderList'
           description: ''
   /api/v1/admin/overview:
     get:
@@ -178,7 +450,161 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverview'
+          description: ''
+  /api/v1/admin/payment-events:
+    get:
+      operationId: api_v1_admin_payment_events_list
+      description: GET /admin/payment-events?provider=&q= — raw provider callbacks.
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminPaymentEventList'
+          description: ''
+  /api/v1/admin/payments:
+    get:
+      operationId: api_v1_admin_payments_list
+      description: GET /admin/payments?status=&provider=&q=&order=
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminPaymentList'
+          description: ''
+  /api/v1/admin/placements:
+    get:
+      operationId: api_v1_admin_placements_list
+      description: GET /admin/placements?q=&state=&source=&visible=1&business=&location=&campaign=
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminPlacementList'
+          description: ''
+  /api/v1/admin/placements/{id}/block:
+    post:
+      operationId: api_v1_admin_placements_block_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reason'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+          description: ''
+  /api/v1/admin/placements/{id}/unblock:
+    post:
+      operationId: api_v1_admin_placements_unblock_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reason'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+          description: ''
   /api/v1/admin/refunds:
     get:
       operationId: api_v1_admin_refunds_list
@@ -224,7 +650,39 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+          description: ''
+  /api/v1/admin/renewals:
+    get:
+      operationId: api_v1_admin_renewals_list
+      description: GET /admin/renewals?state=&agreement_status=&q=
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminRenewalAttemptList'
+          description: ''
   /api/v1/admin/reports:
     get:
       operationId: api_v1_admin_reports_list
@@ -271,7 +729,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+          description: ''
   /api/v1/admin/review-queue:
     get:
       operationId: api_v1_admin_review_queue_list
@@ -300,7 +762,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdLimitValue'
+          description: ''
     patch:
       operationId: api_v1_admin_settings_ad_limit_partial_update
       summary: Change max simultaneous ads per location
@@ -321,20 +787,145 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdLimitValue'
+          description: ''
+  /api/v1/admin/users:
+    get:
+      operationId: api_v1_admin_users_list
+      description: GET /admin/users?q=&status=active|blocked|staff|deleted
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminUserList'
+          description: ''
+  /api/v1/admin/users/{id}:
+    get:
+      operationId: api_v1_admin_users_retrieve
+      summary: One account with its businesses, recent orders and activity
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserDetail'
+          description: ''
+  /api/v1/admin/users/{id}/block:
+    post:
+      operationId: api_v1_admin_users_block_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reason'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+          description: ''
+  /api/v1/admin/users/{id}/unblock:
+    post:
+      operationId: api_v1_admin_users_unblock_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reason'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reason'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+          description: ''
   /api/v1/auth/csrf:
     get:
       operationId: api_v1_auth_csrf_retrieve
       description: |-
         GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
         X-CSRFToken on authenticated mutations (spec §9).
+      summary: Set the CSRF cookie
       tags:
-      - api
+      - Auth
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/v1/auth/logout:
     post:
       operationId: api_v1_auth_logout_create
@@ -383,7 +974,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeSummary'
+          description: ''
   /api/v1/auth/otp/request:
     post:
       operationId: api_v1_auth_otp_request_create
@@ -392,18 +987,46 @@ paths:
       summary: Request a phone OTP
       tags:
       - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPRequest'
+        required: true
       security:
       - cookieAuth: []
       - {}
       responses:
         '202':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPAccepted'
+          description: ''
   /api/v1/auth/otp/verify:
     post:
       operationId: api_v1_auth_otp_verify_create
       summary: Verify OTP and open a session
       tags:
       - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerify'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPVerify'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPVerify'
+        required: true
       security:
       - cookieAuth: []
       - {}
@@ -422,17 +1045,45 @@ paths:
       summary: Request a phone-change code (sent to the NEW phone)
       tags:
       - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeRequest'
+        required: true
       security:
       - cookieAuth: []
       responses:
         '202':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPAccepted'
+          description: ''
   /api/v1/auth/phone/change/verify:
     post:
       operationId: api_v1_auth_phone_change_verify_create
       summary: Verify phone-change code and switch phone
       tags:
       - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeVerify'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeVerify'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PhoneChangeVerify'
+        required: true
       security:
       - cookieAuth: []
       responses:
@@ -758,7 +1409,11 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
   /api/v1/locations/{id}:
     get:
       operationId: api_v1_locations_retrieve
@@ -816,13 +1471,38 @@ paths:
   /api/v1/media/upload:
     post:
       operationId: api_v1_media_upload_create
+      summary: Upload a banner/logo (validated, re-encoded, metadata stripped)
+      parameters:
+      - in: query
+        name: purpose
+        schema:
+          type: string
+          enum:
+          - banners
+          - logos
+          default: banners
       tags:
-      - api
+      - Media
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
       security:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaUploadResult'
+          description: ''
   /api/v1/orders:
     get:
       operationId: api_v1_orders_list
@@ -874,11 +1554,26 @@ paths:
         required: true
       tags:
       - Orders
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
       security:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutResponse'
+          description: ''
   /api/v1/orders/{id}/refund-request:
     post:
       operationId: api_v1_orders_refund_request_create
@@ -892,11 +1587,27 @@ paths:
         required: true
       tags:
       - Orders
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+        required: true
       security:
       - cookieAuth: []
       responses:
-        '200':
-          description: No response body
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundRequestResult'
+          description: ''
   /api/v1/orders/quote:
     post:
       operationId: api_v1_orders_quote_create
@@ -905,15 +1616,32 @@ paths:
       summary: Price quote for dates and branches
       tags:
       - Orders
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+        required: true
       security:
       - cookieAuth: []
       responses:
-        '200':
-          description: No response body
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+          description: ''
   /api/v1/payments/{provider}/webhook:
     post:
       operationId: api_v1_payments_webhook_create
-      description: POST /api/v1/payments/{provider}/webhook — provider-initiated callbacks.
+      description: Body is provider-specific and verified by the provider gateway.
+      summary: Provider payment callback
       parameters:
       - in: path
         name: provider
@@ -921,12 +1649,22 @@ paths:
           type: string
         required: true
       tags:
-      - api
+      - Payments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+          description: ''
   /api/v1/public/campaigns/{id}:
     get:
       operationId: api_v1_public_campaigns_retrieve
@@ -1024,31 +1762,73 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPricing'
+          description: ''
   /api/v1/public/reports:
     post:
       operationId: api_v1_public_reports_create
       summary: Report a suspicious business/ad
       tags:
       - Public
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicReportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PublicReportRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PublicReportRequest'
+        required: true
       security:
       - {}
       responses:
-        '200':
-          description: No response body
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/v1/public/search:
     get:
       operationId: api_v1_public_search_retrieve
       description: Relevance first (name/business/ad headline match), then distance
         from the optional lat/lon.
       summary: Search locations and campaigns
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: lat
+        schema:
+          type: number
+      - in: query
+        name: lon
+        schema:
+          type: number
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: At least 2 characters
       tags:
       - Public
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicSearchResult'
+          description: ''
   /api/v1/renewals:
     get:
       operationId: api_v1_renewals_list
@@ -1082,18 +1862,38 @@ paths:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenewalAgreement'
+          description: ''
   /api/v1/renewals/enable:
     post:
       operationId: api_v1_renewals_enable_create
       summary: Re-enable explicit recurrence
       tags:
       - Renewals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenewalEnable'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RenewalEnable'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RenewalEnable'
+        required: true
       security:
       - cookieAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenewalAgreement'
+          description: ''
   /health:
     get:
       operationId: health_probe
@@ -1122,7 +1922,19 @@ paths:
           description: No response body
 components:
   schemas:
-    Activity:
+    AdLimitValue:
+      type: object
+      properties:
+        key:
+          type: string
+          readOnly: true
+        value:
+          type: integer
+          readOnly: true
+      required:
+      - key
+      - value
+    AdminActivity:
       type: object
       properties:
         id:
@@ -1153,6 +1965,64 @@ components:
       - entity
       - entity_id
       - id
+    AdminBusiness:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        status:
+          $ref: '#/components/schemas/EntityStatusEnum'
+        category_ru:
+          type: string
+          readOnly: true
+        category_uz:
+          type: string
+          readOnly: true
+        owner_id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_phone:
+          type: string
+          readOnly: true
+        owner_active:
+          type: boolean
+          readOnly: true
+        locations_count:
+          type: integer
+          readOnly: true
+        campaigns_count:
+          type: integer
+          readOnly: true
+        live_ads:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - campaigns_count
+      - category_ru
+      - category_uz
+      - created_at
+      - id
+      - live_ads
+      - locations_count
+      - name
+      - owner_active
+      - owner_id
+      - owner_phone
+      - slug
     AdminCampaign:
       type: object
       properties:
@@ -1169,6 +2039,10 @@ components:
           type: integer
           maximum: 2147483647
           minimum: 0
+        business_id:
+          type: string
+          format: uuid
+          readOnly: true
         business_name:
           type: string
           readOnly: true
@@ -1184,11 +2058,67 @@ components:
           readOnly: true
       required:
       - banner_url
+      - business_id
       - business_name
       - headline
       - id
       - owner_phone
       - updated_at
+    AdminLocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        address:
+          type: string
+          maxLength: 300
+        city:
+          type: string
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/EntityStatusEnum'
+        risk_flags: {}
+        business_id:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        business_status:
+          type: string
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+        lng:
+          type: number
+          format: double
+          readOnly: true
+        live_ads:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - address
+      - business_id
+      - business_name
+      - business_status
+      - created_at
+      - id
+      - lat
+      - live_ads
+      - lng
+      - name
     AdminOrder:
       type: object
       properties:
@@ -1196,8 +2126,16 @@ components:
           type: string
           format: uuid
           readOnly: true
+        business_id:
+          type: string
+          format: uuid
+          readOnly: true
         business_name:
           type: string
+          readOnly: true
+        campaign_id:
+          type: string
+          format: uuid
           readOnly: true
         campaign_headline:
           type: string
@@ -1211,17 +2149,358 @@ components:
           type: string
           maxLength: 3
         state:
-          $ref: '#/components/schemas/State16aEnum'
+          $ref: '#/components/schemas/OrderStateEnum'
+        auto_renew:
+          type: boolean
+          description: Advertiser consent to auto-renewal captured at quote time
+        attempts_count:
+          type: integer
+          readOnly: true
         created_at:
           type: string
           format: date-time
           readOnly: true
       required:
       - amount_total
+      - attempts_count
+      - business_id
+      - business_name
+      - campaign_headline
+      - campaign_id
+      - created_at
+      - id
+    AdminOverview:
+      type: object
+      properties:
+        queue_depth:
+          type: integer
+        open_reports:
+          type: integer
+        refunds_requested:
+          type: integer
+        campaigns:
+          type: object
+          additionalProperties:
+            type: integer
+        active_placements:
+          type: integer
+        revenue:
+          $ref: '#/components/schemas/_Revenue'
+        owners:
+          type: integer
+        attention:
+          $ref: '#/components/schemas/_Attention'
+      required:
+      - active_placements
+      - attention
+      - campaigns
+      - open_reports
+      - owners
+      - queue_depth
+      - refunds_requested
+      - revenue
+    AdminPayment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        order_id:
+          type: string
+          format: uuid
+          readOnly: true
+        order_state:
+          type: string
+          readOnly: true
+        provider:
+          type: string
+          maxLength: 30
+        provider_payment_id:
+          type: string
+          default: ''
+          maxLength: 200
+        amount:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        status:
+          $ref: '#/components/schemas/PaymentAttemptStatusEnum'
+        business_name:
+          type: string
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        events_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
       - business_name
       - campaign_headline
       - created_at
+      - events_count
       - id
+      - order_id
+      - order_state
+      - provider
+      - updated_at
+    AdminPaymentEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        provider:
+          type: string
+          maxLength: 30
+        event_id:
+          type: string
+          maxLength: 200
+        payment_attempt_id:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+        payment_status:
+          type: string
+          readOnly: true
+        order_id:
+          type: string
+          format: uuid
+          readOnly: true
+        validated_payload_digest:
+          type: string
+          maxLength: 128
+        received_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - event_id
+      - id
+      - order_id
+      - payment_attempt_id
+      - payment_status
+      - provider
+      - received_at
+      - validated_payload_digest
+    AdminPlacement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        state:
+          $ref: '#/components/schemas/PlacementStateEnum'
+        source_type:
+          $ref: '#/components/schemas/SourceTypeEnum'
+        block_reason:
+          type: string
+          description: Why a BLOCKED placement was blocked (e.g. capacity_conflict)
+          maxLength: 40
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        charge_days:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+        campaign_id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        campaign_status:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+        location_id:
+          type: string
+          format: uuid
+          readOnly: true
+        location_name:
+          type: string
+          readOnly: true
+        business_id:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        visible:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - banner_url
+      - business_id
+      - business_name
+      - campaign_headline
+      - campaign_id
+      - campaign_status
+      - charge_days
+      - created_at
+      - end_at
+      - id
+      - location_id
+      - location_name
+      - order_id
+      - start_at
+      - visible
+    AdminRenewalAttempt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        agreement_id:
+          type: string
+          format: uuid
+          readOnly: true
+        agreement_status:
+          type: string
+          readOnly: true
+        renewal_period_key:
+          type: string
+          description: e.g. 2026-W43; one charge per period
+          maxLength: 40
+        state:
+          $ref: '#/components/schemas/AdminRenewalAttemptStateEnum'
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+        amount:
+          type: integer
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        attempted_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - agreement_id
+      - agreement_status
+      - amount
+      - attempted_at
+      - business_name
+      - campaign_headline
+      - id
+      - order_id
+      - renewal_period_key
+    AdminRenewalAttemptStateEnum:
+      enum:
+      - pending
+      - succeeded
+      - failed
+      - reconciliation
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `succeeded` - Succeeded
+        * `failed` - Failed
+        * `reconciliation` - Ambiguous — reconciliation required
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        phone_e164:
+          type: string
+          title: Phone (E.164)
+          maxLength: 16
+        is_active:
+          type: boolean
+        is_staff:
+          type: boolean
+        is_deleted:
+          type: boolean
+          readOnly: true
+        businesses_count:
+          type: integer
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - businesses_count
+      - created_at
+      - id
+      - is_deleted
+      - phone_e164
+    AdminUserDetail:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/AdminUser'
+        businesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/_UserBusiness'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/_UserOrder'
+        activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminActivity'
+      required:
+      - activity
+      - businesses
+      - orders
+      - user
+    ApproveRejectDecisionEnum:
+      enum:
+      - approve
+      - reject
+      type: string
+      description: |-
+        * `approve` - approve
+        * `reject` - reject
     Business:
       type: object
       properties:
@@ -1261,7 +2540,7 @@ components:
           maxLength: 200
         status:
           allOf:
-          - $ref: '#/components/schemas/Status6daEnum'
+          - $ref: '#/components/schemas/EntityStatusEnum'
           readOnly: true
         created_at:
           type: string
@@ -1358,7 +2637,7 @@ components:
           readOnly: true
         decision:
           allOf:
-          - $ref: '#/components/schemas/CampaignReviewDecisionEnum'
+          - $ref: '#/components/schemas/ReviewDecisionEnum'
           readOnly: true
         reason:
           type: string
@@ -1376,14 +2655,24 @@ components:
       - decision
       - id
       - reason
-    CampaignReviewDecisionEnum:
-      enum:
-      - approved
-      - rejected
-      type: string
-      description: |-
-        * `approved` - Approved
-        * `rejected` - Rejected
+    CampaignStatusResult:
+      type: object
+      description: Body returned by review/suspend/unsuspend (schema documentation).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        review_status:
+          type: string
+          readOnly: true
+        review_version:
+          type: integer
+          readOnly: true
+      required:
+      - id
+      - review_status
+      - review_version
     CampaignSuspend:
       type: object
       properties:
@@ -1391,6 +2680,11 @@ components:
           type: string
       required:
       - reason
+    CampaignUnsuspend:
+      type: object
+      properties:
+        reason:
+          type: string
     Category:
       type: object
       properties:
@@ -1412,14 +2706,55 @@ components:
       - name_ru
       - name_uz
       - slug
-    Decision55fEnum:
-      enum:
-      - approve
-      - reject
-      type: string
-      description: |-
-        * `approve` - approve
-        * `reject` - reject
+    CheckoutRequest:
+      type: object
+      properties:
+        return_url:
+          type: string
+          format: uri
+          default: ''
+    CheckoutResponse:
+      type: object
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          readOnly: true
+        provider:
+          type: string
+          readOnly: true
+        provider_payment_id:
+          type: string
+          readOnly: true
+        amount_minor:
+          type: integer
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        redirect_url:
+          type: string
+          readOnly: true
+        order_state:
+          type: string
+          readOnly: true
+      required:
+      - amount_minor
+      - currency
+      - order_id
+      - order_state
+      - provider
+      - provider_payment_id
+      - redirect_url
+    Detail:
+      type: object
+      description: 'Plain acknowledgement body: {"detail": "..."}.'
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
     EntityEnum:
       enum:
       - location
@@ -1428,6 +2763,16 @@ components:
       description: |-
         * `location` - Location
         * `campaign` - Campaign
+    EntityStatusEnum:
+      enum:
+      - active
+      - under_review
+      - disabled
+      type: string
+      description: |-
+        * `active` - Active
+        * `under_review` - Under review
+        * `disabled` - Disabled
     Grant:
       type: object
       properties:
@@ -1451,6 +2796,33 @@ components:
       - location_id
       - reason
       - start_at
+    GrantCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+      required:
+      - id
+    GrantOptions:
+      type: object
+      properties:
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/_GrantCampaignOption'
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/_GrantLocationOption'
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/_GrantRow'
+      required:
+      - campaigns
+      - grants
+      - locations
     Location:
       type: object
       properties:
@@ -1494,7 +2866,7 @@ components:
         hours: {}
         status:
           allOf:
-          - $ref: '#/components/schemas/Status6daEnum'
+          - $ref: '#/components/schemas/EntityStatusEnum'
           readOnly: true
         risk_flags:
           readOnly: true
@@ -1518,6 +2890,88 @@ components:
       - risk_flags
       - status
       - updated_at
+    MeSummary:
+      type: object
+      description: Response shape of GET /auth/me/summary (schema documentation only).
+      properties:
+        campaigns:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Campaign count per review status
+        active_placements:
+          type: integer
+        expiring_soon:
+          type: array
+          items:
+            $ref: '#/components/schemas/_ExpiringPlacement'
+        spend:
+          $ref: '#/components/schemas/_Spend'
+        next_renewal:
+          allOf:
+          - $ref: '#/components/schemas/_NextRenewal'
+          nullable: true
+      required:
+      - active_placements
+      - campaigns
+      - expiring_soon
+      - next_renewal
+      - spend
+    MediaUploadResult:
+      type: object
+      properties:
+        key:
+          type: string
+        url:
+          type: string
+      required:
+      - key
+      - url
+    OTPAccepted:
+      type: object
+      description: Uniform 202 body for OTP requests (anti-enumeration).
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        dev_code:
+          type: string
+          readOnly: true
+          description: Dev/test stacks only (fake SMS + OTP_DEV_ECHO); never present
+            in prod.
+      required:
+      - detail
+      - dev_code
+    OTPRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          maxLength: 24
+      required:
+      - phone
+    OTPVerify:
+      type: object
+      properties:
+        phone:
+          type: string
+          maxLength: 24
+        code:
+          type: string
+          maxLength: 8
+      required:
+      - code
+      - phone
+    Ok:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+      required:
+      - id
+      - status
     Order:
       type: object
       properties:
@@ -1550,7 +3004,7 @@ components:
           readOnly: true
         state:
           allOf:
-          - $ref: '#/components/schemas/State16aEnum'
+          - $ref: '#/components/schemas/OrderStateEnum'
           readOnly: true
         quote_expires_at:
           type: string
@@ -1637,7 +3091,7 @@ components:
           readOnly: true
         state:
           allOf:
-          - $ref: '#/components/schemas/State16aEnum'
+          - $ref: '#/components/schemas/OrderStateEnum'
           readOnly: true
         quote_expires_at:
           type: string
@@ -1732,6 +3186,252 @@ components:
       - location
       - location_name
       - unit_rate_snapshot
+    OrderStateEnum:
+      enum:
+      - draft_quote
+      - awaiting_payment
+      - payment_processing
+      - paid
+      - failed
+      - expired
+      type: string
+      description: |-
+        * `draft_quote` - Draft quote
+        * `awaiting_payment` - Awaiting payment
+        * `payment_processing` - Payment processing
+        * `paid` - Paid
+        * `failed` - Failed
+        * `expired` - Expired
+    PaginatedAdminActivityList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminActivity'
+    PaginatedAdminBusinessList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminBusiness'
+    PaginatedAdminCampaignList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminCampaign'
+    PaginatedAdminLocationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLocation'
+    PaginatedAdminOrderList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOrder'
+    PaginatedAdminPaymentEventList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPaymentEvent'
+    PaginatedAdminPaymentList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPayment'
+    PaginatedAdminPlacementList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPlacement'
+    PaginatedAdminRenewalAttemptList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRenewalAttempt'
+    PaginatedAdminUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
     PatchedAdLimit:
       type: object
       properties:
@@ -1778,7 +3478,7 @@ components:
           maxLength: 200
         status:
           allOf:
-          - $ref: '#/components/schemas/Status6daEnum'
+          - $ref: '#/components/schemas/EntityStatusEnum'
           readOnly: true
         created_at:
           type: string
@@ -1884,7 +3584,7 @@ components:
         hours: {}
         status:
           allOf:
-          - $ref: '#/components/schemas/Status6daEnum'
+          - $ref: '#/components/schemas/EntityStatusEnum'
           readOnly: true
         risk_flags:
           readOnly: true
@@ -1938,6 +3638,26 @@ components:
         * `pending` - Pending
         * `succeeded` - Succeeded
         * `failed` - Failed
+    PhoneChangeRequest:
+      type: object
+      properties:
+        new_phone:
+          type: string
+          maxLength: 24
+      required:
+      - new_phone
+    PhoneChangeVerify:
+      type: object
+      properties:
+        new_phone:
+          type: string
+          maxLength: 24
+        code:
+          type: string
+          maxLength: 8
+      required:
+      - code
+      - new_phone
     Placement:
       type: object
       properties:
@@ -2246,6 +3966,129 @@ components:
       - phone
       - telegram
       - whatsapp
+    PublicPricing:
+      type: object
+      properties:
+        tariff:
+          allOf:
+          - $ref: '#/components/schemas/PublicTariff'
+          readOnly: true
+          nullable: true
+      required:
+      - tariff
+    PublicReportRequest:
+      type: object
+      properties:
+        entity:
+          $ref: '#/components/schemas/EntityEnum'
+        entity_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          maxLength: 2000
+      required:
+      - entity
+      - entity_id
+      - reason
+    PublicSearchCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+      required:
+      - banner_url
+      - business_name
+      - headline
+      - id
+    PublicSearchLocation:
+      type: object
+      description: |-
+        Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
+        (spec §10) — not historical ones.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        lon:
+          type: number
+          format: double
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        active_ads_count:
+          type: integer
+          readOnly: true
+        distance_m:
+          type: integer
+          readOnly: true
+          description: Present only when lat/lon are given
+      required:
+      - active_ads_count
+      - business_name
+      - category
+      - distance_m
+      - id
+      - lat
+      - lon
+      - name
+    PublicSearchResult:
+      type: object
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicSearchLocation'
+          readOnly: true
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicSearchCampaign'
+          readOnly: true
+      required:
+      - campaigns
+      - locations
+    PublicTariff:
+      type: object
+      properties:
+        currency:
+          type: string
+          readOnly: true
+        amount_per_24h:
+          type: integer
+          readOnly: true
+          description: Minor units (tiyin)
+        valid_from:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount_per_24h
+      - currency
+      - valid_from
     QueueCampaign:
       type: object
       description: Campaign awaiting review, with the context a moderator needs (spec
@@ -2292,6 +4135,135 @@ components:
       - locations
       - owner_phone
       - updated_at
+    Quote:
+      type: object
+      description: 'Quote response: the draft order plus its id under the quote alias.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        business:
+          type: string
+          format: uuid
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        campaign_status:
+          type: string
+          readOnly: true
+        amount_total:
+          type: integer
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/OrderStateEnum'
+          readOnly: true
+        quote_expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        interval_start_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval start (quote snapshot)
+        interval_end_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Requested advertising interval end (quote snapshot)
+        auto_renew:
+          type: boolean
+          readOnly: true
+          description: Advertiser consent to auto-renewal captured at quote time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        quote_id:
+          type: string
+          format: uuid
+          readOnly: true
+      required:
+      - amount_total
+      - auto_renew
+      - business
+      - business_name
+      - campaign
+      - campaign_headline
+      - campaign_status
+      - created_at
+      - currency
+      - id
+      - interval_end_at
+      - interval_start_at
+      - items
+      - quote_expires_at
+      - quote_id
+      - state
+      - updated_at
+    QuoteRequest:
+      type: object
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        location_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+        requested_start_at:
+          type: string
+          format: date-time
+        requested_end_at:
+          type: string
+          format: date-time
+        auto_renew:
+          type: boolean
+          default: false
+      required:
+      - business_id
+      - campaign_id
+      - location_ids
+      - requested_end_at
+      - requested_start_at
+    Reason:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - reason
     Refund:
       type: object
       properties:
@@ -2347,15 +4319,40 @@ components:
       type: object
       properties:
         decision:
-          $ref: '#/components/schemas/Decision55fEnum'
+          $ref: '#/components/schemas/ApproveRejectDecisionEnum'
         provider_ref:
           type: string
           default: ''
         amount:
           type: integer
-          minimum: 0
+          minimum: 1
       required:
       - decision
+    RefundRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 2000
+      required:
+      - reason
+    RefundRequestResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        state:
+          type: string
+          readOnly: true
+        amount:
+          type: integer
+          readOnly: true
+      required:
+      - amount
+      - id
+      - state
     RefundStateEnum:
       enum:
       - refund_requested
@@ -2463,6 +4460,14 @@ components:
         * `alert` - Alert (last charge failed)
         * `disabled` - Disabled (cancelled by advertiser)
         * `pending_token` - Awaiting provider token (no verified adapter)
+    RenewalEnable:
+      type: object
+      properties:
+        agreement_id:
+          type: string
+          format: uuid
+      required:
+      - agreement_id
     Report:
       type: object
       properties:
@@ -2509,17 +4514,7 @@ components:
       - resolved_at
       - resolved_by_phone
       - state
-    ReportProcess:
-      type: object
-      properties:
-        decision:
-          $ref: '#/components/schemas/ReportProcessDecisionEnum'
-        note:
-          type: string
-          default: ''
-      required:
-      - decision
-    ReportProcessDecisionEnum:
+    ReportDecisionEnum:
       enum:
       - resolve
       - dismiss
@@ -2527,6 +4522,16 @@ components:
       description: |-
         * `resolve` - resolve
         * `dismiss` - dismiss
+    ReportProcess:
+      type: object
+      properties:
+        decision:
+          $ref: '#/components/schemas/ReportDecisionEnum'
+        note:
+          type: string
+          default: ''
+      required:
+      - decision
     ReportStateEnum:
       enum:
       - open
@@ -2541,12 +4546,20 @@ components:
       type: object
       properties:
         decision:
-          $ref: '#/components/schemas/Decision55fEnum'
+          $ref: '#/components/schemas/ApproveRejectDecisionEnum'
         reason:
           type: string
           default: ''
       required:
       - decision
+    ReviewDecisionEnum:
+      enum:
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `approved` - Approved
+        * `rejected` - Rejected
     ReviewStatusEnum:
       enum:
       - draft
@@ -2589,32 +4602,254 @@ components:
       description: |-
         * `paid` - Paid
         * `grant` - Free grant
-    State16aEnum:
-      enum:
-      - draft_quote
-      - awaiting_payment
-      - payment_processing
-      - paid
-      - failed
-      - expired
-      type: string
-      description: |-
-        * `draft_quote` - Draft quote
-        * `awaiting_payment` - Awaiting payment
-        * `payment_processing` - Payment processing
-        * `paid` - Paid
-        * `failed` - Failed
-        * `expired` - Expired
-    Status6daEnum:
+    StatusChange:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/StatusChangeStatusEnum'
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - reason
+      - status
+    StatusChangeStatusEnum:
       enum:
       - active
-      - under_review
       - disabled
       type: string
       description: |-
-        * `active` - Active
-        * `under_review` - Under review
-        * `disabled` - Disabled
+        * `active` - active
+        * `disabled` - disabled
+    WebhookAck:
+      type: object
+      properties:
+        detail:
+          type: string
+        order_state:
+          type: string
+      required:
+      - detail
+    _Attention:
+      type: object
+      properties:
+        renewal_alerts:
+          type: integer
+          description: Agreements in ALERT
+        renewal_reconciliation:
+          type: integer
+          description: Renewal attempts with an ambiguous provider outcome
+        capacity_blocked:
+          type: integer
+          description: Paid placements blocked by a capacity conflict (refund queue)
+        staff_blocked:
+          type: integer
+          description: Placements taken down by staff
+        blocked_users:
+          type: integer
+        disabled_businesses:
+          type: integer
+        disabled_locations:
+          type: integer
+      required:
+      - blocked_users
+      - capacity_blocked
+      - disabled_businesses
+      - disabled_locations
+      - renewal_alerts
+      - renewal_reconciliation
+      - staff_blocked
+    _ExpiringPlacement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        headline:
+          type: string
+        location:
+          type: string
+        ends_at:
+          type: string
+          format: date-time
+      required:
+      - campaign_id
+      - ends_at
+      - headline
+      - id
+      - location
+    _GrantCampaignOption:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        headline:
+          type: string
+        business_name:
+          type: string
+      required:
+      - business_name
+      - headline
+      - id
+    _GrantLocationOption:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        business_name:
+          type: string
+      required:
+      - business_name
+      - id
+      - name
+    _GrantRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_headline:
+          type: string
+        business_name:
+          type: string
+        location_name:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        admin_phone:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - admin_phone
+      - business_name
+      - campaign_headline
+      - created_at
+      - end_at
+      - id
+      - location_name
+      - reason
+      - start_at
+    _NextRenewal:
+      type: object
+      properties:
+        agreement_id:
+          type: string
+          format: uuid
+        campaign_headline:
+          type: string
+        next_run_at:
+          type: string
+          format: date-time
+        locations_count:
+          type: integer
+        charge_days:
+          type: integer
+      required:
+      - agreement_id
+      - campaign_headline
+      - charge_days
+      - locations_count
+      - next_run_at
+    _Revenue:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Paid minus refunded, minor units
+        month:
+          type: integer
+          description: This month, net of refunds, minor units
+      required:
+      - month
+      - total
+    _Spend:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Minor units (tiyin)
+        month:
+          type: integer
+          description: Minor units (tiyin)
+        currency:
+          type: string
+      required:
+      - currency
+      - month
+      - total
+    _UserBusiness:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/EntityStatusEnum'
+        locations_count:
+          type: integer
+          readOnly: true
+        campaigns_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - campaigns_count
+      - created_at
+      - id
+      - locations_count
+      - name
+    _UserOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign_headline:
+          type: string
+          readOnly: true
+        amount_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        currency:
+          type: string
+          maxLength: 3
+        state:
+          $ref: '#/components/schemas/OrderStateEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount_total
+      - campaign_headline
+      - created_at
+      - id
   securitySchemes:
     cookieAuth:
       type: apiKey

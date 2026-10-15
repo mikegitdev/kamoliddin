@@ -162,6 +162,21 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Public map/advertising API v1. Money is integer minor units (tiyin, UZS).",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Several models reuse the field names state/status/decision; name each
+    # choice set explicitly instead of letting spectacular emit hashed names.
+    "ENUM_NAME_OVERRIDES": {
+        "OrderStateEnum": "apps.billing.models.Order.State",
+        "RefundStateEnum": "apps.billing.models.Refund.State",
+        "PlacementStateEnum": "apps.placements.models.Placement.State",
+        "ReportStateEnum": "apps.moderation.models.Report.State",
+        "PaymentAttemptStatusEnum": "apps.payments.models.PaymentAttempt.Status",
+        "RenewalAgreementStatusEnum": "apps.renewals.models.RenewalAgreement.Status",
+        # Location.Status and Business.Status are the same choice set.
+        "EntityStatusEnum": "apps.locations.models.Location.Status",
+        "ReviewDecisionEnum": "apps.campaigns.models.CampaignReview.Decision",
+        "ApproveRejectDecisionEnum": [("approve", "approve"), ("reject", "reject")],
+        "ReportDecisionEnum": [("resolve", "resolve"), ("dismiss", "dismiss")],
+    },
 }
 
 # --- i18n / tz -------------------------------------------------------------------

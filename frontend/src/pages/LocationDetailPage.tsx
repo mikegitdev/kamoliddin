@@ -1,8 +1,11 @@
-import { Link, useParams } from "react-router-dom";
-import { useLocationDetail } from "@/shared/api/queries";
+import { useParams } from "react-router-dom";
+import { useCategories, useLocationDetail } from "@/shared/api/queries";
 import { plural, useI18n } from "@/shared/i18n";
 import { reportDialog } from "@/shared/dialog";
-import { IconFlag, IconPin } from "@/shared/icons";import {
+import { isOpenNow } from "@/shared/format";
+import { IconFlag, IconPin } from "@/shared/icons";
+import { MiniMap } from "@/shared/mini-map";
+import {
   AdCard,
   BackLink,
   ContactActions,
@@ -12,13 +15,14 @@ import { IconFlag, IconPin } from "@/shared/icons";import {
   directionsUrl,
 } from "@/shared/ui";
 
-/** Public location page. One hierarchy everywhere — map sheet, this page and
- *  the ad page: business identity → offer (active ads) → address/hours →
- *  contact actions. */
+/** Public location page, same shell as the ad page: business identity, then
+ *  a branch panel (mini map, address/hours, contact actions) and the active
+ *  offers. Desktop: offers left, sticky panel right; phones: one column. */
 export function LocationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useI18n();
   const { data: location, isLoading, isError, refetch } = useLocationDetail(id);
+  const { data: categories } = useCategories();
 
   if (isLoading) {
     return (
@@ -59,9 +63,11 @@ export function LocationDetailPage() {
 
   const ads = location.active_ads;
   const dirUrl = directionsUrl(location.lon, location.lat);
+  const category = categories?.find((c) => c.slug === location.category);
+  const hasHours = Object.values(location.hours ?? {}).some(Boolean);
 
   return (
-    <div className="page with-sticky">
+    <div className="page ad-page with-sticky">
       <nav className="row-between">
         <BackLink fallbackTo="/" />
         <div className="row">
@@ -78,57 +84,82 @@ export function LocationDetailPage() {
         </div>
       </nav>
 
-      {/* 1. Business identity */}
-      <div className="detail-head">
-        <div className="min-w-0">
-          <h1>{location.business_name}</h1>
-          <p className="muted">{location.name}</p>
-        </div>
-        {ads.length > 0 && (
-          <span className="chip orange">
-            {ads.length} {plural(locale, "ads", ads.length)}
-          </span>
-        )}
-      </div>
-
-      {/* 2. Offer: what is being advertised here right now. No dead
-          heading when there is nothing to show. */}
-      {ads.length > 0 ? (
-        <>
-          <h2>{t.activeAdsTitle}</h2>
-          <div className="ad-cards">
-            {ads.map((ad) => (
-              <AdCard key={ad.id} ad={ad} fromLocationId={location.id} />
-            ))}
+      <div className="ad-layout">
+        {/* 1. Business identity */}
+        <header className="ad-main">
+          <div className="ad-business location-head">
+            <span className="ad-business-tile" aria-hidden="true">
+              {location.business_name.trim().charAt(0).toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <h1>{location.business_name}</h1>
+              <span className="muted-2">
+                {category ? `${locale === "uz" ? category.name_uz : category.name_ru} · ` : ""}
+                {location.name}
+              </span>
+            </div>
           </div>
-        </>
-      ) : (
-        <p className="muted">{t.noAdsHere}</p>
-      )}
+          <div className="ad-meta">
+            {hasHours && (
+              <span className={`chip ${isOpenNow(location.hours) ? "green" : "gray"}`}>
+                {isOpenNow(location.hours) ? t.hoursOpenNow : t.hoursClosedNow}
+              </span>
+            )}
+            <span className="chip gray">
+              {ads.length} {plural(locale, "ads", ads.length)}
+            </span>
+          </div>
+        </header>
 
-      {/* 3. Address / hours */}
-      <div className="info-grid">
-        <div className="info-card">
-          <div className="label">{t.address}</div>
-          <div className="value">{location.address}</div>
-          <Link to={`/?pin=${location.id}`} className="btn small map-link">
-            <IconPin size={14} /> {t.showOnMap}
-          </Link>
-        </div>
-        <HoursList hours={location.hours} />
+        {/* 3. Address / hours / contact — beside the offers on desktop, right
+            under the header on phones. */}
+        <aside className="ad-aside" aria-labelledby="contacts-heading">
+          <div className="ad-aside-head">
+            <h2 id="contacts-heading">{t.contacts}</h2>
+          </div>
+          <div className="card ad-panel">
+            <MiniMap
+              id={location.id}
+              lon={location.lon}
+              lat={location.lat}
+              label={location.name}
+              activeAdsCount={ads.length}
+            />
+            <div className="ad-panel-body">
+              <p className="ad-panel-address">
+                <IconPin size={15} />
+                <span>{location.address}</span>
+              </p>
+              <HoursList hours={location.hours} />
+              {/* In-content copy hides on phones (StickyContactActions
+                  already pins the same actions above the safe area). */}
+              <ContactActions
+                hiddenOnMobile
+                shortDirections
+                directionsUrl={dirUrl}
+                phone={location.phone}
+                telegram={location.telegram}
+                whatsapp={location.whatsapp}
+                site={location.business_site}
+              />
+            </div>
+          </div>
+        </aside>
+
+        {/* 2. Offer: what is being advertised here right now. */}
+        <section className="ad-more" aria-labelledby="offers-heading">
+          <h2 id="offers-heading">{t.activeAdsTitle}</h2>
+          {ads.length > 0 ? (
+            <div className="ad-cards">
+              {ads.map((ad) => (
+                <AdCard key={ad.id} ad={ad} fromLocationId={location.id} hideBusiness />
+              ))}
+            </div>
+          ) : (
+            <p className="muted">{t.noAdsHere}</p>
+          )}
+        </section>
       </div>
-
-      {/* 4. Contact — in-content copy hides on phones (StickyContactActions
-          already pins the same actions above the safe area). */}
-      <h2>{t.contacts}</h2>
-      <ContactActions
-        hiddenOnMobile
-        directionsUrl={dirUrl}
-        phone={location.phone}
-        telegram={location.telegram}
-        whatsapp={location.whatsapp}
-        site={location.business_site}
-      />
 
       <StickyContactActions
         directionsUrl={dirUrl}

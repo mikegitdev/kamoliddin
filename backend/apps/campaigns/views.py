@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AnonymousUser
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -40,8 +41,10 @@ class CampaignListCreateView(ListCreateAPIView):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):  # schema generation
             return Campaign.objects.none()
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         qs = (
-            Campaign.objects.filter(business__owner=self.request.user)
+            Campaign.objects.filter(business__owner=user)
             .select_related("business", "business__category")
             .order_by("-created_at")
         )
@@ -62,8 +65,10 @@ class CampaignDetailView(RetrieveUpdateAPIView):
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return with_live_annotation(
-            Campaign.objects.filter(business__owner=self.request.user).select_related(
+            Campaign.objects.filter(business__owner=user).select_related(
                 "business"
             )
         )
@@ -73,7 +78,8 @@ class CampaignDetailView(RetrieveUpdateAPIView):
     post=extend_schema(tags=["Campaigns"],
                        summary="Submit campaign for moderation",
                        description="draft/rejected -> submitted. Payment happens "
-                                   "separately via /orders/quote + /orders/{id}/checkout.")
+                                   "separately via /orders/quote + /orders/{id}/checkout.",
+                       request=None, responses=CampaignSerializer)
 )
 class CampaignSubmitView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -110,10 +116,12 @@ class CampaignReviewListView(ListAPIView):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):  # schema generation
             return CampaignReview.objects.none()
+        user = self.request.user
+        assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return (
             CampaignReview.objects.filter(
                 campaign__id=self.kwargs["id"],
-                campaign__business__owner=self.request.user,
+                campaign__business__owner=user,
             )
             .select_related("campaign")
             .order_by("-created_at")[:20]

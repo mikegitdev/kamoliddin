@@ -33,3 +33,17 @@
 - Renewal retry policy: a failed charge sets ALERT (no automatic retry) until
   the advertiser re-enables or an admin reviews — deliberate MVP conservatism;
   timed retries can be added behind the same constraint.
+- Staff control room (`/staff`): staff can block advertiser logins, disable
+  businesses/branches and take down single placements; every action needs a
+  reason and writes an ActivityEvent. No money moves and no staff-rights
+  management from the console (Django Admin only). Open:
+  - A staff-blocked placement is NOT credited back on unblock (original
+    interval kept); compensation, if any, goes through the refund flow.
+  - Refunding an order does not cancel its staff-BLOCKED placements (they
+    stay blocked and are refused on unblock) — `cancel_order_placements`
+    left untouched (maintainer-owned).
+  - Renewals now fail closed (`business_disabled` / `owner_blocked` →
+    agreement ALERT) when the business is disabled or the owner blocked;
+    re-enabling does not auto-resume the agreement.
+  - A user block does not hide that user's live ads; staff disable the
+    business separately when needed.

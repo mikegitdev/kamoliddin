@@ -72,9 +72,12 @@ Dev SMS provider is `fake`: OTP codes are printed to the server log (never do th
 | Advertiser (owns all ~100 demo businesses) | +998 90 123 45 67 | OTP — code prints in server log |
 | Staff/admin | +998 90 111 00 00 | Django Admin password `admin12345`; or same OTP flow |
 
-**Staff moderation console**: log in as staff via the normal OTP flow and open
-`/staff` — review queue (approve/reject with reason), refunds, free grants, and
-the ad-limit setting, all without Django Admin or curl.
+**Staff control room**: log in as staff via the normal OTP flow and open
+`/staff` — review queue, complaints, campaigns (suspend), placements (block /
+unblock with live visibility), businesses & branches (disable / enable), users
+(block login, drill-down), refunds, orders, free grants, logs (filterable audit
+trail with CSV export, payment attempts, provider webhooks, renewal runs) and
+the ad-limit setting. Every staff action requires a reason and is audit-logged.
 
 Demo dataset includes every campaign scenario: active+paid, paid-pending-moderation,
 submitted, draft, rejected+refunded, auto-renew agreement, and a free grant — plus
