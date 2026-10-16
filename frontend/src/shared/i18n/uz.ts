@@ -50,6 +50,12 @@ export const uz: Dict = {
   comingSoon: "Bo'lim ishlanmoqda",
   loading: "Yuklanmoqda…",
   error: "Yuklashda xatolik",
+  networkError: "Server bilan aloqa yo'q — internetni tekshirib, qayta urinib ko'ring",
+  serverError: "Server vaqtincha ishlamayapti — keyinroq urinib ko'ring",
+  tooManyRequests: "So'rovlar juda ko'p — biroz kuting",
+  crashTitle: "Nimadir noto'g'ri ketdi",
+  crashHint: "Sahifani ko'rsatib bo'lmadi. Uni yangilang yoki asosiy sahifaga qayting.",
+  reload: "Yangilash",
   // cabinet
   save: "Saqlash",
   saved: "Saqlandi",

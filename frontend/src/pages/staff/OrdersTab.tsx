@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useStaffPage, type ApiAdminOrder } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { OrderChip } from "@/shared/ui";
+import { OrderChip, QueryError } from "@/shared/ui";
 import type { OrderState } from "@/entities/types";
 import { IconCheck } from "@/shared/icons";
 import {
@@ -23,7 +23,7 @@ export function OrdersTab({ locale }: { locale: string }) {
   const [state, setState] = useState(() => link.get("state"));
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q, state, business]);
-  const { data, isLoading } = useStaffPage<ApiAdminOrder>("orders", { q, state, business }, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminOrder>("orders", { q, state, business }, offset);
 
   return (
     <section>
@@ -52,6 +52,7 @@ export function OrdersTab({ locale }: { locale: string }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && data.count > 0 && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}

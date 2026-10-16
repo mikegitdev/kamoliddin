@@ -45,7 +45,12 @@ export function plural(locale: Locale, kind: "locations" | "ads" | "days", n: nu
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
-    const saved = localStorage.getItem("locale");
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("locale");
+    } catch {
+      /* storage blocked (privacy mode): fall back to the default locale */
+    }
     return saved === "uz" || saved === "ru" ? saved : "ru";
   });
 
@@ -55,7 +60,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, [locale]);
 
   const setLocale = (next: Locale) => {
-    localStorage.setItem("locale", next);
+    try {
+      localStorage.setItem("locale", next);
+    } catch {
+      /* not persisted, but the switch still applies for this session */
+    }
     setLocaleState(next);
   };
 

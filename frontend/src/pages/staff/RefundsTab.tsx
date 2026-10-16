@@ -4,7 +4,7 @@ import { api, ApiError } from "@/shared/api/client";
 import { useRefunds } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { RefundStateChip } from "@/shared/ui";
+import { RefundStateChip, QueryError } from "@/shared/ui";
 import { IconCheck, IconReject } from "@/shared/icons";
 import { MoreRow, useShowMore } from "./pager";
 
@@ -17,7 +17,7 @@ export function RefundsTab({
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: refunds, isLoading } = useRefunds(true);
+  const { data: refunds, isLoading, isError, refetch } = useRefunds(true);
   const [busy, setBusy] = useState<string | null>(null);
   const pager = useShowMore(refunds, 25);
 
@@ -40,6 +40,7 @@ export function RefundsTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {refunds && refunds.length > 0 && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {refunds.length}

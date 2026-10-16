@@ -6,7 +6,7 @@ import {
 } from "@/shared/api/queries";
 import { formatDateTime, formatMinor, formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { OrderChip } from "@/shared/ui";
+import { OrderChip, QueryError } from "@/shared/ui";
 import type { OrderState } from "@/entities/types";
 import { IconBlock, IconCheck, IconShield } from "@/shared/icons";
 import {
@@ -32,7 +32,7 @@ export function UsersTab({ locale }: { locale: string }) {
   const [status, setStatus] = useState(() => link.get("status"));
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q, status]);
-  const { data, isLoading } = useStaffPage<ApiAdminUser>("users", { q, status }, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminUser>("users", { q, status }, offset);
   const selected = link.get("user");
   const action = useStaffAction();
 
@@ -73,6 +73,7 @@ export function UsersTab({ locale }: { locale: string }) {
         </select>
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}
@@ -156,8 +157,9 @@ function UserDetail({
 }) {
   const { t } = useI18n();
   const link = useStaffLink();
-  const { data, isLoading } = useAdminUser(id);
+  const { data, isLoading, isError, refetch } = useAdminUser(id);
   if (isLoading) return <div className="skeleton skeleton-card mb-14" />;
+  if (isError) return <QueryError onRetry={() => refetch()} />;
   if (!data) return null;
   const u = data.user;
   return (

@@ -4,11 +4,12 @@ import { api, ApiError } from "@/shared/api/client";
 import { useAdLimit } from "@/shared/api/queries";
 import { useI18n } from "@/shared/i18n";
 import { IconCheck } from "@/shared/icons";
+import { QueryError } from "@/shared/ui";
 
 export function SettingsTab({ onError }: { onError: (e: string | null) => void }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data } = useAdLimit(true);
+  const { data, isError, refetch } = useAdLimit(true);
   const [value, setValue] = useState<number | "">("");
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
@@ -37,6 +38,8 @@ export function SettingsTab({ onError }: { onError: (e: string | null) => void }
   return (
     <section className="card max-w-560">
       <h2>{t.settings}</h2>
+      {/* Without the live value the input would show a made-up default. */}
+      {isError && !data && <QueryError onRetry={() => refetch()} />}
       {ok && <p className="callout ok"><IconCheck size={16} /> {t.saved}</p>}
       <label htmlFor="ad-limit">{t.adLimit}</label>
       <input

@@ -7,6 +7,7 @@ import {
 import { formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { IconBlock, IconCheck, IconExternal } from "@/shared/icons";
+import { QueryError } from "@/shared/ui";
 import {
   FilterPill,
   ServerPager,
@@ -59,7 +60,7 @@ function BusinessList({ locale }: { locale: string }) {
   const [status, setStatus] = useState(() => link.get("status"));
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q, status, owner]);
-  const { data, isLoading } = useStaffPage<ApiAdminBusiness>(
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminBusiness>(
     "businesses", { q, status, owner }, offset,
   );
   const action = useStaffAction();
@@ -99,6 +100,7 @@ function BusinessList({ locale }: { locale: string }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}
@@ -184,7 +186,7 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
   const [status, setStatus] = useState(() => link.get("status"));
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q, status, businessFilter]);
-  const { data, isLoading } = useStaffPage<ApiAdminLocation>(
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminLocation>(
     "locations", { q, status, business: businessFilter }, offset,
   );
   const action = useStaffAction();
@@ -226,6 +228,7 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}

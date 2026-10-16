@@ -5,7 +5,7 @@ import { api, ApiError } from "@/shared/api/client";
 import { useReports } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { ReportStateChip } from "@/shared/ui";
+import { ReportStateChip, QueryError } from "@/shared/ui";
 import {
   IconCheck,
   IconClock,
@@ -25,7 +25,7 @@ export function ReportsTab({
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: reports, isLoading } = useReports(true);
+  const { data: reports, isLoading, isError, refetch } = useReports(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,6 +53,7 @@ export function ReportsTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {reports && reports.length > 0 && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {reports.length}

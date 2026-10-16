@@ -9,8 +9,10 @@ import {
   useRenewals,
 } from "@/shared/api/queries";
 import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
+import { ApiError } from "@/shared/api/client";
 import { confirmDialog } from "@/shared/dialog";
-import { CampaignChip, OrderChip, PlacementChip, FallImg } from "@/shared/ui";
+import { toast } from "@/shared/toast";
+import { CampaignChip, OrderChip, PlacementChip, FallImg, QueryError } from "@/shared/ui";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
 import { useI18n, plural } from "@/shared/i18n";
 import {
@@ -57,7 +59,7 @@ export function CampaignDetailPage() {
   const { t, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const { data: campaign, isLoading } = useCampaign(id);
+  const { data: campaign, isLoading, isError, error, refetch } = useCampaign(id);
   const { data: placements } = useCampaignPlacements(id);
   const { data: orders } = useOrders();
   const { data: renewals } = useRenewals();
@@ -88,6 +90,8 @@ export function CampaignDetailPage() {
         await enableRenewal(agreement.id);
       }
       qc.invalidateQueries({ queryKey: ["renewals"] });
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : t.error);
     } finally {
       setBusy(false);
     }
@@ -101,9 +105,15 @@ export function CampaignDetailPage() {
     );
   }
   if (!campaign) {
+    // Only a 404 means "not found"; network/server failures get a retry.
+    const failed = isError && !(error instanceof ApiError && error.status === 404);
     return (
       <section>
-        <p className="callout">{t.notFound}</p>
+        {failed ? (
+          <QueryError onRetry={() => refetch()} />
+        ) : (
+          <p className="callout">{t.notFound}</p>
+        )}
         <Link className="btn" to="/app/campaigns">
           <IconArrowLeft size={14} /> {t.campaigns}
         </Link>

@@ -1,8 +1,9 @@
 import { Link, useParams } from "react-router-dom";
+import { ApiError } from "@/shared/api/client";
 import { useOrder } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { AttemptChip, CopyButton, OrderChip, RefundStateChip } from "@/shared/ui";
+import { AttemptChip, CopyButton, OrderChip, RefundStateChip, QueryError } from "@/shared/ui";
 import {
   IconArrowLeft,
   IconBulb,
@@ -18,7 +19,7 @@ import {
 export function OrderDetailPage() {
   const { t, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
-  const { data: order, isLoading } = useOrder(id);
+  const { data: order, isLoading, isError, error, refetch } = useOrder(id);
   const lang = locale as "ru" | "uz";
 
   if (isLoading) {
@@ -29,9 +30,15 @@ export function OrderDetailPage() {
     );
   }
   if (!order) {
+    // Only a 404 means "not found"; network/server failures get a retry.
+    const failed = isError && !(error instanceof ApiError && error.status === 404);
     return (
       <section>
-        <p className="callout">{t.notFound}</p>
+        {failed ? (
+          <QueryError onRetry={() => refetch()} />
+        ) : (
+          <p className="callout">{t.notFound}</p>
+        )}
         <Link className="btn" to="/app/billing">
           <IconArrowLeft size={14} /> {t.billing}
         </Link>

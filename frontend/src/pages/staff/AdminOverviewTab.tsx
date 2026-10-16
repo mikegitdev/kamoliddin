@@ -12,13 +12,15 @@ import {
   IconUsers,
 } from "@/shared/icons";
 import { useStaffLink } from "./controls";
+import { QueryError } from "@/shared/ui";
 
 export function AdminOverviewTab() {
   const { t, locale } = useI18n();
-  const { data, isLoading } = useAdminOverview(true);
+  const { data, isLoading, isError, refetch } = useAdminOverview(true);
   const lang = locale as "ru" | "uz";
   const link = useStaffLink();
   if (isLoading) return <div className="skeleton skeleton-card" />;
+  if (isError) return <QueryError onRetry={() => refetch()} />;
   if (!data) return null;
   const a = data.attention;
   // Each counter deep-links to the tab + filter where it gets resolved.

@@ -42,9 +42,11 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
     try:
         image: Image.Image = Image.open(io.BytesIO(data))
     except OSError as exc:  # includes PIL.UnidentifiedImageError
-        raise ValueError("Not a recognizable image") from exc
+        raise ValueError("Only valid JPG, PNG or WEBP images are accepted") from exc
+    except Image.DecompressionBombError as exc:  # not an OSError subclass
+        raise ValueError("Image dimensions exceed the processing limit") from exc
     if image.format not in ALLOWED_FORMATS:
-        raise ValueError(f"Unsupported image format {image.format!r}")
+        raise ValueError("Only valid JPG, PNG or WEBP images are accepted")
     if image.width * image.height > MAX_INPUT_PIXELS:
         raise ValueError("Image dimensions exceed the processing limit")
     fmt = image.format
@@ -119,7 +121,12 @@ class MediaUploadView(APIView):
         raw = upload.read()
         try:
             fmt, cleaned = _reencode(raw, purpose)
-        except (ValueError, OSError):
+        except ValueError as exc:  # policy violation: the message is user-facing
+            return Response(
+                {"error": {"code": "validation_error", "message": str(exc), "fields": {}}},
+                status=400,
+            )
+        except OSError:  # truncated/corrupt data while decoding
             return Response(
                 {"error": {"code": "validation_error",
                            "message": "Only valid JPG, PNG or WEBP images are accepted",

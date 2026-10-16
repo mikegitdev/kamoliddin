@@ -5,7 +5,7 @@ import { isAwaitingProvider, useOrder } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { checkoutOrder, completeFakePayment } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
-import { CopyButton, OrderChip } from "@/shared/ui";
+import { CopyButton, OrderChip, QueryError } from "@/shared/ui";
 import { IconAlert, IconArrowLeft, IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiCheckout } from "@/entities/types";
@@ -14,7 +14,7 @@ export function CheckoutPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const { data: order, isLoading } = useOrder(id);
+  const { data: order, isLoading, isError, error: loadError, refetch } = useOrder(id);
   const [checkoutRes, setCheckoutRes] = useState<ApiCheckout | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Re-render every 30s so the quote-expiry countdown stays current.
@@ -59,9 +59,14 @@ export function CheckoutPage() {
   if (!order) {
     return (
       <section className="form">
-        <div className="callout danger" role="alert">
-          {t.orderMissing}
-        </div>
+        {/* Only a 404 means the order is gone; other failures get a retry. */}
+        {isError && !(loadError instanceof ApiError && loadError.status === 404) ? (
+          <QueryError onRetry={() => refetch()} />
+        ) : (
+          <div className="callout danger" role="alert">
+            {t.orderMissing}
+          </div>
+        )}
         <p className="mt-14">
           <Link to="/app/campaigns"><IconArrowLeft size={14} /> {t.backToCampaigns}</Link>
         </p>

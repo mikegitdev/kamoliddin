@@ -8,7 +8,7 @@ import {
 } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { AttemptChip, OrderChip } from "@/shared/ui";
+import { AttemptChip, OrderChip, QueryError } from "@/shared/ui";
 import type { OrderState } from "@/entities/types";
 import { IconChevronDown, IconChevronUp, IconSave } from "@/shared/icons";
 import {
@@ -106,7 +106,7 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
   const key = JSON.stringify(params);
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [key]);
-  const { data, isLoading } = useStaffPage<ApiActivity>("activity", params, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiActivity>("activity", params, offset);
   const [open, setOpen] = useState<string | null>(null);
 
   const exportQs = new URLSearchParams(
@@ -177,6 +177,7 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
         </div>
       )}
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}
@@ -258,7 +259,7 @@ function PaymentsLog({ lang }: { lang: "ru" | "uz" }) {
   const q = useDebounced(qInput);
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [status, q, order]);
-  const { data, isLoading } = useStaffPage<ApiAdminPayment>("payments", { status, q, order }, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPayment>("payments", { status, q, order }, offset);
   return (
     <>
       <div className="row mb-14">
@@ -280,6 +281,7 @@ function PaymentsLog({ lang }: { lang: "ru" | "uz" }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}
@@ -333,7 +335,7 @@ function WebhooksLog({ lang }: { lang: "ru" | "uz" }) {
   const q = useDebounced(qInput);
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q]);
-  const { data, isLoading } = useStaffPage<ApiAdminPaymentEvent>("payment-events", { q }, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPaymentEvent>("payment-events", { q }, offset);
   return (
     <>
       <div className="row mb-14">
@@ -346,6 +348,7 @@ function WebhooksLog({ lang }: { lang: "ru" | "uz" }) {
         />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}
@@ -399,7 +402,7 @@ function RenewalsLog({ lang }: { lang: "ru" | "uz" }) {
   const q = useDebounced(qInput);
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [state, q]);
-  const { data, isLoading } = useStaffPage<ApiAdminRenewalAttempt>("renewals", { state, q }, offset);
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminRenewalAttempt>("renewals", { state, q }, offset);
   const stateLabel: Record<string, string> = {
     succeeded: t.stAttemptSucceeded,
     pending: t.stAttemptPending,
@@ -431,6 +434,7 @@ function RenewalsLog({ lang }: { lang: "ru" | "uz" }) {
         </select>
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}

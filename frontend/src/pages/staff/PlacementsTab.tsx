@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useStaffPage, type ApiAdminPlacement } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { CampaignChip, FallImg, PlacementChip } from "@/shared/ui";
+import { CampaignChip, FallImg, PlacementChip, QueryError } from "@/shared/ui";
 import type { CampaignStatus } from "@/entities/types";
 import { IconBlock, IconCheck, IconEye } from "@/shared/icons";
 import {
@@ -30,7 +30,7 @@ export function PlacementsTab({ locale }: { locale: string }) {
   const [offset, setOffset] = useState(0);
   const visible = visibleOnly ? "1" : "";
   useEffect(() => setOffset(0), [q, state, source, visible, business, location, campaign]);
-  const { data, isLoading } = useStaffPage<ApiAdminPlacement>(
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPlacement>(
     "placements",
     { q, state, source, visible, business, location, campaign },
     offset,
@@ -96,6 +96,7 @@ export function PlacementsTab({ locale }: { locale: string }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}

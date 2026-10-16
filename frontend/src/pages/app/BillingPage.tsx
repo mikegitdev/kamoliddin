@@ -5,7 +5,7 @@ import { useOrders, useRenewals } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { cancelRenewal, enableRenewal, requestRefund } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
-import { OrderChip } from "@/shared/ui";
+import { OrderChip, QueryError } from "@/shared/ui";
 import { confirmDialog, mountDialog, RefundDialogBody } from "@/shared/dialog";
 import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
@@ -39,13 +39,8 @@ function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
   });
 
   const pending = cancel.isPending || enable.isPending;
-  const failed =
-    (cancel.isError || enable.isError) &&
-    (cancel.error instanceof ApiError || enable.error instanceof ApiError)
-      ? ((cancel.error ?? enable.error) as ApiError).message
-      : cancel.isError || enable.isError
-        ? t.error
-        : null;
+  const lastError = cancel.error ?? enable.error;
+  const failed = lastError ? (lastError instanceof ApiError ? lastError.message : t.error) : null;
 
   const toggle = async () => {
     const cancelling = renewal.status !== "disabled";
@@ -56,6 +51,9 @@ function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
       cancelLabel: t.cancel,
     });
     if (!ok) return;
+    // Clear the previous attempt's error so only the latest failure shows.
+    cancel.reset();
+    enable.reset();
     if (cancelling) cancel.mutate();
     else enable.mutate();
   };
@@ -100,7 +98,7 @@ function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
 export function BillingPage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const { data: orders } = useOrders();
+  const { data: orders, isError: ordersFailed, refetch: refetchOrders } = useOrders();
   const { data: renewals } = useRenewals();
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -143,6 +141,9 @@ export function BillingPage() {
         </p>
       )}
 
+      {ordersFailed && !orders && (
+        <QueryError onRetry={() => refetchOrders()} />
+      )}
       {orders && orders.length === 0 && <p className="muted">{t.noOrders}</p>}
       {orders && orders.length > 0 && (
         <div className="table-wrap">

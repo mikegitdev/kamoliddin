@@ -361,6 +361,20 @@ export function ShareButton({ title }: { title?: string }) {
   );
 }
 
+/** Failed-load callout with retry — a query error must never render as an
+ *  empty list or "not found". */
+export function QueryError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="callout danger" role="alert">
+      <span>{t.loadError}</span>
+      <button className="btn small" onClick={onRetry}>
+        {t.retry}
+      </button>
+    </div>
+  );
+}
+
 /* ---------- Back: return to the previous results, share-safe ---------- */
 
 /** In-app history exists ("location.key !== 'default'") when the visitor

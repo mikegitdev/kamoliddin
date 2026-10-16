@@ -39,7 +39,7 @@ import {
   IconSave,
 } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
-import { CampaignChip, FallImg } from "@/shared/ui";
+import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import type { ApiCampaign } from "@/entities/types";
 
 /* ------------------------------------------------------------------ *
@@ -87,10 +87,21 @@ export function CampaignEditorPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { id: editId } = useParams<{ id: string }>();
-  const { data: businesses, isLoading: businessesLoading } = useBusinesses();
+  const {
+    data: businesses,
+    isLoading: businessesLoading,
+    isError: businessesFailed,
+    refetch: refetchBusinesses,
+  } = useBusinesses();
   const business = businesses?.[0];
   const { data: locations } = useBusinessLocations(business?.id);
-  const { data: editing, isLoading: editingLoading } = useCampaign(editId);
+  const {
+    data: editing,
+    isLoading: editingLoading,
+    isError: editingFailed,
+    error: editingError,
+    refetch: refetchEditing,
+  } = useCampaign(editId);
 
   const dates = useMemo(defaultDates, []);
   const [stage, setStage] = useState(0);
@@ -400,6 +411,14 @@ export function CampaignEditorPage() {
         </section>
       );
     }
+    // A failed load is not "no business yet" — don't send them to create one.
+    if (businessesFailed) {
+      return (
+        <section>
+          <QueryError onRetry={() => refetchBusinesses()} />
+        </section>
+      );
+    }
     return (
       <section>
         <div className="setup-next">
@@ -423,9 +442,15 @@ export function CampaignEditorPage() {
     );
   }
   if (editId && !editing) {
+    const failed =
+      editingFailed && !(editingError instanceof ApiError && editingError.status === 404);
     return (
       <section>
-        <p className="callout">{t.notFound}</p>
+        {failed ? (
+          <QueryError onRetry={() => refetchEditing()} />
+        ) : (
+          <p className="callout">{t.notFound}</p>
+        )}
         <Link className="btn" to="/app/campaigns"><IconArrowLeft size={14} /> {t.backToCampaigns}</Link>
       </section>
     );

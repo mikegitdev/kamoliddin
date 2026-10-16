@@ -35,4 +35,10 @@ export function readDraft(key: string): Draft | null {
   }
 }
 
-export const clearDraft = (key: string) => localStorage.removeItem(key);
+export function clearDraft(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable — nothing was persisted to clear */
+  }
+}

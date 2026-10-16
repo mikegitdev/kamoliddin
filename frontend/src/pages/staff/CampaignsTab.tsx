@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useStaffPage, type ApiAdminCampaign } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { CampaignChip, FallImg } from "@/shared/ui";
+import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import type { CampaignStatus } from "@/entities/types";
 import { IconBlock, IconCheck, IconExternal } from "@/shared/icons";
 import {
@@ -23,7 +23,7 @@ export function CampaignsTab({ locale }: { locale: string }) {
   const [status, setStatus] = useState(() => link.get("status"));
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [q, status, business]);
-  const { data, isLoading } = useStaffPage<ApiAdminCampaign>(
+  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminCampaign>(
     "campaigns", { q, status, business }, offset,
   );
   const action = useStaffAction();
@@ -65,6 +65,7 @@ export function CampaignsTab({ locale }: { locale: string }) {
         )}
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {data && (
         <p className="muted-2 mb-10">
           {t.countLabel}: {data.count}

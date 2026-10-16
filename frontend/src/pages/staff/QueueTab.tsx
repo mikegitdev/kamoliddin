@@ -5,7 +5,7 @@ import { useReviewQueue } from "@/shared/api/queries";
 import { confirmDialog } from "@/shared/dialog";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { FallImg } from "@/shared/ui";
+import { FallImg, QueryError } from "@/shared/ui";
 import {
   IconCheck,
   IconClock,
@@ -23,7 +23,7 @@ export function QueueTab({
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: queue, isLoading } = useReviewQueue(true);
+  const { data: queue, isLoading, isError, refetch } = useReviewQueue(true);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,6 +61,7 @@ export function QueueTab({
   return (
     <section>
       {isLoading && <div className="skeleton skeleton-card" />}
+      {isError && <QueryError onRetry={() => refetch()} />}
       {queue?.length === 0 && <p className="callout"><IconCheck size={16} /> {t.queueEmpty}</p>}
       {queue && queue.length > 0 && (
         <p className="muted-2 mb-10">

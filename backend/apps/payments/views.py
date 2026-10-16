@@ -128,7 +128,15 @@ class ProviderWebhookView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        result = gateway.verify_webhook(payload=request.body, headers=dict(request.headers))
+        try:
+            result = gateway.verify_webhook(payload=request.body, headers=dict(request.headers))
+        except (ValueError, KeyError, TypeError) as exc:  # malformed body (incl. bad JSON)
+            logger.warning("Malformed webhook payload for provider %r: %s", provider, exc)
+            return Response(
+                {"error": {"code": "invalid_payload", "message": "Malformed webhook payload",
+                           "fields": {}}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return _apply_verified_event(provider, result)
 
 

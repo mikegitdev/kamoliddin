@@ -7,11 +7,16 @@ import { useI18n } from "@/shared/i18n";
 import { useDirtyRouteGuard } from "@/shared/route-guard";
 import { toast } from "@/shared/toast";
 import { IconAlert } from "@/shared/icons";
+import { QueryError } from "@/shared/ui";
 
 export function BusinessProfilePage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const { data: businesses } = useBusinesses();
+  const {
+    data: businesses,
+    isError: businessesFailed,
+    refetch: refetchBusinesses,
+  } = useBusinesses();
   const { data: categories } = useCategories();
   const existing = businesses?.[0];
 
@@ -89,6 +94,16 @@ export function BusinessProfilePage() {
     (key: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  // Without the existing profile an empty form would save a duplicate business.
+  if (businessesFailed && !businesses) {
+    return (
+      <section className="form">
+        <h2>{t.business}</h2>
+        <QueryError onRetry={() => refetchBusinesses()} />
+      </section>
+    );
+  }
 
   return (
     <section className="form">

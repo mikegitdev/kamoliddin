@@ -4,10 +4,11 @@ import { useGrantOptions } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { IconCheck } from "@/shared/icons";
+import { QueryError } from "@/shared/ui";
 
 export function GrantsTab({ onError }: { onError: (e: string | null) => void }) {
   const { t, locale } = useI18n();
-  const { data: options, isLoading: isLoadingOptions } = useGrantOptions(true);
+  const { data: options, isLoading: isLoadingOptions, isError: optionsFailed, refetch: refetchOptions } = useGrantOptions(true);
   const lang = locale as "ru" | "uz";
   const [campaignId, setCampaignId] = useState("");
   const [campaignFilter, setCampaignFilter] = useState("");
@@ -138,6 +139,7 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
       <section className="mt-22">
         <h2>{t.activeGrants}</h2>
         {isLoadingOptions && <div className="skeleton skeleton-card" />}
+        {optionsFailed && <QueryError onRetry={() => refetchOptions()} />}
         {options && options.grants.length === 0 && (
           <p className="callout"><IconCheck size={16} /> {t.noGrants}</p>
         )}

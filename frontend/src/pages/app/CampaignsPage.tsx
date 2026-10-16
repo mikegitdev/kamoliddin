@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCampaigns } from "@/shared/api/queries";
-import { CampaignChip, FallImg } from "@/shared/ui";
+import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import { formatDate } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { IconBulb, IconPencil } from "@/shared/icons";
@@ -24,7 +24,7 @@ const PAGE_SIZE = 10;
 
 export function CampaignsPage() {
   const { t, locale } = useI18n();
-  const { data: campaigns, isLoading } = useCampaigns();
+  const { data: campaigns, isLoading, isError, refetch } = useCampaigns();
   const [filter, setFilter] = useState<Filter>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -74,6 +74,11 @@ export function CampaignsPage() {
           <div className="skeleton skeleton-card mt-14" />
           <div className="skeleton skeleton-card mt-10" />
         </>
+      )}
+      {isError && !campaigns && (
+        <div className="mt-14">
+          <QueryError onRetry={() => refetch()} />
+        </div>
       )}
       {campaigns && campaigns.length === 0 && (
         <p className="callout mt-14">
