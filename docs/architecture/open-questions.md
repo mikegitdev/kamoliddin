@@ -9,9 +9,34 @@
 | 5 | Renewal price policy (current tariff vs locked) | `current_tariff`, consent shown at opt-in | product owner |
 | 6 | 25h request: display 25h (charge 2 days) vs display 48h entitlement | Honor requested display duration, disclose 2-day charge before payment | product owner |
 | 7 | Partial-term refund on admin suspension | Manual review queue, no auto-proration | product owner |
-| 8 | DNS / VPS sizing / RPO-RTO | Not yet chosen | ops design |
+| 8 | DNS / VPS sizing / RPO-RTO | VPS sizing proposed (see "Provisional VPS sizing" below, unvalidated estimate); DNS and RPO/RTO not yet chosen | ops design |
 | 9 | Reconciliation sweep command | Not shipped; `ops_report` surfaces ambiguous states for manual resolution | engineering backlog |
 | 10 | Renewal timed retries | One-shot (ALERT, no retry) — revisit with real provider (ADR-0005 §7) | engineering backlog |
+
+## Provisional VPS sizing (open question #8)
+
+Estimate derived from the spec §15 Compose stack (proxy + static frontend,
+Gunicorn, Celery worker, Celery beat, PostgreSQL/PostGIS, Redis, Garage). Not
+load-tested — confirm with the stress test before launch.
+
+| | Minimum (MVP / pilot) | Comfortable |
+|---|---|---|
+| CPU | 2 vCPU | 4 vCPU |
+| RAM | 4 GB (2–3 Gunicorn workers) | 8 GB |
+| Disk | 60 GB NVMe | 120–160 GB NVMe (Garage media grows) |
+| OS | Ubuntu 24.04 LTS, Docker Engine + Compose v2 | same |
+
+Also required: off-server backup target (separate bucket or host), domain + DNS,
+TLS (e.g. Let's Encrypt), only 80/443 publicly open.
+
+Constraints to resolve before choosing a provider:
+
+- **x86_64 (amd64) host.** The PostGIS image in `docker-compose.yml` is
+  amd64-only; an ARM VPS would need emulation or a different image.
+- **Data residency.** Uzbekistan's personal-data law is understood to require
+  citizens' personal data (e.g. owner phone numbers) to be stored on servers in
+  Uzbekistan, which may rule out foreign hosts — confirm in the legal review
+  (`docs/product/legal-review.md`).
 
 ## Evidence that closes each [E] gate (spec §19)
 

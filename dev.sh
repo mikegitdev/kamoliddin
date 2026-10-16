@@ -97,6 +97,8 @@ say "Applying migrations..."
 if [[ $BACKEND_MODE == local ]]; then
   ( cd backend && "$PY" manage.py migrate --noinput )
 else
+  # A previous run that died without cleanup can leave the named container behind.
+  docker rm -f "$BACKEND_CONTAINER" >/dev/null 2>&1 || true
   docker_backend python manage.py migrate --noinput
 fi
 
@@ -119,7 +121,7 @@ cleanup() {
   wait 2>/dev/null || true
   say "Stopped (containers still running: docker compose stop)."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 # --- 3. Run both dev servers ----------------------------------------------------------
 
