@@ -186,6 +186,8 @@ function LocationDetailView({
 /* ---------- Panel shell ---------- */
 
 export interface ResultsPanelProps {
+  /** False while the map is kept alive under another page: ignore global keys. */
+  active?: boolean;
   state: SheetState;
   onStateChange: (s: SheetState) => void;
   results: ApiLocationPin[];
@@ -210,6 +212,7 @@ export interface ResultsPanelProps {
 
 export function ResultsPanel(props: ResultsPanelProps) {
   const {
+    active = true,
     state,
     onStateChange,
     results,
@@ -248,6 +251,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
 
   // Esc: detail → list, list → collapsed (mobile). Skip while typing.
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = document.activeElement;
@@ -257,7 +261,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [state, onStateChange]);
+  }, [active, state, onStateChange]);
 
   // Roving arrow-key navigation between result cards.
   const onListKeyDown = (e: React.KeyboardEvent) => {

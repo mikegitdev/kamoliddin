@@ -1,10 +1,12 @@
 from django.contrib.gis.geos import Point
 from rest_framework import serializers
 
+from apps.businesses.contacts import ContactFieldsMixin
+
 from .models import Location
 
 
-class LocationSerializer(serializers.ModelSerializer):
+class LocationSerializer(ContactFieldsMixin, serializers.ModelSerializer):
     lon = serializers.FloatField(write_only=True)
     lat = serializers.FloatField(write_only=True)
     business_name = serializers.CharField(source="business.name", read_only=True)

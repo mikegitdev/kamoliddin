@@ -153,6 +153,10 @@ REST_FRAMEWORK = {
         "otp": "5/min",  # scoped rate for OTP request/verify (spec §9)
         "report": "10/min",  # public complaint submissions
     },
+    # Throttles key on the client IP. 0 = REMOTE_ADDR only: a client-sent
+    # X-Forwarded-For must never pick the bucket. prod.py raises it to 1
+    # (nginx). Unset, DRF keys on the raw header — trivially rotated.
+    "NUM_PROXIES": 0,
     "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }

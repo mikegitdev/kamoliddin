@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useAdminUser,
   useStaffPage,
@@ -14,6 +13,8 @@ import {
   StatusChip,
   shortId,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffAction,
   useStaffLink,
 } from "./controls";
@@ -27,11 +28,10 @@ export function UsersTab({ locale }: { locale: string }) {
   const { t } = useI18n();
   const lang = locale as "ru" | "uz";
   const link = useStaffLink();
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("users.q", "");
   const q = useDebounced(qInput);
-  const [status, setStatus] = useState(() => link.get("status"));
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [q, status]);
+  const [status, setStatus] = useHistoryState("users.status", () => link.get("status"));
+  const [offset, setOffset] = usePagedOffset("users.offset", [q, status]);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminUser>("users", { q, status }, offset);
   const selected = link.get("user");
   const action = useStaffAction();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useStaffPage, type ApiAdminCampaign } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
@@ -9,6 +9,8 @@ import {
   FilterPill,
   ServerPager,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffAction,
   useStaffLink,
 } from "./controls";
@@ -18,11 +20,10 @@ export function CampaignsTab({ locale }: { locale: string }) {
   const lang = locale as "ru" | "uz";
   const link = useStaffLink();
   const business = link.get("business");
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("campaigns.q", "");
   const q = useDebounced(qInput);
-  const [status, setStatus] = useState(() => link.get("status"));
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [q, status, business]);
+  const [status, setStatus] = useHistoryState("campaigns.status", () => link.get("status"));
+  const [offset, setOffset] = usePagedOffset("campaigns.offset", [q, status, business]);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminCampaign>(
     "campaigns", { q, status, business }, offset,
   );
@@ -111,9 +112,9 @@ export function CampaignsTab({ locale }: { locale: string }) {
                     >
                       {t.viewLog}
                     </button>
-                    <a className="btn small" href={`/ads/${c.id}`} target="_blank" rel="noreferrer">
+                    <Link className="btn small" to={`/ads/${c.id}`}>
                       <IconExternal size={12} />
-                    </a>
+                    </Link>
                     {(c.review_status === "approved" || c.review_status === "suspended") && (
                       <button
                         className={`btn small${c.review_status === "approved" ? " danger" : ""}`}

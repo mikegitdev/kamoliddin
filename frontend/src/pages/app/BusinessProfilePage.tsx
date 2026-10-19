@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinesses, useCategories } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { saveBusiness } from "@/features/advertiser/api";
+import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { useI18n } from "@/shared/i18n";
 import { useDirtyRouteGuard } from "@/shared/route-guard";
 import { toast } from "@/shared/toast";
@@ -18,7 +19,7 @@ export function BusinessProfilePage() {
     refetch: refetchBusinesses,
   } = useBusinesses();
   const { data: categories } = useCategories();
-  const existing = businesses?.[0];
+  const existing = useCurrentBusiness(businesses);
 
   const [form, setForm] = useState({
     name: "",
@@ -115,11 +116,6 @@ export function BusinessProfilePage() {
           </span>
         )}
       </div>
-      {businesses && businesses.length > 1 && (
-        <p className="callout">
-          {t.multiBusinessNote}: {businesses.length}
-        </p>
-      )}
 
       <div className="form-section flush">
         <h3 className="section-title">

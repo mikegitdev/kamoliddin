@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useStaffPage, type ApiAdminOrder } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
@@ -10,6 +9,8 @@ import {
   ServerPager,
   shortId,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffLink,
 } from "./controls";
 
@@ -18,11 +19,10 @@ export function OrdersTab({ locale }: { locale: string }) {
   const lang = locale as "ru" | "uz";
   const link = useStaffLink();
   const business = link.get("business");
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("orders.q", "");
   const q = useDebounced(qInput);
-  const [state, setState] = useState(() => link.get("state"));
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [q, state, business]);
+  const [state, setState] = useHistoryState("orders.state", () => link.get("state"));
+  const [offset, setOffset] = usePagedOffset("orders.offset", [q, state, business]);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminOrder>("orders", { q, state, business }, offset);
 
   return (

@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from .models import RenewalAgreement
 from .serializers import RenewalAgreementSerializer, RenewalEnableSerializer
-from .services import cancel_agreement, enable_agreement
+from .services import RenewalTermEnded, cancel_agreement, enable_agreement
 
 
 class RenewalListView(ListAPIView):
@@ -47,6 +47,11 @@ class RenewalEnableView(APIView):
                 {"error": {"code": "not_found", "message": "Renewal agreement not found",
                            "fields": {}}},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+        except RenewalTermEnded as exc:
+            return Response(
+                {"error": {"code": "renewal_term_ended", "message": str(exc), "fields": {}}},
+                status=status.HTTP_409_CONFLICT,
             )
         except ValueError as exc:  # pending provider token — cannot enable yet
             return Response(

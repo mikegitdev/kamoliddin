@@ -17,6 +17,8 @@ import {
   SubTabs,
   shortId,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffLink,
 } from "./controls";
 
@@ -85,12 +87,12 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
   const pinnedEntity = link.get("entity");
   const pinnedEntityId = link.get("entity_id");
   const pinnedActor = link.get("actor");
-  const [entitySel, setEntitySel] = useState("");
-  const [actionInput, setActionInput] = useState("");
-  const [actorInput, setActorInput] = useState("");
-  const [qInput, setQInput] = useState("");
-  const [since, setSince] = useState("");
-  const [until, setUntil] = useState("");
+  const [entitySel, setEntitySel] = useHistoryState("logs.entity", "");
+  const [actionInput, setActionInput] = useHistoryState("logs.action", "");
+  const [actorInput, setActorInput] = useHistoryState("logs.actor", "");
+  const [qInput, setQInput] = useHistoryState("logs.q", "");
+  const [since, setSince] = useHistoryState("logs.since", "");
+  const [until, setUntil] = useHistoryState("logs.until", "");
   const action = useDebounced(actionInput);
   const actorTyped = useDebounced(actorInput);
   const q = useDebounced(qInput);
@@ -103,9 +105,7 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
     since,
     until,
   };
-  const key = JSON.stringify(params);
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [key]);
+  const [offset, setOffset] = usePagedOffset("logs.offset", params);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiActivity>("activity", params, offset);
   const [open, setOpen] = useState<string | null>(null);
 

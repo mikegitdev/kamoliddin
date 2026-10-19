@@ -69,7 +69,9 @@ function panelFlyOffset(): [number, number] {
   return [Math.round(panelWidth() * 0.55), 0];
 }
 
-export function MapHomePage() {
+/** `active` is false while the map is kept alive, hidden, under an ad or
+ *  location page (see RootLayout): it must not touch that page's URL. */
+export function MapHomePage({ active = true }: { active?: boolean }) {
   const restored = useRef(loadSnapshot()).current;
   const isMobile = useMediaQuery("(max-width: 767px)");
   const { t, locale } = useI18n();
@@ -88,8 +90,8 @@ export function MapHomePage() {
   const [query, setQuery] = useState<string>(searchParams.get("q") ?? restored?.query ?? "");
   const [debouncedQuery, setDebouncedQuery] = useState(query.trim());
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedPin, setSelectedPin] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<SheetState>("collapsed");
+  const [selectedPin, setSelectedPin] = useState<string | null>(restored?.selectedPin ?? null);
+  const [sheet, setSheet] = useState<SheetState>(restored?.sheet ?? "collapsed");
   const [camera, setCamera] = useState<{
     center: [number, number];
     zoom: number;
@@ -230,11 +232,16 @@ export function MapHomePage() {
     setSheet((s) => (s === "detail" ? "collapsed" : s));
   }, []);
 
-  // New search / category ⇒ back to the list view.
+  // New search / category ⇒ back to the list view. Skipped on mount so a
+  // selection restored from the session snapshot survives Back.
+  const filterSig = `${debouncedQuery}\u0000${category}`;
+  const prevFilterSig = useRef(filterSig);
   useEffect(() => {
+    if (prevFilterSig.current === filterSig) return;
+    prevFilterSig.current = filterSig;
     setSelectedPin(null);
     adapterRef.current?.setSelected(null);
-  }, [debouncedQuery, category]);
+  }, [filterSig]);
 
   // Typing expands the collapsed mobile sheet so results are visible.
   useEffect(() => {
@@ -258,7 +265,7 @@ export function MapHomePage() {
     deepLinkPin && !pinsById.has(deepLinkPin) ? deepLinkPin : undefined,
   );
   useEffect(() => {
-    if (!deepLinkPin || !mapReady) return;
+    if (!active || !deepLinkPin || !mapReady) return;
     const pin = pinsById.get(deepLinkPin) ?? deepLinkDetail;
     if (!pin || !("lon" in pin)) return;
     // selectPin only flies to pins it knows; deep-linked ones may be outside
@@ -277,10 +284,11 @@ export function MapHomePage() {
       },
       { replace: true },
     );
-  }, [deepLinkPin, mapReady, pinsById, deepLinkDetail, setSearchParams, isMobile]);
+  }, [active, deepLinkPin, mapReady, pinsById, deepLinkDetail, setSearchParams, isMobile]);
 
   // Mirror the active filters into the URL (replace: no history spam).
   useEffect(() => {
+    if (!active) return;
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -292,7 +300,7 @@ export function MapHomePage() {
       },
       { replace: true },
     );
-  }, [category, debouncedQuery, setSearchParams]);
+  }, [active, category, debouncedQuery, setSearchParams]);
 
   // --- Session persistence (survives /locations/:id and back) ---
 
@@ -303,8 +311,10 @@ export function MapHomePage() {
       bbox,
       center: camera?.center ?? null,
       zoom: camera?.zoom ?? null,
+      selectedPin,
+      sheet,
     });
-  }, [query, category, bbox, camera]);
+  }, [query, category, bbox, camera, selectedPin, sheet]);
 
   // --- Geolocation with a useful permission-denied fallback ---
 
@@ -561,6 +571,7 @@ export function MapHomePage() {
       />
 
       <ResultsPanel
+        active={active}
         state={panelState}
         onStateChange={setSheet}
         results={results}

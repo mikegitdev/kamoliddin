@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAwaitingProvider, useOrder } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
-import { checkoutOrder, completeFakePayment } from "@/features/advertiser/api";
+import { checkoutOrder } from "@/features/advertiser/api";
+import {
+  ACCEPTED_NETWORKS,
+  NETWORK_LABEL,
+  PAY_METHODS,
+  ProviderWordmark,
+  type PayMethod,
+} from "@/features/payments/providers";
+import type { DemoPayState } from "@/pages/DemoPayPage";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
 import { CopyButton, OrderChip, QueryError } from "@/shared/ui";
-import { IconAlert, IconArrowLeft, IconCheck } from "@/shared/icons";
+import { IconArrowLeft, IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 import type { ApiCheckout } from "@/entities/types";
 
@@ -14,8 +22,12 @@ export function CheckoutPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  // Set by the demo provider page when the customer backs out unpaid.
+  const cancelled = (useLocation().state as { paymentCancelled?: boolean } | null)?.paymentCancelled === true;
   const { data: order, isLoading, isError, error: loadError, refetch } = useOrder(id);
   const [checkoutRes, setCheckoutRes] = useState<ApiCheckout | null>(null);
+  const [method, setMethod] = useState<PayMethod>("click");
   const [error, setError] = useState<string | null>(null);
   // Re-render every 30s so the quote-expiry countdown stays current.
   const [, setTick] = useState(0);
@@ -30,19 +42,16 @@ export function CheckoutPage() {
       // the payment resolve (the order query polls while processing).
       checkoutOrder(id!, `${window.location.origin}/app/checkout/${id}`),
     onSuccess: (res) => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["order", id] });
+      if (res.provider === "fake") {
+        // Demo stack: open the chosen provider's mock card page, which
+        // settles through the fake gateway's callback.
+        const state: DemoPayState = { redirectUrl: res.redirect_url, paymentId: res.provider_payment_id };
+        navigate(`/pay/${method}/${id}`, { state });
+        return;
+      }
       setCheckoutRes(res);
-      setError(null);
-      queryClient.invalidateQueries({ queryKey: ["order", id] });
-    },
-    onError: (e) => setError(e instanceof ApiError ? e.message : t.error),
-  });
-
-  const pay = useMutation({
-    mutationFn: () => completeFakePayment(checkoutRes!.redirect_url),
-    onSuccess: () => {
-      setError(null);
-      queryClient.invalidateQueries({ queryKey: ["order", id] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : t.error),
   });
@@ -78,9 +87,8 @@ export function CheckoutPage() {
   const isPaid = order.state === "paid";
   // Returned from the provider page (no local checkout session) while its
   // callback is still outstanding — useOrder polls until it resolves.
-  const processing = isAwaitingProvider(order) && !checkoutRes;
-  const showFakePay = !!checkoutRes && checkoutRes.provider === "fake";
-  const showExternal = !!checkoutRes && checkoutRes.provider !== "fake";
+  const processing = isAwaitingProvider(order) && !checkoutRes && !cancelled;
+  const showExternal = !!checkoutRes;
   // The single most time-critical element gets emphasis as expiry nears.
   const quoteMinutesLeft = order.quote_expires_at
     ? Math.round((new Date(order.quote_expires_at).getTime() - Date.now()) / 60_000)
@@ -161,48 +169,58 @@ export function CheckoutPage() {
       </div>
 
       {/* The money decision: amount rests right beside the action. */}
-      {(unpaid || showFakePay || showExternal) && (
+      {(unpaid || showExternal) && (
         <div className="checkout-total">
           <span className="muted">{t.total}</span>
           <strong>{formatMinor(order.amount_total, order.currency, locale)}</strong>
         </div>
       )}
 
-      {showFakePay && (
+      {cancelled && unpaid && !checkoutRes && (
         <div className="callout" role="status">
-          <span><IconAlert size={14} /> {t.sandboxNote}</span>
+          <span>{t.paymentCancelled}</span>
         </div>
       )}
 
       {unpaid && !checkoutRes && (
-        <div className="form-actions">
-          <button
-            className="btn primary"
-            disabled={checkout.isPending}
-            onClick={() => checkout.mutate()}
-          >
-            {checkout.isPending ? (
-              <>
-                <span className="spinner" aria-hidden="true" /> {t.loading}
-              </>
-            ) : (
-              t.createPayment
-            )}
-          </button>
-        </div>
-      )}
-      {showFakePay && (
-        <div className="form-actions">
-          <button className="btn primary" disabled={pay.isPending} onClick={() => pay.mutate()}>
-            {pay.isPending ? (
-              <>
-                <span className="spinner" aria-hidden="true" /> {t.verifying}
-              </>
-            ) : (
-              t.simulatePayment
-            )}
-          </button>
-        </div>
+        <>
+          <fieldset className="pay-methods">
+            <legend>{t.payMethodTitle}</legend>
+            <div className="pay-method-grid">
+              {PAY_METHODS.map((m) => (
+                <label key={m} className={`pay-method${method === m ? " selected" : ""}`}>
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="pay-method"
+                    value={m}
+                    checked={method === m}
+                    onChange={() => setMethod(m)}
+                  />
+                  <ProviderWordmark method={m} />
+                  <span className="pay-method-cards">
+                    {ACCEPTED_NETWORKS[m].map((n) => NETWORK_LABEL[n]).join(" · ")}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="form-actions">
+            <button
+              className="btn primary"
+              disabled={checkout.isPending}
+              onClick={() => checkout.mutate()}
+            >
+              {checkout.isPending ? (
+                <>
+                  <span className="spinner" aria-hidden="true" /> {t.loading}
+                </>
+              ) : (
+                `${t.payAmount} ${formatMinor(order.amount_total, order.currency, locale)}`
+              )}
+            </button>
+          </div>
+        </>
       )}
       {showExternal && (
         <div className="form-actions stack">

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
   useStaffPage,
   type ApiAdminBusiness,
@@ -14,6 +15,8 @@ import {
   StatusChip,
   SubTabs,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffAction,
   useStaffLink,
 } from "./controls";
@@ -25,12 +28,12 @@ export function BusinessesTab({ locale }: { locale: string }) {
   const link = useStaffLink();
   // A business drill-down (?business=) opens the branches view directly.
   const businessFilter = link.get("business");
-  const [view, setView] = useState<View>(
+  const [view, setView] = useHistoryState<View>("businesses.view", () =>
     businessFilter || link.get("view") === "branches" ? "branches" : "businesses",
   );
   useEffect(() => {
     if (businessFilter) setView("branches");
-  }, [businessFilter]);
+  }, [businessFilter, setView]);
 
   return (
     <section>
@@ -55,11 +58,10 @@ function BusinessList({ locale }: { locale: string }) {
   const { t } = useI18n();
   const link = useStaffLink();
   const owner = link.get("owner");
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("businesses.q", "");
   const q = useDebounced(qInput);
-  const [status, setStatus] = useState(() => link.get("status"));
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [q, status, owner]);
+  const [status, setStatus] = useHistoryState("businesses.status", () => link.get("status"));
+  const [offset, setOffset] = usePagedOffset("businesses.offset", [q, status, owner]);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminBusiness>(
     "businesses", { q, status, owner }, offset,
   );
@@ -181,11 +183,10 @@ function BusinessList({ locale }: { locale: string }) {
 function BranchList({ businessFilter }: { businessFilter: string }) {
   const { t } = useI18n();
   const link = useStaffLink();
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("branches.q", "");
   const q = useDebounced(qInput);
-  const [status, setStatus] = useState(() => link.get("status"));
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [q, status, businessFilter]);
+  const [status, setStatus] = useHistoryState("branches.status", () => link.get("status"));
+  const [offset, setOffset] = usePagedOffset("branches.offset", [q, status, businessFilter]);
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminLocation>(
     "locations", { q, status, business: businessFilter }, offset,
   );
@@ -255,7 +256,7 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
                     <div>
                       {l.risk_flags.map((f) => (
                         <span key={f} className="chip orange">
-                          {f}
+                          {f === "duplicate_claim" ? t.riskDuplicateClaim : f}
                         </span>
                       ))}
                     </div>
@@ -284,9 +285,9 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
                     >
                       {t.viewLog}
                     </button>
-                    <a className="btn small" href={`/locations/${l.id}`} target="_blank" rel="noreferrer">
+                    <Link className="btn small" to={`/locations/${l.id}`}>
                       <IconExternal size={12} />
-                    </a>
+                    </Link>
                     {l.status !== "under_review" && (
                       <button
                         className={`btn small${l.status === "active" ? " danger" : ""}`}

@@ -226,7 +226,8 @@ class GrantView(APIView):
             )
         except ValueError as exc:
             return Response(
-                {"error": {"code": "validation_error", "message": str(exc), "fields": {}}},
+                {"error": {"code": getattr(exc, "code", "validation_error"),
+                           "message": str(exc), "fields": {}}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response({"id": str(grant.id)}, status=status.HTTP_201_CREATED)
@@ -317,7 +318,7 @@ class RefundProcessView(APIView):
             )
         except RefundError as exc:
             return Response(
-                {"error": {"code": "refund_error", "message": str(exc), "fields": {}}},
+                {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(RefundSerializer(refund).data)

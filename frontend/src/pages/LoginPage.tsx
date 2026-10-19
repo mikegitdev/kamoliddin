@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { api, ApiError } from "@/shared/api/client";
 import { IconArrowLeft, IconPin } from "@/shared/icons";
@@ -22,6 +23,7 @@ function normalizePhone(raw: string): string {
 export function LoginPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"phone" | "code">("phone");
@@ -63,6 +65,9 @@ export function LoginPage() {
     setError(null);
     try {
       await verifyOtp(normalizePhone(phone), code);
+      // A new identity: nothing cached under a previous session (another
+      // account in this tab, or the logged-out state) may be shown.
+      queryClient.clear();
       navigate("/app");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.error);

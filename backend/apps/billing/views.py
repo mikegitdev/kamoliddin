@@ -96,7 +96,7 @@ class QuoteView(APIView):
         except PermissionDenied:
             raise
         except ValueError as exc:  # e.g. no active tariff configured
-            raise ValidationError(str(exc))
+            raise ValidationError(str(exc), code="quote_unavailable")
         return Response(QuoteSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
@@ -121,7 +121,7 @@ class CheckoutView(APIView):
             raise
         except CheckoutError as exc:
             return Response(
-                {"error": {"code": "checkout_error", "message": str(exc), "fields": {}}},
+                {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(
@@ -163,7 +163,7 @@ class RefundRequestView(APIView):
             raise
         except RefundError as exc:
             return Response(
-                {"error": {"code": "refund_error", "message": str(exc), "fields": {}}},
+                {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(

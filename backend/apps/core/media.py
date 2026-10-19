@@ -32,23 +32,35 @@ MAX_DIMENSION = {"banners": 2048, "logos": 512}
 MIN_DIMENSION = {"banners": (600, 300), "logos": (128, 128)}
 
 
+class ImageRejected(ValueError):
+    """Upload policy violation; `code` is the machine-readable error.code."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
 def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
     """Validate by magic bytes, strip metadata, enforce dimensions.
 
     Returns (format, cleaned_bytes). The re-save through Pillow drops EXIF
     (incl. GPS), ICC, XMP and any trailing payloads — the stored object is a
     fresh encode of the pixel data, never the original bytes (spec §11).
-    Raises ValueError with a user-facing message on policy violation."""
+    Raises ImageRejected (a ValueError) on policy violation."""
     try:
         image: Image.Image = Image.open(io.BytesIO(data))
     except OSError as exc:  # includes PIL.UnidentifiedImageError
-        raise ValueError("Only valid JPG, PNG or WEBP images are accepted") from exc
+        raise ImageRejected(
+            "Only valid JPG, PNG or WEBP images are accepted", "invalid_image"
+        ) from exc
     except Image.DecompressionBombError as exc:  # not an OSError subclass
-        raise ValueError("Image dimensions exceed the processing limit") from exc
+        raise ImageRejected(
+            "Image dimensions exceed the processing limit", "image_too_large"
+        ) from exc
     if image.format not in ALLOWED_FORMATS:
-        raise ValueError("Only valid JPG, PNG or WEBP images are accepted")
+        raise ImageRejected("Only valid JPG, PNG or WEBP images are accepted", "invalid_image")
     if image.width * image.height > MAX_INPUT_PIXELS:
-        raise ValueError("Image dimensions exceed the processing limit")
+        raise ImageRejected("Image dimensions exceed the processing limit", "image_too_large")
     fmt = image.format
     image.load()
     # Honor EXIF orientation before the EXIF is discarded.
@@ -56,9 +68,10 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
 
     min_w, min_h = MIN_DIMENSION[purpose]
     if image.width < min_w or image.height < min_h:
-        raise ValueError(
+        raise ImageRejected(
             f"{purpose[:-1].capitalize()} must be at least {min_w}x{min_h} pixels "
-            f"(got {image.width}x{image.height})"
+            f"(got {image.width}x{image.height})",
+            "image_too_small",
         )
     long_edge = MAX_DIMENSION[purpose]
     if max(image.size) > long_edge:
@@ -105,13 +118,13 @@ class MediaUploadView(APIView):
         upload = request.FILES.get("file")
         if upload is None:
             return Response(
-                {"error": {"code": "validation_error", "message": "file is required",
+                {"error": {"code": "file_required", "message": "file is required",
                            "fields": {}}},
                 status=400,
             )
         if upload.size > MAX_UPLOAD_BYTES:
             return Response(
-                {"error": {"code": "validation_error", "message": "Max size is 5 MB",
+                {"error": {"code": "file_too_large", "message": "Max size is 5 MB",
                            "fields": {}}},
                 status=400,
             )
@@ -121,14 +134,14 @@ class MediaUploadView(APIView):
         raw = upload.read()
         try:
             fmt, cleaned = _reencode(raw, purpose)
-        except ValueError as exc:  # policy violation: the message is user-facing
+        except ImageRejected as exc:  # policy violation
             return Response(
-                {"error": {"code": "validation_error", "message": str(exc), "fields": {}}},
+                {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
                 status=400,
             )
         except OSError:  # truncated/corrupt data while decoding
             return Response(
-                {"error": {"code": "validation_error",
+                {"error": {"code": "invalid_image",
                            "message": "Only valid JPG, PNG or WEBP images are accepted",
                            "fields": {}}},
                 status=400,

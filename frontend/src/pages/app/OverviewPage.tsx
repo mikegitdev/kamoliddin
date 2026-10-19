@@ -7,6 +7,7 @@ import {
   useOrders,
   useRenewals,
 } from "@/shared/api/queries";
+import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
 import { useI18n, plural } from "@/shared/i18n";
 import {
@@ -228,7 +229,7 @@ export function OverviewPage() {
   const { t, locale } = useI18n();
   const summaryQuery = useMeSummary(true);
   const businessesQuery = useBusinesses();
-  const business = businessesQuery.data?.[0];
+  const business = useCurrentBusiness(businessesQuery.data);
   const locationsQuery = useBusinessLocations(business?.id);
   // Unfiltered (all own businesses): attention items and the setup checklist
   // must match what /app/campaigns shows — an owner with several businesses

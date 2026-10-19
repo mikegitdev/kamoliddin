@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/shared/api/client";
 import { useSession } from "@/shared/api/queries";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { formatPhone } from "@/shared/format";
 import { toast } from "@/shared/toast";
 import { IconAlert, IconExternal, IconPin, IconUser } from "@/shared/icons";
+import { BusinessSwitcher, useSelectedBusinessId } from "@/features/advertiser/currentBusiness";
 
 /** Advertiser cabinet layout (/app). Auth-gated by the session query. */
 export function AdvertiserLayout() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: user, isLoading, isError, error, refetch } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const selectedBusinessId = useSelectedBusinessId();
 
   // Close the user menu on any click outside it.
   useEffect(() => {
@@ -71,6 +75,9 @@ export function AdvertiserLayout() {
     try {
       await api("/api/v1/auth/csrf").catch(() => {});
       await api("/api/v1/auth/logout", { method: "POST", json: {} });
+      // Drop every cached response: the next person to log in on this
+      // browser must not see this account's session, businesses or orders.
+      queryClient.clear();
       navigate("/");
     } catch {
       // A failed logout must not strand the user silently — surface it.
@@ -93,6 +100,7 @@ export function AdvertiserLayout() {
           </span>
         </Link>
         <div className="row">
+          <BusinessSwitcher />
           <Link to="/" className="btn subtle small hide-mobile">
             <IconExternal size={12} /> {t.toMap}
           </Link>
@@ -140,7 +148,9 @@ export function AdvertiserLayout() {
         )}
       </nav>
       <main>
-        <Outlet />
+        {/* Switching business remounts the page: no form state of the
+            previous business may carry over. */}
+        <Outlet key={selectedBusinessId ?? "default"} />
       </main>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   useCampaignReviews,
   usePublicPricing,
 } from "@/shared/api/queries";
+import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { ApiError } from "@/shared/api/client";
 import {
   createCampaign,
@@ -16,7 +17,16 @@ import {
   updateCampaign,
   uploadMedia,
 } from "@/features/advertiser/api";
-import { formatDate, formatDateTime, estimateChargeDays, formatMinor, formatBytes, localInputToIso } from "@/shared/format";
+import {
+  formatDate,
+  formatDateTime,
+  estimateChargeDays,
+  formatMinor,
+  formatBytes,
+  localInputToIso,
+  tashkentInputMs,
+  toTashkentInput,
+} from "@/shared/format";
 import { confirmDialog } from "@/shared/dialog";
 import { BannerEditor } from "@/shared/banner-editor";
 import { toast } from "@/shared/toast";
@@ -59,24 +69,19 @@ import type { ApiCampaign } from "@/entities/types";
 
 const PLACEHOLDER_BANNER = "banners/placeholder.jpg";
 
-function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
+// Schedule inputs are Tashkent wall time (shared/format), like every date shown.
 function defaultDates(): { start: string; end: string } {
   const now = new Date();
   return {
-    start: toLocalInput(new Date(now.getTime() + 60 * 60 * 1000)),
-    end: toLocalInput(new Date(now.getTime() + 25 * 60 * 60 * 1000)),
+    start: toTashkentInput(new Date(now.getTime() + 60 * 60 * 1000)),
+    end: toTashkentInput(new Date(now.getTime() + 25 * 60 * 60 * 1000)),
   };
 }
 
 /** `start` + N days, as a datetime-local string (duration presets). */
 function addDays(localInput: string, days: number): string {
-  const d = new Date(localInput);
-  d.setDate(d.getDate() + days);
-  return toLocalInput(d);
+  const ms = tashkentInputMs(localInput);
+  return Number.isFinite(ms) ? toTashkentInput(new Date(ms + days * 86_400_000)) : localInput;
 }
 
 const CONTENT_STEPS = 3;
@@ -93,8 +98,6 @@ export function CampaignEditorPage() {
     isError: businessesFailed,
     refetch: refetchBusinesses,
   } = useBusinesses();
-  const business = businesses?.[0];
-  const { data: locations } = useBusinessLocations(business?.id);
   const {
     data: editing,
     isLoading: editingLoading,
@@ -102,6 +105,11 @@ export function CampaignEditorPage() {
     error: editingError,
     refetch: refetchEditing,
   } = useCampaign(editId);
+  // An existing campaign belongs to its own business (its branches, its
+  // quotes); a new one is created for the business picked in the header.
+  const currentBusiness = useCurrentBusiness(businesses);
+  const business = editing ? businesses?.find((b) => b.id === editing.business) : currentBusiness;
+  const { data: locations } = useBusinessLocations(business?.id);
 
   const dates = useMemo(defaultDates, []);
   const [stage, setStage] = useState(0);
@@ -128,11 +136,7 @@ export function CampaignEditorPage() {
   const applyError = (e: unknown) => {
     if (e instanceof ApiError) {
       toast.error(e.message);
-      const flat: Record<string, string> = {};
-      for (const [key, messages] of Object.entries(e.fields ?? {})) {
-        flat[key] = messages.join(" ");
-      }
-      setFieldErrors(flat);
+      setFieldErrors(e.fieldMessages());
     } else {
       toast.error(t.error);
     }
@@ -385,7 +389,9 @@ export function CampaignEditorPage() {
 
   // ---------- stage gating & live estimate ----------
   const headlineOk = headline.trim().length > 2;
-  const scheduleOk = new Date(end).getTime() > new Date(start).getTime();
+  const scheduleOk = tashkentInputMs(end) > tashkentInputMs(start);
+  // The quote endpoint refuses past starts (a minute of slack for "now").
+  const startInPast = tashkentInputMs(start) < Date.now() - 60_000;
   // Schedule fields live on stage 2 — stage 1 only gates on the headline.
   const stage1Hint = !headlineOk ? t.nextRequiresHeadline : null;
   const stageReachable = (i: number) =>
@@ -393,7 +399,7 @@ export function CampaignEditorPage() {
 
   const { data: pricing } = usePublicPricing();
   const tariff = pricing?.tariff ?? null;
-  const estimateDays = estimateChargeDays(start, end);
+  const estimateDays = estimateChargeDays(localInputToIso(start), localInputToIso(end));
   const estimate =
     tariff && selected.size > 0 && estimateDays > 0
       ? { total: tariff.amount_per_24h * selected.size * estimateDays, currency: tariff.currency }
@@ -473,7 +479,8 @@ export function CampaignEditorPage() {
     !!saved &&
     ["submitted", "under_review", "approved"].includes(saved.review_status) &&
     selected.size > 0 &&
-    !!bannerKey;
+    !!bannerKey &&
+    !startInPast;
 
   const stages = [t.stepContent, t.stepPlacement, t.stepPreview];
 
@@ -770,8 +777,14 @@ export function CampaignEditorPage() {
                 id="ce-start"
                 type="datetime-local"
                 value={start}
+                min={toTashkentInput(new Date())}
                 onChange={(e) => setStart(e.target.value)}
               />
+              {startInPast && (
+                <span className="field-error" role="alert">
+                  {t.errStartInPast}
+                </span>
+              )}
             </div>
             <div className="field">
               <label htmlFor="ce-end">{t.endDate}</label>
@@ -900,7 +913,7 @@ export function CampaignEditorPage() {
                   <span className="muted-2">{business.name}</span>
                   {scheduleOk && (
                     <span className="muted-2">
-                      {formatDate(start, locale)} → {formatDate(end, locale)}
+                      {formatDate(localInputToIso(start), locale)} → {formatDate(localInputToIso(end), locale)}
                     </span>
                   )}
                 </div>

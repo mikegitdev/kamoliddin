@@ -57,6 +57,14 @@ class CapacityExhausted(Exception):
         )
 
 
+class GrantError(ValueError):
+    """Free grant refused; `code` is the machine-readable error.code."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
 def max_active_ads() -> int:
     setting = PlatformSetting.objects.filter(key="max_active_ads_per_location").first()
     if setting is None:
@@ -77,19 +85,24 @@ def _advisory_lock_location(location_id) -> None:
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [_location_lock_key(location_id)])
 
 
-def capacity_usage(location: Location, *, start_at, end_at) -> int:
+def capacity_usage(location: Location, *, start_at, end_at, exclude_id=None) -> int:
     """Placements occupying a capacity slot overlapping [start_at, end_at).
 
     No own-campaign exclusion: the overlap filter already gives renewals a
     free hand (a new term starts at the old term's end — zero overlap), while
     stacking a second simultaneous ad of the SAME campaign at a location must
-    consume a slot like anyone else's (ADR-0003)."""
-    return Placement.objects.filter(
+    consume a slot like anyone else's (ADR-0003). `exclude_id` leaves out only
+    the placement being re-checked (its old interval must not count against
+    its own new one)."""
+    qs = Placement.objects.filter(
         location=location,
         state__in=CAPACITY_STATES,
         start_at__lt=end_at,
         end_at__gt=start_at,
-    ).count()
+    )
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    return qs.count()
 
 
 def assert_capacity(
@@ -98,6 +111,7 @@ def assert_capacity(
     start_at,
     end_at,
     lock: bool = False,
+    exclude_id=None,
 ) -> int:
     """Raise CapacityExhausted if `location` has no free slot for the interval.
 
@@ -105,7 +119,7 @@ def assert_capacity(
     checkouts/renewals serialize their decision (acceptance #13)."""
     if lock:
         _advisory_lock_location(location.id)
-    usage = capacity_usage(location, start_at=start_at, end_at=end_at)
+    usage = capacity_usage(location, start_at=start_at, end_at=end_at, exclude_id=exclude_id)
     limit = max_active_ads()
     if usage >= limit:
         raise CapacityExhausted(location=location, max_ads=limit, usage=usage)
@@ -197,10 +211,33 @@ def _record_capacity_conflict(order: Order, placement: Placement, exc: CapacityE
 
 def _promote(placement: Placement, *, now) -> None:
     """PENDING -> SCHEDULED/ACTIVE in place (spec §6 [C] late start: shift the
-    whole interval forward, preserving the charged duration)."""
+    whole interval forward, preserving the charged duration).
+
+    The shifted interval is time the checkout reservation never covered, so
+    it is capacity-checked again under the location lock. On conflict the
+    placement is BLOCKED for the admin refund queue, exactly as at activation
+    (ADR-0003): a late start must not overbook a location that filled up in
+    the meantime. Callers save `block_reason` along with the state."""
     if placement.start_at <= now:
-        placement.start_at = now
-        placement.end_at = now + timedelta(days=placement.charge_days)
+        start_at = now
+        end_at = now + timedelta(days=placement.charge_days)
+        try:
+            assert_capacity(
+                placement.location,
+                start_at=start_at,
+                end_at=end_at,
+                lock=True,
+                exclude_id=placement.pk,
+            )
+        except CapacityExhausted as exc:
+            order = placement.order
+            assert order is not None  # only paid reservations are promoted
+            placement.state = Placement.State.BLOCKED
+            placement.block_reason = "capacity_conflict"
+            _record_capacity_conflict(order, placement, exc)
+            return
+        placement.start_at = start_at
+        placement.end_at = end_at
         placement.state = Placement.State.ACTIVE
         if placement.actual_start_at is None:
             placement.actual_start_at = now
@@ -222,7 +259,9 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
     approved = campaign.review_status == Campaign.ReviewStatus.APPROVED
     start_at, end_at = _order_interval(order)
     placements = []
-    for item in order.items.select_related("location"):
+    # Location order = advisory-lock order: concurrent multi-location
+    # activations/approvals always lock in the same sequence (no deadlock).
+    for item in order.items.select_related("location").order_by("location_id"):
         placement = (
             Placement.objects.select_for_update()
             .filter(order=order, location=item.location)
@@ -282,7 +321,7 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
         if placement.state == Placement.State.PENDING and approved:
             _promote(placement, now=now)
             placement.save(update_fields=[
-                "state", "start_at", "end_at", "actual_start_at", "updated_at",
+                "state", "start_at", "end_at", "actual_start_at", "block_reason", "updated_at",
             ])
         placements.append(placement)
     return placements
@@ -304,10 +343,11 @@ def on_campaign_approved(campaign: Campaign) -> int:
         campaign.placements.filter(state=Placement.State.PENDING, order__state=Order.State.PAID)
         .select_for_update()
         .select_related("campaign")
+        .order_by("location_id")  # advisory-lock order, as in activation
     ):
         _promote(placement, now=now)
         placement.save(update_fields=[
-            "state", "start_at", "end_at", "actual_start_at", "updated_at",
+            "state", "start_at", "end_at", "actual_start_at", "block_reason", "updated_at",
         ])
         moved += 1
     return moved
@@ -328,16 +368,20 @@ def issue_free_grant(
     placement with source_type=grant ranked identically with paid ones; the
     financial amount is exactly zero."""
     if campaign.review_status != Campaign.ReviewStatus.APPROVED:
-        raise ValueError("Only approved campaigns can receive free grants")
+        raise GrantError(
+            "Only approved campaigns can receive free grants", code="campaign_not_approved"
+        )
     if location.business_id != campaign.business_id:
-        raise ValueError("Location does not belong to the campaign's business")
+        raise GrantError(
+            "Location does not belong to the campaign's business", code="location_mismatch"
+        )
     now = timezone.now()
     charge_days = compute_charge_days(start_at, end_at)
     # Grants occupy a slot like paid placements: the per-location cap holds.
     try:
         assert_capacity(location, start_at=start_at, end_at=end_at, lock=True)
     except CapacityExhausted as exc:
-        raise ValueError(str(exc)) from exc
+        raise GrantError(str(exc), code="capacity_exhausted") from exc
     state = Placement.State.SCHEDULED if start_at > now else Placement.State.ACTIVE
     Placement.objects.get_or_create(
         campaign=campaign,

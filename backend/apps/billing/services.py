@@ -31,10 +31,18 @@ from apps.placements.services import (
 from .models import Order, Refund, quote_order_lines
 
 QUOTE_TTL = timedelta(hours=1)
+# A quote may start at most this far in the past ("start now" picked a moment
+# ago). Older starts would be capacity-checked and priced against time that
+# can no longer be sold.
+QUOTE_START_GRACE = timedelta(minutes=15)
 
 
 class CheckoutError(Exception):
-    pass
+    """`code` is the machine-readable error.code the UI translates."""
+
+    def __init__(self, message: str, code: str = "checkout_error"):
+        super().__init__(message)
+        self.code = code
 
 
 def _owned_business(*, user, business_id) -> Business:
@@ -67,11 +75,19 @@ def create_quote(
         Campaign.ReviewStatus.APPROVED,
     ):
         raise ValidationError(
-            {"campaign_id": "Submit the campaign for review before requesting a quote"}
+            {"campaign_id": "Submit the campaign for review before requesting a quote"},
+            code="campaign_not_submitted",
         )
 
     if requested_end_at <= requested_start_at:
-        raise ValidationError({"requested_end_at": "End must be after start"})
+        raise ValidationError(
+            {"requested_end_at": "End must be after start"}, code="invalid_interval"
+        )
+    now = timezone.now()
+    if requested_start_at < now - QUOTE_START_GRACE:
+        raise ValidationError(
+            {"requested_start_at": "Start must not be in the past"}, code="start_in_past"
+        )
 
     locations = list(
         Location.objects.filter(
@@ -79,7 +95,10 @@ def create_quote(
         )
     )
     if len(locations) != len(set(location_ids)):
-        raise ValidationError({"location_ids": "Some locations are missing or inactive"})
+        raise ValidationError(
+            {"location_ids": "Some locations are missing or inactive"},
+            code="locations_unavailable",
+        )
 
     # Prospective capacity check per location (spec §14: sixth ad cannot
     # activate). Shared predicate with checkout/renewals/activation (ADR-0003):
@@ -94,9 +113,8 @@ def create_quote(
                 lock=True,
             )
         except CapacityExhausted as exc:
-            raise ValidationError({"location_ids": str(exc)})
+            raise ValidationError({"location_ids": str(exc)}, code="capacity_exhausted")
 
-    now = timezone.now()
     items, total, tariff = quote_order_lines(
         campaign=campaign,
         locations=locations,
@@ -132,16 +150,18 @@ def create_checkout(*, user, order_id, return_url: str = "") -> tuple[PaymentAtt
     if order.business.owner_id != user.id:
         raise PermissionDenied("Not your order")
     if order.state == Order.State.PAID:
-        raise CheckoutError("Order is already paid")
+        raise CheckoutError("Order is already paid", code="order_already_paid")
     if order.state not in (Order.State.DRAFT_QUOTE, Order.State.AWAITING_PAYMENT):
-        raise CheckoutError(f"Order cannot be checked out in state {order.state!r}")
+        raise CheckoutError(
+            f"Order cannot be checked out in state {order.state!r}", code="order_not_payable"
+        )
     if order.quote_expires_at and order.quote_expires_at < timezone.now():
         from apps.placements.services import release_order_reservations
 
         release_order_reservations(order)
         order.state = Order.State.EXPIRED
         order.save(update_fields=["state", "updated_at"])
-        raise CheckoutError("Quote expired; request a new quote")
+        raise CheckoutError("Quote expired; request a new quote", code="quote_expired")
 
     # Capacity is RESERVED before the provider session exists (ADR-0003):
     # under the per-location advisory lock, exhaustion here refuses checkout
@@ -149,7 +169,7 @@ def create_checkout(*, user, order_id, return_url: str = "") -> tuple[PaymentAtt
     try:
         reserve_order_capacity(order)
     except CapacityExhausted as exc:
-        raise CheckoutError(str(exc))
+        raise CheckoutError(str(exc), code="capacity_exhausted")
 
     gateway = get_payment_gateway(settings.PAYMENT_PROVIDER)
     idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"checkout:{order.id}"))
@@ -177,7 +197,11 @@ def create_checkout(*, user, order_id, return_url: str = "") -> tuple[PaymentAtt
 
 
 class RefundError(Exception):
-    pass
+    """`code` is the machine-readable error.code the UI translates."""
+
+    def __init__(self, message: str, code: str = "refund_error"):
+        super().__init__(message)
+        self.code = code
 
 
 @transaction.atomic
@@ -189,16 +213,18 @@ def request_refund(*, user, order_id: str, reason: str) -> Refund:
         .first()
     )
     if order is None:
-        raise RefundError("Order not found")
+        raise RefundError("Order not found", code="not_found")
     if order.business.owner_id != user.id:
         raise PermissionDenied("Not your order")
     if order.state != Order.State.PAID:
-        raise RefundError("Only paid orders can be refunded")
+        raise RefundError("Only paid orders can be refunded", code="refund_not_eligible")
     if order.campaign.review_status not in (
         Campaign.ReviewStatus.REJECTED,
         Campaign.ReviewStatus.SUSPENDED,
     ):
-        raise RefundError("Refund is available for rejected or suspended campaigns")
+        raise RefundError(
+            "Refund is available for rejected or suspended campaigns", code="refund_not_eligible"
+        )
     if order.refunds.filter(
         state__in=[
             Refund.State.REFUND_REQUESTED,
@@ -206,9 +232,9 @@ def request_refund(*, user, order_id: str, reason: str) -> Refund:
             Refund.State.PROVIDER_REFUND_PROCESSING,
         ]
     ).exists():
-        raise RefundError("A refund request already exists for this order")
+        raise RefundError("A refund request already exists for this order", code="refund_exists")
     if order.refunds.filter(state=Refund.State.REFUNDED).exists():
-        raise RefundError("This order has already been refunded")
+        raise RefundError("This order has already been refunded", code="already_refunded")
 
     refund = Refund.objects.create(
         order=order, amount=order.amount_total, reason=reason,
@@ -251,12 +277,14 @@ def process_refund(
         .first()
     )
     if refund is None:
-        raise RefundError("Refund not found")
+        raise RefundError("Refund not found", code="not_found")
     if refund.state not in (
         Refund.State.REFUND_REQUESTED,
         Refund.State.ADMIN_REVIEW,
     ):
-        raise RefundError(f"Cannot process refund in state {refund.state!r}")
+        raise RefundError(
+            f"Cannot process refund in state {refund.state!r}", code="invalid_transition"
+        )
     if decision not in ("approve", "reject"):
         raise RefundError("decision must be approve or reject")
 
@@ -265,7 +293,8 @@ def process_refund(
         if not 0 < amount <= refund.order.amount_total:
             raise RefundError(
                 f"Refund amount must be between 1 and the order total "
-                f"({refund.order.amount_total})"
+                f"({refund.order.amount_total})",
+                code="invalid_refund_amount",
             )
         refund.amount = amount
 
@@ -302,7 +331,8 @@ def process_refund(
         raise RefundError(
             f"Provider {settings.PAYMENT_PROVIDER!r} refund adapter is not verified; "
             "supply the provider transaction reference from the provider "
-            "console (provider_ref) to complete this refund."
+            "console (provider_ref) to complete this refund.",
+            code="provider_ref_required",
         )
 
     refund.state = Refund.State.PROVIDER_REFUND_PROCESSING

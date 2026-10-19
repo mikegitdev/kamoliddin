@@ -8,6 +8,7 @@ from apps.businesses.models import Business
 
 from .models import Location
 from .serializers import LocationSerializer
+from .services import after_owner_write, snapshot
 
 
 def _owned_business(user, business_id) -> Business:
@@ -38,7 +39,8 @@ class BusinessLocationsView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         business = _owned_business(self.request.user, self.kwargs["business_id"])
-        serializer.save(business=business)
+        location = serializer.save(business=business)
+        after_owner_write(user=self.request.user, location=location, before=None)
 
 
 @extend_schema_view(
@@ -55,3 +57,8 @@ class LocationDetailView(RetrieveUpdateAPIView):
         user = self.request.user
         assert not isinstance(user, AnonymousUser)  # IsAuthenticated
         return Location.objects.filter(business__owner=user).select_related("business")
+
+    def perform_update(self, serializer):
+        before = snapshot(serializer.instance)
+        location = serializer.save()
+        after_owner_write(user=self.request.user, location=location, before=before)

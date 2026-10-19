@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
 import { useSession } from "@/shared/api/queries";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
@@ -44,6 +45,7 @@ const TABS: Tab[] = [
 export function StaffPage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: user, isLoading, isError, error: sessionError } = useSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab") as Tab | null;
@@ -55,6 +57,7 @@ export function StaffPage() {
     try {
       await api("/api/v1/auth/csrf").catch(() => {});
       await api("/api/v1/auth/logout", { method: "POST", json: {} });
+      queryClient.clear(); // no staff data may outlive the session
       navigate("/");
     } catch {
       // A failed logout must not strand staff silently — surface it.

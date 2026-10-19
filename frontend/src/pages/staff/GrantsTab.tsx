@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "@/shared/api/client";
 import { useGrantOptions } from "@/shared/api/queries";
-import { formatDateTime } from "@/shared/format";
+import { formatDateTime, localInputToIso, tashkentInputMs } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { IconCheck } from "@/shared/icons";
 import { QueryError } from "@/shared/ui";
@@ -40,8 +40,8 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
         json: {
           campaign_id: campaignId,
           location_id: locationId,
-          start_at: new Date(start).toISOString(),
-          end_at: new Date(end).toISOString(),
+          start_at: localInputToIso(start),
+          end_at: localInputToIso(end),
           reason,
         },
       });
@@ -58,7 +58,7 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
     }
   };
 
-  const valid = campaignId && locationId && start && end && reason.trim() && new Date(end) > new Date(start);
+  const valid = campaignId && locationId && start && end && reason.trim() && tashkentInputMs(end) > tashkentInputMs(start);
 
   return (
     <>

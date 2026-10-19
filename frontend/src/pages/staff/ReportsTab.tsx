@@ -140,11 +140,11 @@ export function ReportsTab({
                       {t.viewLog}
                     </button>
                     {r.entity === "campaign" ? (
-                      <Link className="btn subtle small" to={`/ads/${r.entity_id}`} target="_blank" rel="noreferrer">
+                      <Link className="btn subtle small" to={`/ads/${r.entity_id}`}>
                         <IconExternal size={12} /> {t.openEntity}
                       </Link>
                     ) : (
-                      <Link className="btn subtle small" to={`/locations/${r.entity_id}`} target="_blank" rel="noreferrer">
+                      <Link className="btn subtle small" to={`/locations/${r.entity_id}`}>
                         <IconExternal size={12} /> {t.openEntity}
                       </Link>
                     )}

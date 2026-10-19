@@ -1,8 +1,9 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
-import { MapHomePage } from "@/pages/MapHomePage";
+import { RootLayout } from "@/app/RootLayout";
 import { LocationDetailPage } from "@/pages/LocationDetailPage";
 import { PublicAdPage } from "@/pages/PublicAdPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { DemoPayPage } from "@/pages/DemoPayPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RouteErrorPage } from "@/pages/RouteErrorPage";
 import { StaffPage } from "@/pages/StaffPage";
@@ -24,14 +25,18 @@ import {
  *  route-leave guards. Route tree is identical to the previous <Routes>. */
 export const router = createBrowserRouter([
   {
-    // Pathless root: one error boundary for every route below.
+    // Pathless root: one error boundary for every route below. The layout
+    // restores scroll on Back/Forward and renders the (kept-alive) map.
+    element: <RootLayout />,
     errorElement: <RouteErrorPage />,
     children: [
-      { path: "/", element: <MapHomePage /> },
+      { path: "/", element: null }, // the map lives in RootLayout
       { path: "/locations/:id", element: <LocationDetailPage /> },
       { path: "/ads/:id", element: <PublicAdPage /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/staff", element: <StaffPage /> },
+      // Mock provider card page (fake-gateway stacks only; see DemoPayPage).
+      { path: "/pay/:provider/:orderId", element: <DemoPayPage /> },
       {
         path: "/app",
         element: <AdvertiserLayout />,

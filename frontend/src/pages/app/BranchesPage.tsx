@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessLocations, useBusinesses } from "@/shared/api/queries";
+import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { ApiError } from "@/shared/api/client";
 import { createLocation, updateLocation } from "@/features/advertiser/api";
 import { MapLibreAdapter, type MapAdapter } from "@/map-adapters";
@@ -86,7 +87,7 @@ function PublicPreview({
       <div className="row-between">
         <h3>{t.publicPreviewTitle}</h3>
         {form.id && (
-          <Link className="btn small" to={`/locations/${form.id}`} target="_blank" rel="noreferrer">
+          <Link className="btn small" to={`/locations/${form.id}`}>
             <IconExternal size={12} /> {t.openPublicPage}
           </Link>
         )}
@@ -156,7 +157,7 @@ export function BranchesPage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const businessesQuery = useBusinesses();
-  const business = businessesQuery.data?.[0];
+  const business = useCurrentBusiness(businessesQuery.data);
   const locationsQuery = useBusinessLocations(business?.id);
   const locations = locationsQuery.data;
 
@@ -174,11 +175,7 @@ export function BranchesPage() {
   const applyError = (e: unknown) => {
     if (e instanceof ApiError) {
       setError(e.message);
-      const flat: Record<string, string> = {};
-      for (const [key, messages] of Object.entries(e.fields ?? {})) {
-        flat[key] = messages.join(" ");
-      }
-      setFieldErrors(flat);
+      setFieldErrors(e.fieldMessages());
     } else {
       setError(t.error);
     }
@@ -354,8 +351,6 @@ export function BranchesPage() {
                 <Link
                   className="btn small"
                   to={`/locations/${loc.id}`}
-                  target="_blank"
-                  rel="noreferrer"
                   aria-label={t.openPublicPage}
                   title={t.openPublicPage}
                 >

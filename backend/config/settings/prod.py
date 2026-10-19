@@ -12,6 +12,10 @@ if SMS_PROVIDER == "fake":  # noqa: F405
     raise RuntimeError("SMS_PROVIDER=fake is dev/test only; set a real provider")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# nginx is the single hop in front of Django and appends the real peer to
+# X-Forwarded-For; trust only that last entry (anything before it is
+# client-supplied). Add one per extra proxy/CDN placed in front of nginx.
+REST_FRAMEWORK["NUM_PROXIES"] = 1  # noqa: F405
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True

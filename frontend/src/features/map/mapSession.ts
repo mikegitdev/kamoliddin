@@ -14,6 +14,9 @@ export interface MapSnapshot {
   bbox: string;
   center: [number, number] | null;
   zoom: number | null;
+  /** Open pin + sheet, so Back from an ad/location page lands on the same card. */
+  selectedPin?: string | null;
+  sheet?: SheetState;
 }
 
 const STORAGE_KEY = "map-home-snapshot";

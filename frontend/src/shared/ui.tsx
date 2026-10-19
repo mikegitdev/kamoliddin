@@ -162,14 +162,24 @@ export function ReportStateChip({ state }: { state: string }) {
 
 /* ---------- Contact actions: shared by map sheet and location page ---------- */
 
-/** Directions deep link to the branch coordinates (2GIS directions API,
- *  the map provider used across the public UI). */
-export function directionsUrl(lon: number, lat: number): string {
-  return `https://2gis.uz/directions/center/${lon},${lat}`;
+export interface DirectionsLinks {
+  twoGis: string;
+  yandex: string;
+}
+
+/** Route deep links to the branch coordinates, starting from the user's
+ *  location. 2GIS: `points/{from}|{to}` with an empty `from` (`center/` would
+ *  only pan the map). Yandex: `rtext={from}~{to}` with an empty `from`; note
+ *  Yandex takes lat,lon while 2GIS takes lon,lat. */
+export function directionsUrl(lon: number, lat: number): DirectionsLinks {
+  return {
+    twoGis: `https://2gis.uz/directions/points/%7C${lon},${lat}`,
+    yandex: `https://yandex.ru/maps/?rtext=~${lat},${lon}&rtt=auto`,
+  };
 }
 
 export interface ContactActionsProps {
-  directionsUrl?: string;
+  directionsUrl?: DirectionsLinks;
   phone?: string | null;
   telegram?: string | null;
   whatsapp?: string | null;
@@ -186,11 +196,30 @@ function withProtocol(value: string): string {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
 
+/** Owners type numbers freely; a bare 9-digit local number ("90 123 45 67")
+ *  gets Uzbekistan's 998 so tel:/wa.me reach the right line from any SIM. */
+function intlDigits(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 9) return `998${digits}`;
+  // legacy domestic "8 90 123 45 67"
+  if (digits.length === 10 && digits.startsWith("8")) return `998${digits.slice(1)}`;
+  return digits;
+}
+
 function messagingUrl(kind: "telegram" | "whatsapp", value: string): string {
   const v = value.trim();
+  if (kind === "telegram") {
+    // "@name", "name", "t.me/name" (no protocol) and full links all occur.
+    const handle = v
+      .replace(/^(https?:\/\/)?(www\.)?(t|telegram)\.me\//i, "")
+      .replace(/^@/, "")
+      .replace(/\s+/g, "");
+    if (/^https?:\/\//i.test(handle)) return handle;
+    if (/^\+?[\d\s()-]{9,}$/.test(v)) return `https://t.me/+${intlDigits(v)}`;
+    return handle ? `https://t.me/${handle}` : "";
+  }
   if (/^https?:\/\//i.test(v)) return v;
-  if (kind === "telegram") return `https://t.me/${v.replace(/^@/, "")}`;
-  const digits = v.replace(/\D/g, "");
+  const digits = intlDigits(v);
   if (digits.length >= 9) return `https://wa.me/${digits}`;
   return "";
 }
@@ -212,15 +241,21 @@ export function ContactActions({
 
   if (directionsUrl) {
     links.push({
-      href: directionsUrl,
-      label: shortDirections ? t.directionsShort : t.directions,
+      href: directionsUrl.twoGis,
+      label: shortDirections ? "2GIS" : t.directions2gis,
+      icon: <IconDirections />,
+      tone: "primary",
+    });
+    links.push({
+      href: directionsUrl.yandex,
+      label: shortDirections ? t.yandexShort : t.directionsYandex,
       icon: <IconDirections />,
       tone: "primary",
     });
   }
   if (phone) {
     links.push({
-      href: `tel:${phone.replace(/[^\d+]/g, "")}`,
+      href: `tel:+${intlDigits(phone)}`,
       label: t.call,
       icon: <IconPhone />,
       tone: "dark",
@@ -240,7 +275,8 @@ export function ContactActions({
           key={label}
           className={tone ? `${size} ${tone}` : size}
           href={href}
-          target="_blank"
+          // tel: in a new tab leaves a blank page (and in-app browsers block it)
+          target={href.startsWith("tel:") ? undefined : "_blank"}
           rel="noreferrer"
         >
           {icon} {label}

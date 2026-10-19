@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
 import { STAFF_PAGE_SIZE } from "@/shared/api/queries";
@@ -136,6 +136,46 @@ export function useStaffLink() {
     setParams(next, { replace: true });
   };
   return { go, get, clear };
+}
+
+/** useState that survives Back/Forward: the value is stored per history entry
+ *  (location.key), so returning from an opened ad/location page or a
+ *  drill-down restores filters and paging, while a fresh navigation starts
+ *  from `initial`. */
+export function useHistoryState<T>(name: string, initial: T | (() => T)) {
+  const { key, search } = useLocation();
+  const storageKey = `staff-state:${key}${search}:${name}`;
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (raw != null) return JSON.parse(raw) as T;
+    } catch {
+      // Unavailable or corrupted storage: start fresh.
+    }
+    return typeof initial === "function" ? (initial as () => T)() : initial;
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(value));
+    } catch {
+      // Private-mode Safari can throw; in-tab state still works.
+    }
+  }, [storageKey, value]);
+  return [value, setValue] as const;
+}
+
+/** Restorable page offset that resets to 0 when `filters` change — but not on
+ *  mount, so an offset restored by Back survives. */
+export function usePagedOffset(name: string, filters: unknown) {
+  const [offset, setOffset] = useHistoryState(name, 0);
+  const sig = JSON.stringify(filters);
+  const prev = useRef(sig);
+  useEffect(() => {
+    if (prev.current === sig) return;
+    prev.current = sig;
+    setOffset(0);
+  }, [sig, setOffset]);
+  return [offset, setOffset] as const;
 }
 
 /** "Filtered by …" pill with a reset button, shown for URL drill-downs. */

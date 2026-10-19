@@ -1,10 +1,11 @@
 from django.utils.text import slugify
 from rest_framework import serializers
 
+from .contacts import ContactFieldsMixin
 from .models import Business, BusinessCategory
 
 
-class BusinessSerializer(serializers.ModelSerializer):
+class BusinessSerializer(ContactFieldsMixin, serializers.ModelSerializer):
     category = serializers.SlugRelatedField(
         slug_field="slug",
         queryset=BusinessCategory.objects.filter(active=True),

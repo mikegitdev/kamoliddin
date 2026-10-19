@@ -1,9 +1,14 @@
 /** Thin fetch client: same-origin /api via Vite proxy, session cookies,
  * CSRF header for authenticated mutations, spec §12 error envelope. */
-import { ru } from "@/shared/i18n/ru";
+import { ru, type Dict } from "@/shared/i18n/ru";
 import { uz } from "@/shared/i18n/uz";
 
-type ErrorPayload = { error?: { code?: string; message?: string; fields?: Record<string, string[]> } };
+/** Field values are a message list for serializer errors, or one message for
+ *  errors raised in services; nested serializers nest further. */
+type FieldValues = Record<string, unknown>;
+type ErrorPayload = {
+  error?: { code?: string; message?: string; fields?: FieldValues; field_codes?: FieldValues };
+};
 
 /** Runs outside React context; the i18n provider keeps <html lang> in sync. */
 const dict = () => (document.documentElement.lang === "uz" ? uz : ru);
@@ -17,20 +22,100 @@ function transportMessage(status: number): string | null {
   return null;
 }
 
+/** Backend `error.code` -> dictionary key. The envelope's `message` is English
+ *  (logs, API clients); the UI only ever shows these translations. */
+const CODE_MESSAGES: Record<string, keyof Dict> = {
+  not_authenticated: "errNotAuthenticated",
+  authentication_failed: "errNotAuthenticated",
+  permission_denied: "errPermissionDenied",
+  not_found: "errNotFound",
+  invalid_otp: "errInvalidOtp",
+  invalid_phone: "errInvalidPhone",
+  phone_in_use: "phoneInUse",
+  quote_expired: "errQuoteExpired",
+  order_already_paid: "errOrderPaid",
+  order_not_payable: "errOrderNotPayable",
+  capacity_exhausted: "errCapacity",
+  campaign_not_submitted: "errCampaignNotSubmitted",
+  start_in_past: "errStartInPast",
+  invalid_interval: "endAfterStart",
+  locations_unavailable: "errLocationsUnavailable",
+  quote_unavailable: "errQuoteUnavailable",
+  refund_not_eligible: "errRefundNotEligible",
+  refund_exists: "errRefundExists",
+  already_refunded: "errAlreadyRefunded",
+  invalid_refund_amount: "errRefundAmount",
+  provider_ref_required: "errProviderRef",
+  invalid_transition: "errInvalidTransition",
+  renewal_unavailable: "errRenewalUnavailable",
+  renewal_term_ended: "errRenewalTermEnded",
+  file_required: "errFileRequired",
+  file_too_large: "errFileTooLarge",
+  invalid_image: "errInvalidImage",
+  image_too_large: "errImageTooLarge",
+  image_too_small: "errImageTooSmall",
+  campaign_not_approved: "errCampaignNotApproved",
+  location_mismatch: "errLocationMismatch",
+};
+
+/** Generic DRF field-validation codes -> short inline field messages. */
+const FIELD_CODE_MESSAGES: Record<string, keyof Dict> = {
+  required: "errFieldRequired",
+  blank: "errFieldRequired",
+  null: "errFieldRequired",
+  empty: "errFieldRequired",
+  max_length: "errFieldTooLong",
+  max_string_length: "errFieldTooLong",
+  min_length: "errFieldTooShort",
+  max_value: "errFieldRange",
+  min_value: "errFieldRange",
+};
+
+function codeMessage(code: string): string | undefined {
+  const key = CODE_MESSAGES[code];
+  return key ? dict()[key] : undefined;
+}
+
+/** First code of a field entry: "code" (service errors) or ["code", …]. */
+function firstCode(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return undefined;
+}
+
 export class ApiError extends Error {
   code: string;
-  fields?: Record<string, string[]>;
+  fields?: FieldValues;
+  fieldCodes?: FieldValues;
   status: number;
 
   /** status 0 = the request never got a response (network down, DNS, CORS). */
   constructor(status: number, payload: unknown) {
     // Non-envelope bodies (nginx 502 HTML, plain text) carry no usable message.
     const envelope = payload && typeof payload === "object" ? (payload as ErrorPayload).error : undefined;
-    super(transportMessage(status) ?? envelope?.message ?? dict().error);
+    const code = envelope?.code ?? (status === 0 ? "network_error" : "error");
+    const hasFields = Object.keys(envelope?.fields ?? {}).length > 0;
+    super(
+      transportMessage(status) ??
+        codeMessage(code) ??
+        (hasFields ? dict().errCheckFields : dict().errRequestFailed),
+    );
     this.name = "ApiError";
     this.status = status;
-    this.code = envelope?.code ?? (status === 0 ? "network_error" : "error");
+    this.code = code;
     this.fields = envelope?.fields;
+    this.fieldCodes = envelope?.field_codes;
+  }
+
+  /** Localized inline message per invalid field, for form error display. */
+  fieldMessages(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const field of Object.keys(this.fields ?? {})) {
+      const code = firstCode(this.fieldCodes?.[field]) ?? "invalid";
+      const key = CODE_MESSAGES[code] ?? FIELD_CODE_MESSAGES[code] ?? "errFieldInvalid";
+      out[field] = dict()[key];
+    }
+    return out;
   }
 }
 

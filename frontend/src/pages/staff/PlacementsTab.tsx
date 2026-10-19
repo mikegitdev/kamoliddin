@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useStaffPage, type ApiAdminPlacement } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
@@ -9,6 +8,8 @@ import {
   FilterPill,
   ServerPager,
   useDebounced,
+  useHistoryState,
+  usePagedOffset,
   useStaffAction,
   useStaffLink,
 } from "./controls";
@@ -22,14 +23,16 @@ export function PlacementsTab({ locale }: { locale: string }) {
   const business = link.get("business");
   const location = link.get("location");
   const campaign = link.get("campaign");
-  const [qInput, setQInput] = useState("");
+  const [qInput, setQInput] = useHistoryState("placements.q", "");
   const q = useDebounced(qInput);
-  const [state, setState] = useState(() => link.get("state"));
-  const [source, setSource] = useState("");
-  const [visibleOnly, setVisibleOnly] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const [state, setState] = useHistoryState("placements.state", () => link.get("state"));
+  const [source, setSource] = useHistoryState("placements.source", "");
+  const [visibleOnly, setVisibleOnly] = useHistoryState("placements.visibleOnly", false);
   const visible = visibleOnly ? "1" : "";
-  useEffect(() => setOffset(0), [q, state, source, visible, business, location, campaign]);
+  const [offset, setOffset] = usePagedOffset(
+    "placements.offset",
+    [q, state, source, visible, business, location, campaign],
+  );
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPlacement>(
     "placements",
     { q, state, source, visible, business, location, campaign },

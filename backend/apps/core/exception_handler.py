@@ -1,7 +1,12 @@
 """API conventions (spec §12): machine-readable errors + request IDs.
 
 Error envelope:
-    { "error": { "code": "...", "message": "...", "fields": {...} }, "request_id": "..." }
+    { "error": { "code": "...", "message": "...", "fields": {...},
+                 "field_codes": {...} }, "request_id": "..." }
+
+`message`/`fields` are English (logs, API clients); the SPA shows its own
+RU/UZ text keyed by `code` and `field_codes` (spec §13 translation
+dictionaries). `field_codes` mirrors `fields` with DRF error codes.
 """
 import logging
 
@@ -13,8 +18,27 @@ from rest_framework.views import set_rollback
 logger = logging.getLogger(__name__)
 
 
+def _first_code(codes) -> str:
+    """First code inside DRF `get_codes()` output (str | list | dict)."""
+    if isinstance(codes, dict):
+        codes = list(codes.values())
+    if isinstance(codes, list):
+        for value in codes:
+            code = _first_code(value)
+            if code:
+                return code
+        return ""
+    return codes if isinstance(codes, str) else ""
+
+
 def _error_code(exc) -> str:
-    """Map an exception to a stable machine-readable error code."""
+    """Map an exception to a stable machine-readable error code: the code a
+    raise site attached (ValidationError(..., code="start_in_past")), else the
+    exception class default."""
+    get_codes = getattr(exc, "get_codes", None)
+    code = _first_code(get_codes()) if get_codes else ""
+    if code:
+        return code
     if getattr(exc, "default_code", None):
         return str(exc.default_code)
     status_code = getattr(exc, "status_code", None)
@@ -69,12 +93,14 @@ def api_exception_handler(exc, context):
 
     detail = getattr(exc, "detail", None)
     fields = detail if isinstance(detail, dict) else None
+    codes = exc.get_codes() if fields is not None and hasattr(exc, "get_codes") else None
 
     response.data = {
         "error": {
             "code": _error_code(exc),
             "message": _first_message(detail) or "Request failed",
             "fields": fields or {},
+            "field_codes": codes if isinstance(codes, dict) else {},
         },
         "request_id": request_id,
     }

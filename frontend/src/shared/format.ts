@@ -95,10 +95,29 @@ export function formatDate(iso: string | null | undefined, locale: Locale = "ru"
   }
 }
 
-/** Local datetime-local value -> ISO 8601 UTC for the API (browser-local input,
- *  unchanged by the design pass — timezone conversion is a separate reviewed change). */
+/* datetime-local inputs hold Tashkent wall time (spec §5), whatever the
+ * device's own timezone — the same clock every date in the UI is shown in.
+ * Asia/Tashkent is UTC+5 all year (no DST since 1992): a fixed offset. */
+const TASHKENT_OFFSET = "+05:00";
+
+/** datetime-local value (Tashkent wall time) -> epoch ms; NaN if invalid. */
+export function tashkentInputMs(value: string): number {
+  const withSeconds = value.length === 16 ? `${value}:00` : value;
+  return new Date(`${withSeconds}${TASHKENT_OFFSET}`).getTime();
+}
+
+/** datetime-local value (Tashkent wall time) -> ISO 8601 UTC for the API;
+ *  "" for an empty/invalid value. */
 export function localInputToIso(value: string): string {
-  return new Date(value).toISOString();
+  const ms = tashkentInputMs(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
+}
+
+/** Date -> datetime-local value in Tashkent wall time. */
+export function toTashkentInput(d: Date): string {
+  const p = tashkentParts(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${p.time}`;
 }
 
 /** Relative time like "через 2 дня" / "5 мин назад" (auto unit).

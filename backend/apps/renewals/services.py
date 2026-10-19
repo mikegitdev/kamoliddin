@@ -57,6 +57,12 @@ def ensure_agreement_for_order(order: Order) -> RenewalAgreement | None:
     previously disabled/alerted agreement, with an audit event."""
     if not order.auto_renew or order.interval_start_at is None or order.interval_end_at is None:
         return None
+    if order.renewal_attempts.exists():
+        # The worker's own renewal order executes the existing agreement — it
+        # is not a new consent. Its term is charge_days x 24h, which differs
+        # from an original non-whole-day duration, so treating it as consent
+        # would overwrite consent_at on every renewal.
+        return RenewalAgreement.objects.filter(campaign=order.campaign).first()
     location_ids = sorted(order.items.values_list("location_id", flat=True))
     snapshot = [str(pk) for pk in location_ids]
     charge_days = max(order.items.values_list("charge_days", flat=True))
@@ -146,6 +152,10 @@ def _paid_term_boundary(agreement: RenewalAgreement):
         # Agreement implies a paid order; fallback keeps the worker safe anyway.
         return agreement.next_run_at + RENEWAL_BUFFER
     return last_end
+
+
+class RenewalTermEnded(ValueError):
+    """Re-enable refused: the paid term is already over (see enable_agreement)."""
 
 
 class RenewalFailure(Exception):
@@ -401,8 +411,20 @@ def enable_agreement(*, user, agreement_id) -> RenewalAgreement:
         )
     if agreement.status == RenewalAgreement.Status.ACTIVE:
         return agreement
+    boundary = _paid_term_boundary(agreement)
+    if boundary <= timezone.now():
+        # Paid exposure already ended: the worker would at once buy a term
+        # that starts in the past, at the current tariff, with no quote shown.
+        # A new order (fresh consent, ADR-0005 §5) resumes renewal instead.
+        raise RenewalTermEnded(
+            "The paid period has already ended. Place a new order with "
+            "auto-renewal to continue."
+        )
+    # The schedule may be stale from before the cancel/failure: realign it
+    # with the current paid term so the charge lands just before it ends.
+    agreement.next_run_at = boundary - RENEWAL_BUFFER
     agreement.status = RenewalAgreement.Status.ACTIVE
-    agreement.save(update_fields=["status", "updated_at"])
+    agreement.save(update_fields=["status", "next_run_at", "updated_at"])
     ActivityEvent.objects.create(
         action="renewal.enabled",
         entity="renewal_agreement",
