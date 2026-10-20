@@ -13,6 +13,8 @@ import {
   ShareButton,
   StickyContactActions,
   directionsUrl,
+  shareHoursLine,
+  shareText,
 } from "@/shared/ui";
 
 /** Public location page, same shell as the ad page: business identity, then
@@ -65,13 +67,25 @@ export function LocationDetailPage() {
   const dirUrl = directionsUrl(location.lon, location.lat);
   const category = categories?.find((c) => c.slug === location.category);
   const hasHours = Object.values(location.hours ?? {}).some(Boolean);
+  const categoryLabel = category ? (locale === "uz" ? category.name_uz : category.name_ru) : "";
+
+  // Share: identity, where, when, how to reach, and what's on offer right now.
+  const shareBody = shareText([
+    `🏢 ${location.business_name}${categoryLabel ? ` · ${categoryLabel}` : ""}`,
+    `📍 ${location.name}, ${location.address}`,
+    shareHoursLine(location.hours, t),
+    location.phone && `📞 ${location.phone}`,
+    ads.length > 0 && `🏷 ${t.activeAdsTitle} (${ads.length}):`,
+    ...ads.slice(0, 3).map((ad) => `• ${ad.headline}`),
+    ads.length > 3 && "…",
+  ]);
 
   return (
     <div className="page ad-page with-sticky">
       <nav className="row-between">
         <BackLink fallbackTo="/" />
         <div className="row">
-          <ShareButton title={location.business_name} />
+          <ShareButton title={location.business_name} text={shareBody} />
           <button
             type="button"
             className="btn subtle small"
@@ -94,7 +108,7 @@ export function LocationDetailPage() {
             <div className="min-w-0">
               <h1>{location.business_name}</h1>
               <span className="muted-2">
-                {category ? `${locale === "uz" ? category.name_uz : category.name_ru} · ` : ""}
+                {categoryLabel ? `${categoryLabel} · ` : ""}
                 {location.name}
               </span>
             </div>

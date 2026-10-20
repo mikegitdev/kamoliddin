@@ -13,7 +13,6 @@ export interface Baseline {
   start: string;
   end: string;
   selected: string[];
-  autoRenew: boolean;
 }
 
 export interface Draft extends Baseline {

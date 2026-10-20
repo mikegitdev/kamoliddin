@@ -6,9 +6,9 @@ import {
   IconBlock,
   IconCheck,
   IconClock,
+  IconEye,
   IconFlag,
   IconMoney,
-  IconOrb,
   IconUsers,
 } from "@/shared/icons";
 import { useStaffLink } from "./controls";
@@ -25,9 +25,7 @@ export function AdminOverviewTab() {
   const a = data.attention;
   // Each counter deep-links to the tab + filter where it gets resolved.
   const attention: [number, string, string, Record<string, string>, boolean][] = [
-    [a.renewal_reconciliation, t.attnReconciliation, "logs", { view: "renewals" }, true],
     [a.capacity_blocked, t.attnCapacityBlocked, "placements", { state: "blocked" }, true],
-    [a.renewal_alerts, t.attnRenewalAlerts, "logs", { view: "renewals" }, false],
     [a.staff_blocked, t.attnStaffBlocked, "placements", { state: "blocked" }, false],
     [a.blocked_users, t.attnBlockedUsers, "users", { status: "blocked" }, false],
     [a.disabled_businesses, t.attnDisabledBusinesses, "businesses", { status: "disabled" }, false],
@@ -76,7 +74,7 @@ export function AdminOverviewTab() {
           <span className="muted-2">{t.refundsPending}</span>
         </div>
         <div className="stat-card">
-          <span className="icon"><IconOrb size={22} /></span>
+          <span className="icon"><IconEye size={22} /></span>
           <span className="num">{data.active_placements}</span>
           <span className="muted-2">{t.activePlacements}</span>
         </div>

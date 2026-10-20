@@ -26,7 +26,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = (
             "id", "business", "business_name", "campaign", "campaign_headline",
             "campaign_status", "amount_total", "currency", "state", "quote_expires_at",
-            "interval_start_at", "interval_end_at", "auto_renew",
+            "interval_start_at", "interval_end_at",
             "items", "created_at", "updated_at",
         )
         read_only_fields = fields
@@ -90,7 +90,6 @@ class QuoteRequestSerializer(serializers.Serializer):
     )
     requested_start_at = serializers.DateTimeField()
     requested_end_at = serializers.DateTimeField()
-    auto_renew = serializers.BooleanField(default=False)
 
 
 class CheckoutRequestSerializer(serializers.Serializer):

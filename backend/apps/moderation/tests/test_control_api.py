@@ -1,5 +1,5 @@
 """Staff control-room API: staff-only access, user blocking, placement
-takedown round-trip, and the renewal gate that stops charging taken-down ads."""
+and the placement takedown round-trip."""
 from datetime import timedelta
 
 import pytest
@@ -11,8 +11,6 @@ from apps.moderation.models import ActivityEvent
 from apps.moderation.services import approve_campaign, submit_for_review
 from apps.placements.models import Placement
 from apps.placements.services import issue_free_grant
-from apps.renewals.services import process_agreement
-from apps.renewals.tests.test_renewals import _active_agreement
 
 pytestmark = pytest.mark.django_db
 
@@ -26,7 +24,7 @@ def _auth(user):
 @pytest.mark.parametrize("name", [
     "admin-users", "admin-businesses", "admin-locations", "admin-placements",
     "admin-activity", "admin-activity-export", "admin-payments",
-    "admin-payment-events", "admin-renewals",
+    "admin-payment-events",
 ])
 def test_control_lists_require_staff(owner, name):
     assert _auth(owner).get(reverse(name)).status_code == 403
@@ -71,13 +69,3 @@ def test_placement_block_unblock_roundtrip(staff, campaign, location):
     assert placement.state == Placement.State.ACTIVE
     assert placement.block_reason == ""
 
-
-def test_disabled_business_stops_renewal_charges(owner, tariff, business, campaign,
-                                                 location, staff):
-    agreement = _active_agreement(owner, tariff, business, campaign, location, staff)
-    response = _auth(staff).post(
-        reverse("admin-business-status", kwargs={"id": business.id}),
-        {"status": "disabled", "reason": "fraud"}, format="json",
-    )
-    assert response.status_code == 200
-    assert process_agreement(agreement)["result"] == "failed:business_disabled"

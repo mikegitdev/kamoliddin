@@ -5,23 +5,21 @@ import {
   useCampaigns,
   useMeSummary,
   useOrders,
-  useRenewals,
 } from "@/shared/api/queries";
 import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
-import { useI18n, plural } from "@/shared/i18n";
+import { useI18n } from "@/shared/i18n";
 import {
   IconAlert,
   IconCalendar,
-  IconCard,
   IconCheck,
   IconClock,
+  IconEye,
   IconMoney,
-  IconOrb,
   IconPin,
   IconRocket,
 } from "@/shared/icons";
-import type { ApiCampaign, ApiOrder, ApiRenewal } from "@/entities/types";
+import type { ApiCampaign, ApiOrder } from "@/entities/types";
 
 interface SetupStep {
   done: boolean;
@@ -48,7 +46,6 @@ const TONE_RANK = { danger: 0, warn: 1, quiet: 2 } as const;
  *  Every item carries the one action that resolves it. */function attentionItems(
   campaigns: ApiCampaign[] | undefined,
   orders: ApiOrder[] | undefined,
-  renewals: ApiRenewal[] | undefined,
   t: ReturnType<typeof useI18n>["t"],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
@@ -62,18 +59,6 @@ const TONE_RANK = { danger: 0, warn: 1, quiet: 2 } as const;
         meta: c.headline,
         actionLabel: t.rejectionFixBtn,
         to: `/app/campaigns/${c.id}/edit`,
-      });
-    }
-  }
-  for (const r of renewals ?? []) {
-    if (r.status === "alert") {
-      items.push({
-        key: `renewal:${r.id}`,
-        tone: "danger",
-        title: t.attRenewalAlert,
-        meta: r.campaign_headline,
-        actionLabel: t.billing,
-        to: "/app/billing",
       });
     }
   }
@@ -236,14 +221,12 @@ export function OverviewPage() {
   // must not miss a rejected campaign on another business's account.
   const campaignsQuery = useCampaigns();
   const ordersQuery = useOrders();
-  const renewalsQuery = useRenewals();
   const lang = locale as "ru" | "uz";
   const summary = summaryQuery.data;
 
   const attention = attentionItems(
     campaignsQuery.data,
     ordersQuery.data,
-    renewalsQuery.data,
     t,
   );
 
@@ -300,11 +283,10 @@ export function OverviewPage() {
       )}
       {attention.length === 0 &&
         campaignsQuery.isSuccess &&
-        ordersQuery.isSuccess &&
-        renewalsQuery.isSuccess && (
+        ordersQuery.isSuccess && (
           <p className="muted all-quiet"><IconCheck size={14} /> {t.allQuiet}</p>
         )}
-      {(campaignsQuery.isError || ordersQuery.isError || renewalsQuery.isError) && (
+      {(campaignsQuery.isError || ordersQuery.isError) && (
         <p className="muted-2" role="status">
           <IconAlert size={12} /> {t.partialLoadError}
         </p>
@@ -329,7 +311,7 @@ export function OverviewPage() {
         <>
           <div className="cards">
             <div className="stat-card">
-              <span className="icon"><IconOrb size={22} /></span>
+              <span className="icon"><IconEye size={22} /></span>
               <span className="num">{summary.active_placements}</span>
               <span className="muted-2">{t.activePlacements}</span>
             </div>
@@ -372,26 +354,6 @@ export function OverviewPage() {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {summary.next_renewal && (
-            <div className="card mt-12">
-              <h2 className="h-icon"><IconCard size={20} /> {t.nextCharge}</h2>
-              <div className="row-between">
-                <div>
-                  <strong>{summary.next_renewal.campaign_headline}</strong>
-                  <div className="muted-2">
-                    <IconPin size={12} />{" "}
-                    {summary.next_renewal.locations_count}{" "}
-                    {plural(locale, "locations", summary.next_renewal.locations_count)} ·{" "}
-                    {summary.next_renewal.charge_days} {t.daysShort}
-                  </div>
-                </div>
-                <span className="due-info" title={formatDateTime(summary.next_renewal.next_run_at, lang)}>
-                  {formatRelative(summary.next_renewal.next_run_at, locale)}
-                </span>
-              </div>
             </div>
           )}
 

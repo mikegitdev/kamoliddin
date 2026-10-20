@@ -63,7 +63,6 @@ def create_quote(
     location_ids,
     requested_start_at,
     requested_end_at,
-    auto_renew: bool = False,
 ) -> Order:
     business = _owned_business(user=user, business_id=business_id)
     campaign = Campaign.objects.filter(pk=campaign_id, business=business).first()
@@ -101,9 +100,9 @@ def create_quote(
         )
 
     # Prospective capacity check per location (spec §14: sixth ad cannot
-    # activate). Shared predicate with checkout/renewals/activation (ADR-0003):
+    # activate). Shared predicate with checkout/activation (ADR-0003):
     # PENDING reservations count; own non-overlapping terms never collide with
-    # the overlap filter, so renewals/extensions of the same campaign work.
+    # the overlap filter, so extensions of the same campaign work.
     for location in locations:
         try:
             assert_capacity(
@@ -129,7 +128,6 @@ def create_quote(
         quote_expires_at=now + QUOTE_TTL,
         interval_start_at=requested_start_at,
         interval_end_at=requested_end_at,
-        auto_renew=auto_renew,
     )
     for item in items:
         item.order = order
@@ -347,13 +345,6 @@ def process_refund(
     # Refunded entitlements stop displaying (exact order link — ADR-0003);
     # accounting rows remain intact.
     cancel_order_placements(order)
-
-    # Refunded order no longer renews.
-    from apps.renewals.models import RenewalAgreement
-
-    RenewalAgreement.objects.filter(campaign=order.campaign).update(
-        status=RenewalAgreement.Status.DISABLED
-    )
 
     ActivityEvent.objects.create(
         actor=staff, action="refund.completed", entity="order",

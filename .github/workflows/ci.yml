@@ -1,7 +1,7 @@
 # CI (spec §17 [C]): lint, typecheck, tests on every PR.
 # Backend tests run against a real PostgreSQL+PostGIS service container —
 # never SQLite. The financial-core mypy gate covers billing/payments/
-# placements/renewals (ADR-0005 scope); whole-repo mypy is tracked debt.
+# placements (ADR-0005 scope); whole-repo mypy is tracked debt.
 name: ci
 
 on:
@@ -46,7 +46,7 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check .
       - name: Typecheck financial core (mypy)
-        run: uv run mypy apps/billing apps/payments apps/placements apps/renewals
+        run: uv run mypy apps/billing apps/payments apps/placements
       - name: Migration drift check
         run: uv run python manage.py makemigrations --check --dry-run
       - name: Tests (pytest, real PostGIS)

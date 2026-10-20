@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
   ApiBusiness,
@@ -9,7 +9,6 @@ import type {
   ApiLocationPin,
   ApiOrder,
   ApiOwnerLocation,
-  ApiRenewal,
   ApiSessionUser,
 } from "@/entities/types";
 
@@ -53,6 +52,9 @@ export function useLocationPins(filters: LocationFilters | null) {
       if (filters!.q) params.set("q", filters!.q);
       return api<ApiLocationPin[]>(`/api/v1/public/locations?${params.toString()}`);
     },
+    // Every pan is a new key: keep the current pins/list on screen until the
+    // new viewport arrives instead of flashing skeletons and "0 locations".
+    placeholderData: keepPreviousData,
     enabled: filters !== null && filters.bbox.split(",").length === 4,
   });
 }
@@ -88,6 +90,8 @@ export function usePublicSearch(filters: SearchFilters | null) {
       return api<ApiSearchResult>(`/api/v1/public/search?${params.toString()}`);
     },
     enabled: !!filters && filters.q.trim().length >= 2,
+    // Typing refines the query per keystroke: keep results instead of blanking.
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 }
@@ -261,7 +265,6 @@ export interface ApiAdminOrder {
   amount_total: number;
   currency: string;
   state: string;
-  auto_renew: boolean;
   attempts_count: number;
   created_at: string;
 }
@@ -421,19 +424,6 @@ export interface ApiAdminPaymentEvent {
   received_at: string;
 }
 
-export interface ApiAdminRenewalAttempt {
-  id: string;
-  agreement_id: string;
-  agreement_status: string;
-  renewal_period_key: string;
-  state: string;
-  order_id: string | null;
-  amount: number | null;
-  business_name: string;
-  campaign_headline: string;
-  attempted_at: string;
-}
-
 export interface ApiAdminOverview {
   queue_depth: number;
   open_reports: number;
@@ -443,8 +433,6 @@ export interface ApiAdminOverview {
   revenue: { total: number; month: number };
   owners: number;
   attention: {
-    renewal_alerts: number;
-    renewal_reconciliation: number;
     capacity_blocked: number;
     staff_blocked: number;
     blocked_users: number;
@@ -472,13 +460,6 @@ export interface MeSummary {
     ends_at: string;
   }[];
   spend: { total: number; month: number; currency: string };
-  next_renewal: {
-    agreement_id: string;
-    campaign_headline: string;
-    next_run_at: string;
-    locations_count: number;
-    charge_days: number;
-  } | null;
 }
 
 export function useMeSummary(enabled: boolean) {
@@ -571,12 +552,5 @@ export function useOrders() {
   return useQuery({
     queryKey: ["orders"],
     queryFn: () => api<ApiOrder[]>("/api/v1/orders"),
-  });
-}
-
-export function useRenewals() {
-  return useQuery({
-    queryKey: ["renewals"],
-    queryFn: () => api<ApiRenewal[]>("/api/v1/renewals"),
   });
 }

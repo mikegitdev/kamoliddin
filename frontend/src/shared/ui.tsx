@@ -361,7 +361,26 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
   );
 }
 
-export function ShareButton({ title }: { title?: string }) {
+/** Plain-text share summary: drops empty lines. Messengers (Telegram,
+ *  WhatsApp) ignore `title`, so the essentials must live in `text`. */
+export function shareText(lines: (string | false | null | undefined)[]): string {
+  return lines.filter((l): l is string => !!l && l.trim() !== "").join("\n");
+}
+
+/** "🕒 Today 09:00–18:00 · Open now" for share text; null without hours. */
+export function shareHoursLine(hours: Record<string, [string, string] | undefined>, t: Dict): string | null {
+  if (!Object.values(hours ?? {}).some(Boolean)) return null;
+  const today = hours?.[tashkentNow().day];
+  const status = isOpenNow(hours ?? {}) ? t.hoursOpenNow : t.hoursClosedNow;
+  return today ? `🕒 ${t.todayLabel} ${today[0]}–${today[1]} · ${status}` : `🕒 ${status}`;
+}
+
+export function truncate(value: string, max: number): string {
+  const v = value.trim().replace(/\s+/g, " ");
+  return v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v;
+}
+
+export function ShareButton({ title, text, url: shareUrl }: { title?: string; text?: string; url?: string }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -372,10 +391,10 @@ export function ShareButton({ title }: { title?: string }) {
   }, [copied]);
 
   const onShare = async () => {
-    const url = window.location.href;
+    const url = shareUrl ?? window.location.href;
     if (typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: title ?? document.title, url });
+        await navigator.share({ title: title ?? document.title, text, url });
         return;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return; // dismissed
@@ -383,7 +402,7 @@ export function ShareButton({ title }: { title?: string }) {
       }
     }
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(text ? `${text}\n\n${url}` : url);
       setCopied(true);
     } catch {
       /* clipboard unavailable (insecure context): silently keep the URL visible */

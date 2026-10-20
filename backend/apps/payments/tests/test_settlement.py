@@ -13,14 +13,13 @@ from apps.placements.models import Placement, eligible_now_q
 pytestmark = pytest.mark.django_db
 
 
-def _paid_order(owner, tariff, business, campaign, location, **quote_kwargs):
+def _paid_order(owner, tariff, business, campaign, location):
     submit_for_review(campaign=campaign)
     start = timezone.now() + timedelta(minutes=30)
     end = start + timedelta(hours=24)
     order = create_quote(
         user=owner, business_id=business.id, campaign_id=campaign.id,
         location_ids=[location.id], requested_start_at=start, requested_end_at=end,
-        **quote_kwargs,
     )
     attempt, _redirect = create_checkout(user=owner, order_id=order.id)
     attempt.status = "succeeded"
@@ -76,12 +75,3 @@ def test_late_approval_preserves_charged_duration(owner, tariff, business, campa
     remaining = placement.end_at - timezone.now()
     assert remaining >= timedelta(hours=23, minutes=50)  # ~full 24h from now
 
-
-def test_auto_renew_consent_creates_agreement(owner, tariff, business, campaign, location):
-    order, attempt = _paid_order(owner, tariff, business, campaign, location, auto_renew=True)
-    settle_payment_attempt(attempt.id)
-    from apps.renewals.models import RenewalAgreement
-
-    agreement = RenewalAgreement.objects.get(campaign=campaign)
-    assert agreement.status == RenewalAgreement.Status.ACTIVE
-    assert agreement.next_run_at == order.interval_end_at - timedelta(hours=1)

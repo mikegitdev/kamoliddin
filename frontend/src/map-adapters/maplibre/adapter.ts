@@ -63,7 +63,7 @@ function calloutImage(fill: string): { image: ImageData; options: Partial<maplib
   ctx.shadowOffsetY = 2;
   ctx.fillStyle = fill;
   ctx.beginPath();
-  ctx.roundRect(8, 8, 96, 60, 20);
+  ctx.roundRect(8, 8, 96, 60, 16); // 8px corners (2x) — rounded square, not a pill
   ctx.moveTo(46, 66);
   ctx.lineTo(56, 80);
   ctx.lineTo(66, 66);
@@ -328,6 +328,8 @@ export class MapLibreAdapter implements MapAdapter {
         this.density = density;
         for (const id of ["pin-badges", "pin-badge-selected"]) {
           map.setLayoutProperty(id, "icon-size", sizing.iconSize);
+        }
+        for (const id of ["pin-badge-counts", "pin-badge-selected"]) {
           map.setLayoutProperty(id, "text-size", sizing.textSize);
         }
         for (const id of ["pin-callouts", "pin-callout-selected"]) {
@@ -411,20 +413,20 @@ export class MapLibreAdapter implements MapAdapter {
       "text-size": 13,
       "text-max-width": 20,
     } satisfies maplibregl.SymbolLayerSpecification["layout"];
-    // Badge = icon + count. Always placed (allow-overlap) so EVERY location
-    // with ads stays visible. Only the count text takes part in collision
-    // (the icon's box includes shadow room and would block its own tag):
-    // name tags avoid covering any badge's number instead of hiding it.
-    const badgeLayout = {
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
-      "text-allow-overlap": true,
+    // Badge = icon + count. The icon is always placed (allow-overlap) so EVERY
+    // location with ads stays visible (the icon's box includes shadow room and
+    // would block its own tag, so it stays out of collision).
+    const countLayout = {
       "text-field": ["to-string", ["get", "active_ads_count"]],
       "text-font": LABEL_FONT,
       // One size for every badge; shrinks only when the view is crowded.
-      "icon-size": sizing.iconSize,
       "text-size": sizing.textSize,
       "text-offset": [0, 0.02],
+    } satisfies maplibregl.SymbolLayerSpecification["layout"];
+    const badgeLayout = {
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "icon-size": sizing.iconSize,
       // Overlapping badges: the higher-priority (lower rank) one draws on
       // top — allow-overlap layers paint higher sort keys last.
       "symbol-sort-key": ["-", 0, ["get", "rank"]],
@@ -494,6 +496,18 @@ export class MapLibreAdapter implements MapAdapter {
       source: "pins",
       filter: ["all", single, withAds],
       layout: { ...badgeLayout, "icon-image": "badge" },
+    });
+    // Counts are a separate layer that DOES collide: when badges overlap,
+    // only the higher-priority one (placed first: lower rank) shows its number
+    // — two counts never render side by side as "11"/"22". Padding stays small:
+    // a disc-sized box hid the count of badges that only touched a neighbor,
+    // leaving blank yellow discs; name tags still keep off the number itself.
+    map.addLayer({
+      id: "pin-badge-counts",
+      type: "symbol",
+      source: "pins",
+      filter: ["all", single, withAds],
+      layout: { ...countLayout, "text-padding": 1, "symbol-sort-key": ["get", "rank"] },
       paint: { "text-color": INK },
     });
     map.addLayer({
@@ -501,7 +515,7 @@ export class MapLibreAdapter implements MapAdapter {
       type: "symbol",
       source: "pins",
       filter: ["==", ["get", "id"], "__none__"],
-      layout: { ...badgeLayout, "icon-image": "badge-selected" },
+      layout: { ...badgeLayout, ...countLayout, "text-allow-overlap": true, "icon-image": "badge-selected" },
       paint: { "text-color": BRAND },
     });
     map.addLayer({
@@ -540,7 +554,7 @@ export class MapLibreAdapter implements MapAdapter {
       map.getCanvas().style.cursor = "";
     });
 
-    for (const layer of ["pins", "pin-badges", "pin-badge-selected", "pin-callouts", "pin-callout-selected"]) {
+    for (const layer of ["pins", "pin-badges", "pin-badge-counts", "pin-badge-selected", "pin-callouts", "pin-callout-selected"]) {
       map.on("click", layer, (e) => {
         const feature = e.features?.[0];
         const id = feature?.properties?.id as string | undefined;

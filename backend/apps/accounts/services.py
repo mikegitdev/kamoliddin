@@ -247,24 +247,18 @@ def _anonymized_phone() -> str:
 
 
 def delete_account(user: User) -> None:
-    """Self-serve soft deletion: anonymize PII, stop future charges, disable
-    owned businesses (their placements hide via eligible_now_q — spec §14),
-    and retain all financial records. Refunds stay an admin workflow.
+    """Self-serve soft deletion: anonymize PII, disable owned businesses
+    (their placements hide via eligible_now_q — spec §14), and retain all
+    financial records. Refunds stay an admin workflow.
 
     Open policy [O]: already-paid placements keep their remaining term hidden
     with the business (no self-serve refund); disputes go through the
     account-recovery runbook.
     """
-    from apps.billing.models import Order
     from apps.businesses.models import Business
-    from apps.renewals.models import RenewalAgreement
 
     now = timezone.now()
     with transaction.atomic():
-        RenewalAgreement.objects.filter(business__owner=user).exclude(
-            status=RenewalAgreement.Status.DISABLED
-        ).update(status=RenewalAgreement.Status.DISABLED)
-        Order.objects.filter(business__owner=user, auto_renew=True).update(auto_renew=False)
         Business.objects.filter(owner=user).update(status=Business.Status.DISABLED)
 
         old_phone = user.phone_e164

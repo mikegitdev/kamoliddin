@@ -87,11 +87,9 @@ export function OrderDetailPage() {
         <div className="stat-card">
           <span className="icon"><IconClock size={22} /></span>
           <span className="num stat-chip-row">
-            <span className={`chip ${order.auto_renew ? "green" : "gray"}`}>
-              {order.auto_renew ? t.renewalActive : t.renewalDisabled}
-            </span>
+            <span className="chip green">{t.oneTimePayment}</span>
           </span>
-          <span className="muted-2">{t.secRenewal}</span>
+          <span className="muted-2">{t.paymentTypeLabel}</span>
         </div>
       </div>
 
@@ -111,7 +109,7 @@ export function OrderDetailPage() {
               <tr key={item.location}>
                 <td data-label={t.branch}>{item.location_name}</td>
                 <td className="muted-2" data-label={t.perDay}>{formatMinor(item.unit_rate_snapshot, order.currency, lang)}</td>
-                <td className="muted-2" data-label={t.days}>{item.charge_days} × 24{t.hoursShort}</td>
+                <td className="muted-2" data-label={t.days}>{item.charge_days} × 24 {t.hoursShort}</td>
                 <td data-label={t.total}>{formatMinor(item.line_total, order.currency, lang)}</td>
               </tr>
             ))}

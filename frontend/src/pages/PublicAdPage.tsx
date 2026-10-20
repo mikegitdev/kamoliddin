@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/shared/api/client";
 import { useCategories, useLocationDetail } from "@/shared/api/queries";
 import { MiniMap } from "@/shared/mini-map";
@@ -17,6 +17,9 @@ import {
   ShareButton,
   StickyContactActions,
   directionsUrl,
+  shareHoursLine,
+  shareText,
+  truncate,
 } from "@/shared/ui";
 
 /** Active-only ad details; expired/unapproved returns 404 (spec §14).
@@ -30,8 +33,12 @@ export function PublicAdPage() {
   const { id } = useParams<{ id: string }>();
   const { t, locale } = useI18n();
   const routerLocation = useLocation();
-  const fromLocationId = (routerLocation.state as { fromLocationId?: string } | null)
-    ?.fromLocationId;
+  const [searchParams] = useSearchParams();
+  // In-app navigation passes state; a shared link carries ?loc= instead.
+  const fromLocationId =
+    (routerLocation.state as { fromLocationId?: string } | null)?.fromLocationId ??
+    searchParams.get("loc") ??
+    undefined;
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["public-ad", id],
@@ -90,13 +97,28 @@ export function PublicAdPage() {
   const daysLeft = data.ends_at ? daysUntil(data.ends_at) : null;
   const categoryName = categories?.find((c) => c.slug === featuredDetail?.category);
   const moreOffers = (featuredDetail?.active_ads ?? []).filter((ad) => ad.id !== data.id);
+  const categoryLabel = categoryName ? (locale === "uz" ? categoryName.name_uz : categoryName.name_ru) : "";
+
+  // Share: offer first, then where/when/how to reach it — readable without opening the link.
+  const shareUrl = new URL(`/ads/${data.id}`, window.location.origin);
+  if (featured && locations.length > 1) shareUrl.searchParams.set("loc", featured.id);
+  const shareBody = shareText([
+    `📣 ${data.headline}`,
+    `🏢 ${data.business_name}${categoryLabel ? ` · ${categoryLabel}` : ""}`,
+    data.body && truncate(data.body, 200),
+    data.ends_at && `⏳ ${t.validUntil} ${formatDate(data.ends_at, locale)}`,
+    featured && `📍 ${featured.name}, ${featured.address}`,
+    others.length > 0 && `➕ ${t.otherBranches}: ${others.length}`,
+    featured && shareHoursLine(featured.hours, t),
+    featured?.phone && `📞 ${featured.phone}`,
+  ]);
 
   return (
     <div className={`page ad-page${featured ? " with-sticky" : ""}`}>
       <nav className="row-between">
         <BackLink fallbackTo="/" />
         <div className="row">
-          <ShareButton title={data.headline} />
+          <ShareButton title={data.headline} text={shareBody} url={shareUrl.toString()} />
           <button
             type="button"
             className="btn subtle small"
@@ -122,9 +144,7 @@ export function PublicAdPage() {
             </span>
             <div className="min-w-0">
               <strong>{data.business_name}</strong>
-              {categoryName && (
-                <span className="muted-2">{locale === "uz" ? categoryName.name_uz : categoryName.name_ru}</span>
-              )}
+              {categoryLabel && <span className="muted-2">{categoryLabel}</span>}
             </div>
           </div>
 

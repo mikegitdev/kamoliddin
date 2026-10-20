@@ -36,10 +36,4 @@ def settle_payment_attempt(attempt_id) -> str:
 
     created = activate_order_entitlements(order)
     logger.info("Order %s paid; %d placements ensured", order.id, len(created))
-
-    # Renewal consent captured at quote time -> agreement (spec §8, idempotent).
-    from apps.renewals.services import ensure_agreement_for_order
-
-    if order.auto_renew:
-        ensure_agreement_for_order(order)
     return order.state

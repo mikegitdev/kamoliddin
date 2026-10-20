@@ -113,10 +113,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.placements.tasks.refresh_states_task",
         "schedule": 60.0,
     },
-    "run-due-renewals": {
-        "task": "apps.renewals.tasks.run_due_renewals_task",
-        "schedule": 300.0,
-    },
 }
 
 # --- Auth (phone OTP -> session) ----------------------------------------------
@@ -174,7 +170,6 @@ SPECTACULAR_SETTINGS = {
         "PlacementStateEnum": "apps.placements.models.Placement.State",
         "ReportStateEnum": "apps.moderation.models.Report.State",
         "PaymentAttemptStatusEnum": "apps.payments.models.PaymentAttempt.Status",
-        "RenewalAgreementStatusEnum": "apps.renewals.models.RenewalAgreement.Status",
         # Location.Status and Business.Status are the same choice set.
         "EntityStatusEnum": "apps.locations.models.Location.Status",
         "ReviewDecisionEnum": "apps.campaigns.models.CampaignReview.Decision",

@@ -1,20 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   useCampaign,
   useCampaignPlacements,
   useCampaignReviews,
   useOrders,
-  useRenewals,
 } from "@/shared/api/queries";
-import { cancelRenewal, enableRenewal } from "@/features/advertiser/api";
 import { ApiError } from "@/shared/api/client";
-import { confirmDialog } from "@/shared/dialog";
-import { toast } from "@/shared/toast";
 import { CampaignChip, OrderChip, PlacementChip, FallImg, QueryError } from "@/shared/ui";
-import { formatDateTime, formatMinor, formatRelative } from "@/shared/format";
-import { useI18n, plural } from "@/shared/i18n";
+import { formatDateTime, formatMinor } from "@/shared/format";
+import { useI18n } from "@/shared/i18n";
 import {
   IconAlert,
   IconArrowLeft,
@@ -26,7 +21,6 @@ import {
   IconGift,
   IconOrb,
   IconPencil,
-  IconPin,
 } from "@/shared/icons";
 
 /** "2 дня 3 ч" / "45 мин" remaining for an active placement. */
@@ -58,44 +52,15 @@ function useMinuteTick() {
 export function CampaignDetailPage() {
   const { t, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
-  const qc = useQueryClient();
   const { data: campaign, isLoading, isError, error, refetch } = useCampaign(id);
   const { data: placements } = useCampaignPlacements(id);
   const { data: orders } = useOrders();
-  const { data: renewals } = useRenewals();
   const { data: reviews } = useCampaignReviews(
     campaign?.review_status === "rejected" ? id : undefined,
   );
   const latestRejection = reviews?.find((r) => r.decision === "rejected");
   const lang = locale as "ru" | "uz";
-  const agreement = (renewals ?? []).find((r) => r.campaign === id);
-  const [busy, setBusy] = useState(false);
   useMinuteTick();
-
-  const toggleRenewal = async () => {
-    if (!agreement) return;
-    const cancelling = agreement.status === "active";
-    const ok = await confirmDialog({
-      t,
-      body: cancelling ? t.confirmCancelRenewal : t.confirmEnableRenewal,
-      confirmLabel: cancelling ? t.cancelRenewal : t.enableRenewal,
-      cancelLabel: t.cancel,
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      if (cancelling) {
-        await cancelRenewal(agreement.id);
-      } else {
-        await enableRenewal(agreement.id);
-      }
-      qc.invalidateQueries({ queryKey: ["renewals"] });
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : t.error);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -143,6 +108,13 @@ export function CampaignDetailPage() {
           {editable && (
             <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>
               <IconPencil size={12} /> {t.editCampaign}
+            </Link>
+          )}
+          {/* Under review: content is locked, but placements can be paid now
+              and go live on approval (the editor opens on the placement step). */}
+          {["submitted", "under_review"].includes(campaign.review_status) && (
+            <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>
+              <IconCard size={12} /> {t.buyPlacement}
             </Link>
           )}
         </div>
@@ -236,42 +208,6 @@ export function CampaignDetailPage() {
           </tbody>
         </table>
       </div>
-
-      {agreement && (
-        <div className="card mt-22">
-          <div className="row-between">
-            <div>
-              <h2 className="h-icon"><IconCard size={20} /> {t.secRenewal}</h2>
-              <div className="muted-2">
-                <IconPin size={12} /> {agreement.locations_count}{" "}
-                {plural(locale, "locations", agreement.locations_count)} · {agreement.charge_days} {t.daysShort}
-              </div>
-              {agreement.status === "active" && agreement.next_run_at && (
-                <div className="chip blue mt-6">
-                  {t.nextCharge}: {formatRelative(agreement.next_run_at, locale)}
-                </div>
-              )}
-              {agreement.status === "alert" && (
-                <div className="chip red mt-6">
-                  <IconAlert size={14} /> {t.renewalAlert}
-                </div>
-              )}
-            </div>
-            <div className="stack">
-              <span className={`chip ${agreement.status === "active" ? "green" : "gray"}`}>
-                {agreement.status === "active" ? t.renewalActive : t.renewalDisabled}
-              </span>
-              <button
-                className={`btn small ${agreement.status === "active" ? "" : "primary"}`}
-                disabled={busy}
-                onClick={toggleRenewal}
-              >
-                {agreement.status === "active" ? t.cancelRenewal : t.enableRenewal}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <h2 className="mt-22">{t.ordersSection}</h2>
       {campaignOrders.length === 0 && <p className="callout"><IconBulb size={16} /> {t.noOrders}</p>}

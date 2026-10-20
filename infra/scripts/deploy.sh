@@ -45,8 +45,7 @@ $COMPOSE exec -T web curl -fsS http://localhost:8000/health/
 echo
 $COMPOSE exec -T worker celery -A config inspect ping
 
-echo "==> 9/10 Payment/renewal reconciliation + release SHA"
-$COMPOSE run --rm web python manage.py run_renewals
+echo "==> 9/10 Release SHA"
 git rev-parse HEAD > .last-release-sha || true
 
 echo "==> 10/10 External HTTPS spot-check"

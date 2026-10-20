@@ -7,7 +7,7 @@ properties read from the live site in Chromium (desktop 1440×900, mobile
 quoted below verbatim.
 
 We copy Joymee's design language **and its colors**: brand yellow `#FEE02A`
-with black labels, black ink, borderless gray fills, 16px radius, pill chips,
+with black labels, black ink, borderless gray fills, rounded-square corners (no pills),
 flat surfaces. We do **not** copy its typeface (Gotham is commercial;
 Montserrat stands in), logo, name or imagery. Two deliberate deviations:
 muted text stays darker than Joymee's `#9E9E9E` to pass WCAG AA, and the
@@ -28,11 +28,11 @@ Implementation: `src/index.css` (`:root` tokens), `src/shared/icons.tsx`,
 | Font | Gotham (`gothamFamily`) — commercial license |
 | Type sizes | 16px body (dominant), 20px card/section titles, 25px page titles, 13px and 11px meta |
 | Weights | 400 / 500 / 600 / 700 / 800 |
-| Radius | 16px default (`--mantine-radius-default`), pills `999px`; scale 8 / 10 / 16 / 40 / 100 |
+| Radius | Joymee: 16px default, pills `999px`. **Ours:** rounded squares only, scale 6 / 8 / 12 / 16 — no pills, circles only for true dots |
 | Shadows | essentially none; image cards use a dark bottom gradient for text legibility |
 | Header | 83px, white, bottom border `#EEE` |
-| Inputs | 48px tall, borderless, `#FAFAFA` fill, 16px radius |
-| Primary button | yellow fill, black 600 label, 16px radius, ~40px tall |
+| Inputs | 48px tall, borderless, `#FAFAFA` fill, 12px radius |
+| Primary button | yellow fill, black 600 label, 12px radius, ~40px tall |
 | Selected state | brand fill (segmented tabs, view toggle, chips) |
 | Breakpoints | 576 / 768 / 992 / 1200 / 1400 |
 | Mobile | bottom tab bar; horizontally scrolling filter chips |
@@ -52,10 +52,10 @@ Implementation: `src/index.css` (`:root` tokens), `src/shared/icons.tsx`,
 | `--fill` | `#F3F4F5` (Joymee chip `rgba(135,143,151,.1)` on white) | Default button, inputs, chips, stat tiles, segmented track |
 | `--fill-hover` | `#E8EAEC` | |
 | `--border` / `--border-2` | `#EEEEEE` / `#E0E0E0` | Used sparingly |
-| `--radius` | 16px | Surfaces and buttons |
-| `--radius-sm` | 10px | Small controls, thumbnails |
-| `--radius-lg` | 24px | Bottom sheet top corners |
-| `--radius-pill` | 999px | Chips, segmented controls |
+| `--radius-xs` | 6px | Chips, badges, counters |
+| `--radius-sm` | 8px | Small controls, segmented items, icon buttons, avatars, thumbnails |
+| `--radius` | 12px | Surfaces, buttons, segmented tracks |
+| `--radius-lg` | 16px | Bottom sheet top corners, large panels |
 | `--header-height` | 72px (desktop) / 124px (mobile map, two rows) | |
 | `--panel-width` | 380px | Docked results panel on the map |
 | Shadows | `--shadow-sm/md/lg` | Only for things floating over the map (chips, sheet, map controls) |
@@ -66,14 +66,14 @@ Semantic colors (`--success`, `--danger`, `--warn`, `--accent` and their
 
 ## 3. Component rules
 
-- **Buttons:** default = `--fill`, borderless, 16px radius, 600 weight.
+- **Buttons:** default = `--fill`, borderless, 12px radius, 600 weight.
   `.primary` = brand fill + black label. `.dark` = black fill + white label.
   `.subtle` = same as default. No shadows.
 - **Inputs:** `--fill` background; focus = black 1px border (search) or a brand
   ring (forms).
-- **Chips:** pills; inactive white (over the map) or `--fill`; active = brand.
+- **Chips:** rounded squares (`--radius-xs`/`--radius-sm`), never pills; inactive white (over the map) or `--fill`; active = brand.
 - **Segmented controls** (language switcher, cabinet nav): `--fill` track,
-  pill items; active item = white thumb (language) or brand (nav).
+  rounded-square items; active item = white thumb (language) or brand (nav).
 - **Cards:** prefer `--fill` tiles or a 1px `--border` outline. No decorative
   color strips, no gradients, no glass blur.
 - **Icons:** one set — 24px Lucide-style line glyphs, `stroke: currentColor`.

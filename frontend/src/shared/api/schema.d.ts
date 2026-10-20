@@ -345,23 +345,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/renewals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description GET /admin/renewals?state=&agreement_status=&q= */
-        get: operations["api_v1_admin_renewals_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/reports": {
         parameters: {
             query?: never;
@@ -548,7 +531,7 @@ export interface paths {
         post?: never;
         /**
          * Delete own account (soft)
-         * @description Anonymizes the phone, disables owned businesses and auto-renewals; financial records are retained (spec §14). Terminates the session.
+         * @description Anonymizes the phone and disables owned businesses; financial records are retained (spec §14). Terminates the session.
          */
         delete: operations["api_v1_auth_me_destroy"];
         options?: never;
@@ -1065,56 +1048,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/renewals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["api_v1_renewals_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/renewals/{id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Disable future charge attempts (paid time remains) */
-        post: operations["api_v1_renewals_cancel_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/renewals/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Re-enable explicit recurrence */
-        post: operations["api_v1_renewals_enable_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -1238,8 +1171,6 @@ export interface components {
             amount_total: number;
             currency?: string;
             state?: components["schemas"]["OrderStateEnum"];
-            /** @description Advertiser consent to auto-renewal captured at quote time */
-            auto_renew?: boolean;
             readonly attempts_count: number;
             /** Format: date-time */
             readonly created_at: string;
@@ -1319,31 +1250,6 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
         };
-        AdminRenewalAttempt: {
-            /** Format: uuid */
-            readonly id: string;
-            /** Format: uuid */
-            readonly agreement_id: string;
-            readonly agreement_status: string;
-            /** @description e.g. 2026-W43; one charge per period */
-            renewal_period_key: string;
-            state?: components["schemas"]["AdminRenewalAttemptStateEnum"];
-            /** Format: uuid */
-            readonly order_id: string | null;
-            readonly amount: number;
-            readonly business_name: string;
-            readonly campaign_headline: string;
-            /** Format: date-time */
-            readonly attempted_at: string;
-        };
-        /**
-         * @description * `pending` - Pending
-         *     * `succeeded` - Succeeded
-         *     * `failed` - Failed
-         *     * `reconciliation` - Ambiguous — reconciliation required
-         * @enum {string}
-         */
-        AdminRenewalAttemptStateEnum: "pending" | "succeeded" | "failed" | "reconciliation";
         AdminUser: {
             /** Format: uuid */
             readonly id: string;
@@ -1370,6 +1276,7 @@ export interface components {
          * @enum {string}
          */
         ApproveRejectDecisionEnum: "approve" | "reject";
+        /** @description validate_<field> hooks for serializers exposing the contact fields. */
         Business: {
             /** Format: uuid */
             readonly id: string;
@@ -1501,6 +1408,7 @@ export interface components {
             locations: components["schemas"]["_GrantLocationOption"][];
             grants: components["schemas"]["_GrantRow"][];
         };
+        /** @description validate_<field> hooks for serializers exposing the contact fields. */
         Location: {
             /** Format: uuid */
             readonly id: string;
@@ -1534,7 +1442,6 @@ export interface components {
             active_placements: number;
             expiring_soon: components["schemas"]["_ExpiringPlacement"][];
             spend: components["schemas"]["_Spend"];
-            next_renewal: components["schemas"]["_NextRenewal"] | null;
         };
         MediaUploadResult: {
             key: string;
@@ -1582,8 +1489,6 @@ export interface components {
              * @description Requested advertising interval end (quote snapshot)
              */
             readonly interval_end_at: string | null;
-            /** @description Advertiser consent to auto-renewal captured at quote time */
-            readonly auto_renew: boolean;
             readonly items: components["schemas"]["OrderItem"][];
             /** Format: date-time */
             readonly created_at: string;
@@ -1616,8 +1521,6 @@ export interface components {
              * @description Requested advertising interval end (quote snapshot)
              */
             readonly interval_end_at: string | null;
-            /** @description Advertiser consent to auto-renewal captured at quote time */
-            readonly auto_renew: boolean;
             readonly items: components["schemas"]["OrderItem"][];
             /** Format: date-time */
             readonly created_at: string;
@@ -1771,21 +1674,6 @@ export interface components {
             previous?: string | null;
             results: components["schemas"]["AdminPlacement"][];
         };
-        PaginatedAdminRenewalAttemptList: {
-            /** @example 123 */
-            count: number;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?offset=400&limit=100
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?offset=200&limit=100
-             */
-            previous?: string | null;
-            results: components["schemas"]["AdminRenewalAttempt"][];
-        };
         PaginatedAdminUserList: {
             /** @example 123 */
             count: number;
@@ -1804,6 +1692,7 @@ export interface components {
         PatchedAdLimit: {
             value?: number;
         };
+        /** @description validate_<field> hooks for serializers exposing the contact fields. */
         PatchedBusiness: {
             /** Format: uuid */
             readonly id?: string;
@@ -1848,6 +1737,7 @@ export interface components {
             /** Format: date-time */
             readonly updated_at?: string;
         };
+        /** @description validate_<field> hooks for serializers exposing the contact fields. */
         PatchedLocation: {
             /** Format: uuid */
             readonly id?: string;
@@ -2099,8 +1989,6 @@ export interface components {
              * @description Requested advertising interval end (quote snapshot)
              */
             readonly interval_end_at: string | null;
-            /** @description Advertiser consent to auto-renewal captured at quote time */
-            readonly auto_renew: boolean;
             readonly items: components["schemas"]["OrderItem"][];
             /** Format: date-time */
             readonly created_at: string;
@@ -2119,8 +2007,6 @@ export interface components {
             requested_start_at: string;
             /** Format: date-time */
             requested_end_at: string;
-            /** @default false */
-            auto_renew: boolean;
         };
         Reason: {
             reason: string;
@@ -2169,52 +2055,6 @@ export interface components {
          * @enum {string}
          */
         RefundStateEnum: "refund_requested" | "admin_review" | "provider_refund_processing" | "refunded" | "refund_failed";
-        RenewalAgreement: {
-            /** Format: uuid */
-            readonly id: string;
-            /** Format: uuid */
-            readonly business: string;
-            readonly business_name: string;
-            /** Format: uuid */
-            readonly campaign: string;
-            readonly campaign_headline: string;
-            /** @description Frozen location id list for renewal */
-            readonly locations_snapshot: unknown;
-            readonly locations_count: number;
-            readonly charge_days: number;
-            readonly duration_seconds: number;
-            /**
-             * @description pending_token agreements never charge — no verified provider token (ADR-0005)
-             *
-             *     * `active` - Active
-             *     * `alert` - Alert (last charge failed)
-             *     * `disabled` - Disabled (cancelled by advertiser)
-             *     * `pending_token` - Awaiting provider token (no verified adapter)
-             */
-            readonly status: components["schemas"]["RenewalAgreementStatusEnum"];
-            /** @description current_tariff | locked_price — must be shown and consented to (spec §8 [O]) */
-            readonly price_policy: string;
-            /** Format: date-time */
-            readonly consent_at: string;
-            /** Format: date-time */
-            readonly next_run_at: string;
-            /** Format: date-time */
-            readonly created_at: string;
-            /** Format: date-time */
-            readonly updated_at: string;
-        };
-        /**
-         * @description * `active` - Active
-         *     * `alert` - Alert (last charge failed)
-         *     * `disabled` - Disabled (cancelled by advertiser)
-         *     * `pending_token` - Awaiting provider token (no verified adapter)
-         * @enum {string}
-         */
-        RenewalAgreementStatusEnum: "active" | "alert" | "disabled" | "pending_token";
-        RenewalEnable: {
-            /** Format: uuid */
-            agreement_id: string;
-        };
         Report: {
             /** Format: uuid */
             readonly id: string;
@@ -2296,10 +2136,6 @@ export interface components {
             order_state?: string;
         };
         _Attention: {
-            /** @description Agreements in ALERT */
-            renewal_alerts: number;
-            /** @description Renewal attempts with an ambiguous provider outcome */
-            renewal_reconciliation: number;
             /** @description Paid placements blocked by a capacity conflict (refund queue) */
             capacity_blocked: number;
             /** @description Placements taken down by staff */
@@ -2344,15 +2180,6 @@ export interface components {
             admin_phone: string | null;
             /** Format: date-time */
             created_at: string;
-        };
-        _NextRenewal: {
-            /** Format: uuid */
-            agreement_id: string;
-            campaign_headline: string;
-            /** Format: date-time */
-            next_run_at: string;
-            locations_count: number;
-            charge_days: number;
         };
         _Revenue: {
             /** @description Paid minus refunded, minor units */
@@ -2929,30 +2756,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Refund"];
-                };
-            };
-        };
-    };
-    api_v1_admin_renewals_list: {
-        parameters: {
-            query?: {
-                /** @description Number of results to return per page. */
-                limit?: number;
-                /** @description The initial index from which to return the results. */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedAdminRenewalAttemptList"];
                 };
             };
         };
@@ -4020,71 +3823,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicSearchResult"];
-                };
-            };
-        };
-    };
-    api_v1_renewals_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RenewalAgreement"][];
-                };
-            };
-        };
-    };
-    api_v1_renewals_cancel_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RenewalAgreement"];
-                };
-            };
-        };
-    };
-    api_v1_renewals_enable_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RenewalEnable"];
-                "application/x-www-form-urlencoded": components["schemas"]["RenewalEnable"];
-                "multipart/form-data": components["schemas"]["RenewalEnable"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RenewalAgreement"];
                 };
             };
         };

@@ -20,7 +20,7 @@ MVP engineering baseline: [`Local_Advertising_Engineering_Spec_v1_EN.md`](./Loca
 ```text
 frontend/   React + Vite + TS app (map-first homepage, advertiser cabinet, RU/UZ)
 backend/    Django project: config/ + apps/{core,accounts,businesses,locations,
-            campaigns,placements,billing,payments,renewals,discovery,moderation}
+            campaigns,placements,billing,payments,discovery,moderation}
 infra/      nginx config, deploy script skeletons
 docs/       architecture ADRs, runbooks
 ```
@@ -76,11 +76,11 @@ Dev SMS provider is `fake`: OTP codes are printed to the server log (never do th
 `/staff` — review queue, complaints, campaigns (suspend), placements (block /
 unblock with live visibility), businesses & branches (disable / enable), users
 (block login, drill-down), refunds, orders, free grants, logs (filterable audit
-trail with CSV export, payment attempts, provider webhooks, renewal runs) and
+trail with CSV export, payment attempts, provider webhooks) and
 the ad-limit setting. Every staff action requires a reason and is audit-logged.
 
 Demo dataset includes every campaign scenario: active+paid, paid-pending-moderation,
-submitted, draft, rejected+refunded, auto-renew agreement, and a free grant — plus
+submitted, draft, rejected+refunded, one-day purchase, and a free grant — plus
 generated banner images (Pillow) served from `/media/`.
 
 ### No local GDAL? Run the backend in Docker instead
@@ -116,17 +116,16 @@ immutable snapshots (25h → 2 days) · idempotent checkout · fake payment → 
 placement activation · paid-but-unapproved stays invisible · late moderation
 shifts the interval preserving charged duration · approved-then-edited campaign
 auto-hides pending re-review · media upload with magic-byte validation · public
-bbox map API with live ad counts · placement state refresh task · **auto-renewals**
-(consent→agreement, worker with exactly-one-charge-per-period under concurrency,
-cancel/re-enable, content-change alert) · **refunds** (owner request → admin
-approve/reject → placements cancelled, renewal disabled) · **free grants**
+bbox map API with live ad counts · placement state refresh task · **one-time
+payment per order** (no auto-renewal — ADR-0007) · **refunds** (owner request → admin
+approve/reject → placements cancelled) · **free grants**
 (admin-issued zero-charge placements, publicly equal ranking) · **admin REST**
 (review/grants/refunds/ad-limit) · **public search** (relevance + distance) ·
-**20 focused pytest tests** on the money path (pricing, settlement idempotency,
-renewal concurrency, ad cap) run against real PostGIS.
+**focused pytest tests** on the money path (pricing, settlement idempotency,
+ad cap) run against real PostGIS.
 
 Still pending (external gates — cannot be built until verified):
-- CLICK production recurring charges: **[E] gate open** — `ClickGateway` raises
+- CLICK production checkout: **[E] gate open** — `ClickGateway` raises
   `NotImplementedError` until merchant capability is verified (spec §19). The
   `PaymentGateway` contract + fake provider are ready for the verified adapter.
 - 2GIS MapGL adapter: interface defined in `frontend/src/map-adapters`; MapLibre/OSM

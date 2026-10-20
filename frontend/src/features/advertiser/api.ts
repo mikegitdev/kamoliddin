@@ -71,7 +71,6 @@ export interface QuoteInput {
   location_ids: string[];
   requested_start_at: string;
   requested_end_at: string;
-  auto_renew: boolean;
 }
 
 export function requestQuote(input: QuoteInput): Promise<ApiOrder> {
@@ -99,18 +98,7 @@ export function uploadMedia(file: File, purpose: "banners" | "logos" = "banners"
   );
 }
 
-// ---------- Renewals & refunds ----------
-
-export function cancelRenewal(id: string) {
-  return api(`/api/v1/renewals/${id}/cancel`, { method: "POST", json: {} });
-}
-
-export function enableRenewal(id: string) {
-  return api("/api/v1/renewals/enable", {
-    method: "POST",
-    json: { agreement_id: id },
-  });
-}
+// ---------- Refunds ----------
 
 export function requestRefund(orderId: string, reason: string) {
   return api(`/api/v1/orders/${orderId}/refund-request`, {

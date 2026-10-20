@@ -4,13 +4,12 @@ import {
   type ApiActivity,
   type ApiAdminPayment,
   type ApiAdminPaymentEvent,
-  type ApiAdminRenewalAttempt,
 } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { AttemptChip, OrderChip, QueryError } from "@/shared/ui";
 import type { OrderState } from "@/entities/types";
-import { IconChevronDown, IconChevronUp, IconSave } from "@/shared/icons";
+import { IconArrowRight, IconChevronDown, IconChevronUp, IconSave } from "@/shared/icons";
 import {
   FilterPill,
   ServerPager,
@@ -20,23 +19,24 @@ import {
   useHistoryState,
   usePagedOffset,
   useStaffLink,
+  ListCount,
 } from "./controls";
 
-type View = "audit" | "payments" | "webhooks" | "renewals";
+type View = "audit" | "payments" | "webhooks";
 
 const ENTITIES = [
   "campaign", "placement", "business", "location", "user", "order",
-  "renewal_agreement", "report", "platform_setting", "activity",
+  "report", "platform_setting", "activity",
 ];
 
 /** One place for every log the platform keeps: the immutable staff/system
- *  audit trail, payment attempts, raw provider webhooks and renewal runs. */
+ *  audit trail, payment attempts and raw provider webhooks. */
 export function LogsTab({ locale }: { locale: string }) {
   const { t } = useI18n();
   const link = useStaffLink();
   const [view, setView] = useState<View>(() => {
     const v = link.get("view");
-    return v === "payments" || v === "webhooks" || v === "renewals" ? v : "audit";
+    return v === "payments" || v === "webhooks" ? v : "audit";
   });
   const lang = locale as "ru" | "uz";
   // An entity/actor drill-down always lands on the audit trail.
@@ -53,13 +53,11 @@ export function LogsTab({ locale }: { locale: string }) {
           ["audit", t.logAudit],
           ["payments", t.logPayments],
           ["webhooks", t.logWebhooks],
-          ["renewals", t.logRenewals],
         ]}
       />
       {view === "audit" && <AuditLog lang={lang} />}
       {view === "payments" && <PaymentsLog lang={lang} />}
       {view === "webhooks" && <WebhooksLog lang={lang} />}
-      {view === "renewals" && <RenewalsLog lang={lang} />}
     </section>
   );
 }
@@ -115,8 +113,9 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
 
   return (
     <>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.action}: campaign.approve…`}
           value={actionInput}
           onChange={(e) => setActionInput(e.target.value)}
@@ -157,6 +156,7 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
           {t.dateTo}
           <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
         </label>
+        <ListCount count={data?.count} />
         <a
           className="btn small"
           href={`/api/v1/admin/activity/export${exportQs ? `?${exportQs}` : ""}`}
@@ -178,11 +178,6 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
       )}
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -201,11 +196,11 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
               return (
                 <Fragment key={e.id}>
                   <tr>
-                    <td className="muted-2">{formatDateTime(e.created_at, lang)}</td>
+                    <td className="muted-2 nowrap">{formatDateTime(e.created_at, lang)}</td>
                     <td>
                       <code>{e.action}</code>
                     </td>
-                    <td className="muted-2">
+                    <td className="muted-2 nowrap">
                       <button
                         className="link-button"
                         title={e.entity_id}
@@ -214,8 +209,13 @@ function AuditLog({ lang }: { lang: "ru" | "uz" }) {
                         {e.entity}:{shortId(e.entity_id)}
                       </button>
                       {target && (
-                        <button className="btn subtle small" onClick={() => link.go(...target)}>
-                          {t.openEntity}
+                        <button
+                          className="link-button staff-open"
+                          title={t.openEntity}
+                          aria-label={t.openEntity}
+                          onClick={() => link.go(...target)}
+                        >
+                          <IconArrowRight size={13} />
                         </button>
                       )}
                     </td>
@@ -262,8 +262,9 @@ function PaymentsLog({ lang }: { lang: "ru" | "uz" }) {
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPayment>("payments", { status, q, order }, offset);
   return (
     <>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.businessesTab} / provider ID…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -279,14 +280,10 @@ function PaymentsLog({ lang }: { lang: "ru" | "uz" }) {
         {order && (
           <FilterPill label={`${t.orderLabel} ${shortId(order)}`} onClear={() => link.clear("order")} />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -338,22 +335,19 @@ function WebhooksLog({ lang }: { lang: "ru" | "uz" }) {
   const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminPaymentEvent>("payment-events", { q }, offset);
   return (
     <>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.eventId}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
           className="max-w-280"
           aria-label={t.eventId}
         />
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -377,108 +371,6 @@ function WebhooksLog({ lang }: { lang: "ru" | "uz" }) {
                 <td className="muted-2" title={e.order_id ?? ""}>
                   {shortId(e.order_id)}
                 </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {data && <ServerPager count={data.count} offset={offset} onOffset={setOffset} />}
-    </>
-  );
-}
-
-const RENEWAL_STATE_CLASS: Record<string, string> = {
-  succeeded: "chip green",
-  pending: "chip orange",
-  failed: "chip red",
-  reconciliation: "chip red",
-};
-
-function RenewalsLog({ lang }: { lang: "ru" | "uz" }) {
-  const { t } = useI18n();
-  const link = useStaffLink();
-  const [state, setState] = useState("");
-  const [qInput, setQInput] = useState("");
-  const q = useDebounced(qInput);
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [state, q]);
-  const { data, isLoading, isError, refetch } = useStaffPage<ApiAdminRenewalAttempt>("renewals", { state, q }, offset);
-  const stateLabel: Record<string, string> = {
-    succeeded: t.stAttemptSucceeded,
-    pending: t.stAttemptPending,
-    failed: t.stAttemptFailed,
-    reconciliation: t.stReconciliation,
-  };
-  const agreementLabel: Record<string, string> = {
-    active: t.stActive,
-    alert: t.stAlert,
-    disabled: t.stDisabled,
-    pending_token: t.stPendingToken,
-  };
-  return (
-    <>
-      <div className="row mb-14">
-        <input
-          placeholder={`${t.businessesTab} / ${t.campaign}…`}
-          value={qInput}
-          onChange={(e) => setQInput(e.target.value)}
-          className="max-w-280"
-          aria-label={t.search}
-        />
-        <select value={state} onChange={(e) => setState(e.target.value)} aria-label={t.status}>
-          <option value="">{t.statusAll}</option>
-          <option value="succeeded">{t.stAttemptSucceeded}</option>
-          <option value="failed">{t.stAttemptFailed}</option>
-          <option value="reconciliation">{t.stReconciliation}</option>
-          <option value="pending">{t.stAttemptPending}</option>
-        </select>
-      </div>
-      {isLoading && <div className="skeleton skeleton-card" />}
-      {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t.time}</th>
-              <th>{t.campaign}</th>
-              <th>{t.period}</th>
-              <th>{t.status}</th>
-              <th>{t.agreement}</th>
-              <th>{t.amount}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.results.map((r) => (
-              <tr key={r.id}>
-                <td className="muted-2">{formatDateTime(r.attempted_at, lang)}</td>
-                <td className="max-w-240 wrap-anywhere">
-                  {r.campaign_headline}
-                  <div className="muted-2">{r.business_name}</div>
-                </td>
-                <td className="muted-2">
-                  <code>{r.renewal_period_key}</code>
-                </td>
-                <td>
-                  <span className={RENEWAL_STATE_CLASS[r.state] ?? "chip gray"}>
-                    {stateLabel[r.state] ?? r.state}
-                  </span>
-                </td>
-                <td className="muted-2">
-                  <button
-                    className="link-button"
-                    onClick={() =>
-                      link.go("logs", { entity: "renewal_agreement", entity_id: r.agreement_id })
-                    }
-                  >
-                    {agreementLabel[r.agreement_status] ?? r.agreement_status}
-                  </button>
-                </td>
-                <td>{r.amount != null ? formatMinor(r.amount, "UZS", lang) : "—"}</td>
               </tr>
             ))}
           </tbody>

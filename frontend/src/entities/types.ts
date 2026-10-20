@@ -172,7 +172,6 @@ export interface ApiOrder {
   quote_expires_at: string | null;
   interval_start_at: string | null;
   interval_end_at: string | null;
-  auto_renew: boolean;
   items: ApiOrderItem[];
   created_at: string;
   updated_at: string;
@@ -195,20 +194,3 @@ export interface ApiCheckout {
   order_state: string;
 }
 
-export interface ApiRenewal {
-  id: string;
-  business: string;
-  business_name: string;
-  campaign: string;
-  campaign_headline: string;
-  locations_snapshot: string[];
-  locations_count: number;
-  charge_days: number;
-  duration_seconds: number;
-  status: "active" | "alert" | "disabled";
-  price_policy: string;
-  consent_at: string;
-  next_run_at: string;
-  created_at: string;
-  updated_at: string;
-}

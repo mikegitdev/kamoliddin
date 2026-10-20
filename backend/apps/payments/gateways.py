@@ -27,12 +27,6 @@ class WebhookResult:
     raw_digest: str
 
 
-@dataclass(frozen=True)
-class RecurringChargeResult:
-    provider_payment_id: str
-    succeeded: bool
-
-
 class PaymentGateway(Protocol):
     slug: str
 
@@ -46,12 +40,6 @@ class PaymentGateway(Protocol):
 
     def get_payment_status(self, *, provider_payment_id: str) -> str:
         """Authoritative status query — used by reconciliation, never blind retries."""
-        ...
-
-    def charge_recurring(
-        self, *, token_ref: str, amount_minor: int, currency: str, idempotency_key: str
-    ) -> RecurringChargeResult:
-        """Merchant-initiated charge on a stored token reference (no PAN/CVV here)."""
         ...
 
     def refund_charge(
@@ -94,13 +82,6 @@ class FakePaymentGateway:
     def get_payment_status(self, *, provider_payment_id: str) -> str:
         return "succeeded"
 
-    def charge_recurring(
-        self, *, token_ref: str, amount_minor: int, currency: str, idempotency_key: str
-    ) -> RecurringChargeResult:
-        return RecurringChargeResult(
-            provider_payment_id=f"fake-recurring-{idempotency_key}", succeeded=True
-        )
-
     def refund_charge(
         self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
     ) -> str:
@@ -108,17 +89,17 @@ class FakePaymentGateway:
 
 
 class ClickPaymentGateway:
-    """CLICK adapter — placeholder until recurring capability is proven (spec §19).
+    """CLICK adapter — placeholder until merchant capability is proven (spec §19).
 
-    Required evidence before implementing: merchant-initiated charge authorization,
-    recurring consent + token lifecycle, callbacks, amount rules, refunds, settlement.
+    Required evidence before implementing: one-time checkout, callbacks, amount
+    rules, refunds, settlement.
     """
 
     slug = "click"
 
     def __init__(self) -> None:
         raise NotImplementedError(
-            "CLICK integration pending merchant verification (spec §8 [E], §19). "
+            "CLICK integration pending merchant verification (spec §19 [E]). "
             "Do not fabricate provider behavior."
         )
 

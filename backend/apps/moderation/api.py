@@ -40,7 +40,6 @@ from apps.moderation.services import (
 )
 from apps.placements.models import FreeGrant, Placement
 from apps.placements.services import issue_free_grant, max_active_ads
-from apps.renewals.models import RenewalAgreement, RenewalAttempt
 
 
 class IsAdminUser(permissions.BasePermission):
@@ -97,9 +96,6 @@ class _RevenueSerializer(serializers.Serializer):
 
 
 class _AttentionSerializer(serializers.Serializer):
-    renewal_alerts = serializers.IntegerField(help_text="Agreements in ALERT")
-    renewal_reconciliation = serializers.IntegerField(
-        help_text="Renewal attempts with an ambiguous provider outcome")
     capacity_blocked = serializers.IntegerField(
         help_text="Paid placements blocked by a capacity conflict (refund queue)")
     staff_blocked = serializers.IntegerField(help_text="Placements taken down by staff")
@@ -533,7 +529,7 @@ class AdminOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ("id", "business_id", "business_name", "campaign_id",
                   "campaign_headline", "amount_total", "currency", "state",
-                  "auto_renew", "attempts_count", "created_at")
+                  "attempts_count", "created_at")
 
     attempts_count = serializers.IntegerField(read_only=True)
 
@@ -600,10 +596,6 @@ class AdminOverviewView(APIView):
             },
             "owners": get_user_model().objects.filter(is_staff=False).count(),
             "attention": {
-                "renewal_alerts": RenewalAgreement.objects.filter(
-                    status=RenewalAgreement.Status.ALERT).count(),
-                "renewal_reconciliation": RenewalAttempt.objects.filter(
-                    state=RenewalAttempt.State.RECONCILIATION).count(),
                 "capacity_blocked": Placement.objects.filter(
                     state=Placement.State.BLOCKED,
                     block_reason="capacity_conflict").count(),

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
-import { useSession } from "@/shared/api/queries";
+import { useAdminOverview, useSession } from "@/shared/api/queries";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { formatPhone } from "@/shared/format";
 import { toast } from "@/shared/toast";
@@ -34,10 +34,14 @@ type Tab =
   | "logs"
   | "settings";
 
-const TABS: Tab[] = [
-  "overview", "queue", "reports", "campaigns", "placements", "businesses",
-  "users", "refunds", "orders", "grants", "logs", "settings",
+/** Sidebar sections, in the order staff work through them. */
+const GROUPS: { key: "navGroupModeration" | "navGroupCatalog" | "navGroupMoney" | "navGroupSystem"; tabs: Tab[] }[] = [
+  { key: "navGroupModeration", tabs: ["overview", "queue", "reports"] },
+  { key: "navGroupCatalog", tabs: ["campaigns", "placements", "businesses", "users"] },
+  { key: "navGroupMoney", tabs: ["refunds", "orders", "grants"] },
+  { key: "navGroupSystem", tabs: ["logs", "settings"] },
 ];
+const TABS: Tab[] = GROUPS.flatMap((g) => g.tabs);
 
 /** Staff control room (spec §12, extended): moderation queue, every account,
  *  business, branch, placement and log, refunds, grants, settings.
@@ -52,6 +56,11 @@ export function StaffPage() {
   const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : "overview";
   const setTab = (next: Tab) => setSearchParams(next === "overview" ? {} : { tab: next }, { replace: true });
   const [error, setError] = useState<string | null>(null);
+  const { data: overview } = useAdminOverview(!!user?.is_staff);
+  // Phones: the nav is a horizontal strip — keep the active section visible.
+  useEffect(() => {
+    document.querySelector(".staff-nav .active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [tab, user]);
 
   const logout = async () => {
     try {
@@ -80,20 +89,27 @@ export function StaffPage() {
     settings: t.settings,
   };
 
-  const consoleChrome = (content: React.ReactNode) => (
-    <div className="page app-page">
+  // Work waiting in a section shows as a badge on its nav item.
+  const badge: Partial<Record<Tab, number>> = {
+    queue: overview?.queue_depth,
+    reports: overview?.open_reports,
+    refunds: overview?.refunds_requested,
+  };
+
+  const consoleChrome = (content: React.ReactNode, withNav = false) => (
+    <div className="page app-page staff-page">
       <header className="app-header">
         <Link to="/" className="brand">
           <span className="logo">
             <IconShield size={30} />
           </span>
-          <span>
+          <span className="brand-text">
             {t.staffTitle}
             <small>{t.appTitle}</small>
           </span>
         </Link>
         <div className="row">
-          <span className="app-user">
+          <span className="app-user hide-mobile">
             <span className="avatar">
               <IconUser size={14} />
             </span>
@@ -106,28 +122,40 @@ export function StaffPage() {
         </div>
       </header>
 
-      <nav className="app-nav" aria-label={t.staffTitle}>
-        {TABS.map((k) => (
-          <button
-            key={k}
-            className={tab === k ? "active" : ""}
-            aria-current={tab === k ? "page" : undefined}
-            onClick={() => setTab(k)}
-          >
-            {tabLabel[k]}
-          </button>
-        ))}
-      </nav>
-
-      {error && (
-        <p className="error dismissible" role="alert">
-          {error}
-          <button className="sheet-close small" onClick={() => setError(null)} aria-label={t.close}>
-            ×
-          </button>
-        </p>
-      )}
-      <main>{content}</main>
+      <div className={withNav ? "staff-layout" : undefined}>
+        {withNav && (
+          <nav className="staff-nav" aria-label={t.staffTitle}>
+            {GROUPS.map((g) => (
+              <div key={g.key} className="staff-nav-group">
+                <span className="staff-nav-heading">{t[g.key]}</span>
+                {g.tabs.map((k) => (
+                  <button
+                    key={k}
+                    className={tab === k ? "active" : ""}
+                    aria-current={tab === k ? "page" : undefined}
+                    onClick={() => setTab(k)}
+                  >
+                    {tabLabel[k]}
+                    {!!badge[k] && <span className="staff-nav-badge">{badge[k]}</span>}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+        )}
+        <main className="staff-main">
+          {withNav && <h2 className="staff-title">{tabLabel[tab]}</h2>}
+          {error && (
+            <p className="error dismissible" role="alert">
+              {error}
+              <button className="sheet-close small" onClick={() => setError(null)} aria-label={t.close}>
+                ×
+              </button>
+            </p>
+          )}
+          {content}
+        </main>
+      </div>
     </div>
   );
 
@@ -184,5 +212,6 @@ export function StaffPage() {
       {tab === "logs" && <LogsTab locale={locale} />}
       {tab === "settings" && <SettingsTab onError={setError} />}
     </>,
+    true,
   );
 }

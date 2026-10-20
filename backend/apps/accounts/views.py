@@ -120,8 +120,8 @@ class CsrfView(APIView):
     get=extend_schema(tags=["Auth"], summary="Current session user",
                       responses={200: SessionUserSerializer}),
     delete=extend_schema(tags=["Auth"], summary="Delete own account (soft)",
-                         description="Anonymizes the phone, disables owned businesses "
-                                     "and auto-renewals; financial records are retained "
+                         description="Anonymizes the phone and disables owned businesses; "
+                                     "financial records are retained "
                                      "(spec §14). Terminates the session.",
                          responses={204: None}),
 )

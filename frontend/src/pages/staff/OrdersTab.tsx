@@ -6,6 +6,8 @@ import type { OrderState } from "@/entities/types";
 import { IconCheck } from "@/shared/icons";
 import {
   FilterPill,
+  ListCount,
+  RowMenu,
   ServerPager,
   shortId,
   useDebounced,
@@ -27,8 +29,9 @@ export function OrdersTab({ locale }: { locale: string }) {
 
   return (
     <section>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.businessesTab} / ${t.campaign} / ID…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -50,14 +53,10 @@ export function OrdersTab({ locale }: { locale: string }) {
             onClear={() => link.clear("business")}
           />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && data.count > 0 && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       {data && data.count === 0 && (
         <p className="callout"><IconCheck size={16} /> {t.nothingHere}</p>
       )}
@@ -88,25 +87,18 @@ export function OrdersTab({ locale }: { locale: string }) {
                 </td>
                 <td className="muted-2">{formatDateTime(o.created_at, lang)}</td>
                 <td>
-                  <div className="row">
-                    {o.attempts_count > 0 && (
-                      <button
-                        className="btn small"
-                        onClick={() => link.go("logs", { view: "payments", order: o.id })}
-                      >
-                        {t.viewOrderPayments} ({o.attempts_count})
-                      </button>
-                    )}
-                    <button className="btn small" onClick={() => link.go("campaigns", { business: o.business_id })}>
-                      {t.campaignsTab}
-                    </button>
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: "order", entity_id: o.id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                  </div>
+                  <RowMenu
+                    items={[
+                      ...(o.attempts_count > 0
+                        ? [{
+                            label: `${t.viewOrderPayments} (${o.attempts_count})`,
+                            onClick: () => link.go("logs", { view: "payments", order: o.id }),
+                          }]
+                        : []),
+                      { label: t.campaignsTab, onClick: () => link.go("campaigns", { business: o.business_id }) },
+                      { label: t.viewLog, onClick: () => link.go("logs", { entity: "order", entity_id: o.id }) },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

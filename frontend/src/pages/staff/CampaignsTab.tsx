@@ -1,18 +1,19 @@
-import { Link } from "react-router-dom";
 import { useStaffPage, type ApiAdminCampaign } from "@/shared/api/queries";
 import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import type { CampaignStatus } from "@/entities/types";
-import { IconBlock, IconCheck, IconExternal } from "@/shared/icons";
 import {
   FilterPill,
+  RowMenu,
   ServerPager,
+  statusItem,
   useDebounced,
   useHistoryState,
   usePagedOffset,
   useStaffAction,
   useStaffLink,
+  ListCount,
 } from "./controls";
 
 export function CampaignsTab({ locale }: { locale: string }) {
@@ -41,8 +42,9 @@ export function CampaignsTab({ locale }: { locale: string }) {
 
   return (
     <section>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.campaign} / ${t.businessesTab}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -64,14 +66,10 @@ export function CampaignsTab({ locale }: { locale: string }) {
             onClear={() => link.clear("business")}
           />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -87,7 +85,7 @@ export function CampaignsTab({ locale }: { locale: string }) {
             {data?.results.map((c) => (
               <tr key={c.id}>
                 <td className="max-w-240 wrap-anywhere">
-                  <div className="row">
+                  <div className="staff-entity">
                     <FallImg className="thumb" src={c.banner_url} alt="" />
                     <strong>{c.headline}</strong>
                   </div>
@@ -102,30 +100,17 @@ export function CampaignsTab({ locale }: { locale: string }) {
                 </td>
                 <td className="muted-2">{formatDateTime(c.updated_at, lang)}</td>
                 <td>
-                  <div className="row">
-                    <button className="btn small" onClick={() => link.go("placements", { campaign: c.id })}>
-                      {t.viewPlacements}
-                    </button>
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: "campaign", entity_id: c.id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                    <Link className="btn small" to={`/ads/${c.id}`}>
-                      <IconExternal size={12} />
-                    </Link>
-                    {(c.review_status === "approved" || c.review_status === "suspended") && (
-                      <button
-                        className={`btn small${c.review_status === "approved" ? " danger" : ""}`}
-                        disabled={action.busy}
-                        onClick={() => void toggle(c)}
-                      >
-                        {c.review_status === "approved" ? <IconBlock size={12} /> : <IconCheck size={12} />}{" "}
-                        {c.review_status === "approved" ? t.suspend : t.unsuspend}
-                      </button>
-                    )}
-                  </div>
+                  <RowMenu
+                    items={[
+                      { label: t.viewPlacements, onClick: () => link.go("placements", { campaign: c.id }) },
+                      { label: t.viewLog, onClick: () => link.go("logs", { entity: "campaign", entity_id: c.id }) },
+                      { label: t.openEntity, to: `/ads/${c.id}` },
+                      ...(c.review_status === "approved" || c.review_status === "suspended"
+                        ? [statusItem(c.review_status === "approved", t.suspend, t.unsuspend, action.busy,
+                            () => void toggle(c))]
+                        : []),
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

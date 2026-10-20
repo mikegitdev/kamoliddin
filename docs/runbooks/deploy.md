@@ -74,7 +74,7 @@ are served publicly only through Django's `/media/` route (spec §11).
    app key (read/write only; idempotent; the app never uses the bootstrap key).
 7. **Start** — `docker compose up -d`; `/health/` must return 200/`ok`
    (DB failure returns 503 and fails the gate).
-8. **Reconcile** — run payment/renewal reconciliation job.
+8. **Record release** — `.last-release-sha` is written by `deploy.sh`.
 9. **Verify** — `https://<domain>/` map page, advertiser login, admin login.
 
 ## Rollback
@@ -142,8 +142,7 @@ Cron on the VPS (07:00 local, output goes to cron mail; non-zero exit alerts):
   exec -T web python manage.py ops_report || echo "OPS CRITICAL — check report above"
 ```
 
-The report covers: renewal reconciliation/failure counts, pending-token
-agreements, succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
+The report covers: succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
 placements, disk usage, and the Celery worker heartbeat. Set
 `OPS_TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID` in `.env.prod` to mirror it
 to Telegram. For backup freshness, mount/copy the `~/.localads-last-backup`

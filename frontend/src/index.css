@@ -52,12 +52,13 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* one shape language: 16px for surfaces & controls, pills for chips */
-  --radius-sm: 10px;
-  --radius: 16px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-pill: 999px;
+  /* one shape language: rounded squares, never pills or circles
+     (circles only for true dots: status, map pin, spinners). */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 
   /* Foreground on saturated/dark fills — keep white-on-color in one place. */
   --on-primary: #ffffff;
@@ -356,6 +357,16 @@ a:hover {
 .btn svg {
   flex: none;
 }
+/* One icon size per button size, whatever size= the call site passed
+   (CSS width/height beat the SVG attributes). */
+.btn svg.ico {
+  width: 16px;
+  height: 16px;
+}
+.btn.small svg.ico {
+  width: 14px;
+  height: 14px;
+}
 
 /* ---------- Icons: 24px line glyphs, stroke = currentColor ---------- */
 svg.ico {
@@ -374,6 +385,17 @@ svg.ico {
 }
 .callout .ico {
   flex: none;
+  width: 16px;
+  height: 16px;
+}
+/* Leading icon + long text: keep them on one row (the anonymous text item
+   would otherwise wrap below the icon) and pin the icon to the first line. */
+.callout:has(> svg.ico:first-child) {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.callout > svg.ico:first-child {
+  margin-top: 0.15em;
 }
 .stat-card .icon {
   display: grid;
@@ -397,7 +419,7 @@ svg.ico {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -489,7 +511,7 @@ svg.ico {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: var(--fill);
 }
 .lang-switcher button {
@@ -498,7 +520,7 @@ svg.ico {
   min-height: 36px;
   min-width: 40px;
   padding: 6px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--muted);
   font-size: 0.78rem;
@@ -691,7 +713,7 @@ svg.ico {
 .list-toggle-count {
   min-width: 24px;
   padding: 2px 7px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: var(--brand);
   color: var(--on-brand);
   font-size: 0.76rem;
@@ -788,7 +810,7 @@ svg.ico {
   align-items: center;
   background: var(--surface);
   padding: 8px 16px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   z-index: 10;
   font-size: 0.82rem;
@@ -1005,16 +1027,20 @@ svg.ico {
   flex: none;
 }
 .panel-title {
+  flex: none;
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .panel-count {
   margin-left: auto;
+  min-width: 0;
+  /* Wraps instead of pushing the collapse button out of the panel. */
+  text-align: right;
+  line-height: 1.3;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .panel-body {
@@ -1098,7 +1124,7 @@ svg.ico {
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   background: var(--brand);
   color: var(--on-brand);
   font-weight: 800;
@@ -1132,7 +1158,7 @@ svg.ico {
   color: var(--ink);
   background: var(--fill);
   padding: 5px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   font-variant-numeric: tabular-nums;
 }
 .rc-ads svg {
@@ -1174,7 +1200,7 @@ svg.ico {
   border: 1px solid transparent;
   background: var(--fill);
   color: var(--muted);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   padding: 5px 12px;
   font: inherit;
   font-size: 0.8rem;
@@ -1213,7 +1239,7 @@ svg.ico {
   flex: none;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   border: 0;
   background: var(--fill);
   color: var(--ink);
@@ -1234,7 +1260,7 @@ svg.ico {
   flex: none;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   border: 0;
   background: var(--fill);
   color: var(--ink);
@@ -1286,7 +1312,9 @@ svg.ico {
 }
 .sheet-ad img {
   width: 100%;
-  height: 150px;
+  /* Banners are 3:1 with baked-in text: a fixed 150px height cropped it. */
+  height: auto;
+  aspect-ratio: 3 / 1;
   border-radius: 0;
   object-fit: cover;
   flex: none;
@@ -1414,7 +1442,7 @@ svg.ico {
     transform: translateX(-50%);
     width: 40px;
     height: 4px;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-xs);
     background: var(--border-2);
   }
   .results-panel:not(.collapsed)::before {
@@ -1586,6 +1614,16 @@ svg.ico {
   font-weight: 800;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+}
+/* Gray chips share the card's fill color and vanished into it. */
+.stat-card .chip.gray {
+  background: var(--surface);
+}
+/* Two-up cards on phones are ~130px wide: "30 000 UZS" broke across lines. */
+@media (max-width: 480px) {
+  .stat-card .num {
+    font-size: 1.3rem;
+  }
 }
 .list {
   list-style: none;
@@ -2032,8 +2070,8 @@ svg.ico {
 }
 .be-prevs figure:first-child img {
   width: 100%;
-  height: 64px;
-  object-fit: cover; /* same crop the ad card strip applies */
+  aspect-ratio: 3 / 1;
+  object-fit: cover; /* same box the map result card uses */
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   display: block;
@@ -2201,7 +2239,7 @@ svg.ico {
   border: 1px solid var(--border-2);
   background: var(--surface);
   color: var(--muted);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   padding: 7px 14px;
   font: inherit;
   font-size: 0.85rem;
@@ -2355,7 +2393,7 @@ svg.ico {
   max-width: 220px;
   padding: 6px 12px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   background: var(--fill);
   color: var(--ink);
   font-family: inherit;
@@ -2380,14 +2418,14 @@ svg.ico {
   gap: 8px;
   background: var(--fill);
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   padding: 6px 14px 6px 6px;
   font-size: 0.86rem;
 }
 .avatar {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: var(--brand);
   color: var(--on-brand);
   display: grid;
@@ -2400,7 +2438,7 @@ svg.ico {
   gap: 2px;
   flex-wrap: wrap;
   background: var(--fill);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   padding: 4px;
   margin-bottom: 28px;
 }
@@ -2410,7 +2448,7 @@ svg.ico {
   align-items: center;
   min-height: 40px;
   padding: 8px 18px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   color: var(--ink);
   font-weight: 600;
   font-size: 0.88rem;
@@ -2511,7 +2549,7 @@ svg.ico {
 .check-num {
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: var(--primary-soft);
   color: var(--primary-dark);
   display: grid;
@@ -2693,7 +2731,7 @@ svg.ico {
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
   color: var(--muted);
@@ -2952,7 +2990,7 @@ svg.ico {
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   font-size: 0.82rem;
@@ -3435,6 +3473,14 @@ svg.ico {
 }
 .he-closed {
   font-size: 0.8rem;
+  white-space: nowrap;
+}
+/* Phones: the time inputs leave no room — the "closed" note gets its own line
+   under them instead of wrapping one word per line. */
+@media (max-width: 480px) {
+  .he-closed {
+    grid-column: 2 / -1;
+  }
 }
 
 /* ---------- Danger zone (account deletion) ---------- */
@@ -3694,7 +3740,7 @@ section > label,
   flex: none;
   min-height: 40px;
   padding: 8px 16px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   border: 0;
   background: var(--surface);
   color: var(--ink);
@@ -3736,7 +3782,7 @@ section > label,
 .filter-chip-count {
   min-width: 20px;
   padding: 1px 6px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: var(--brand);
   color: var(--on-brand);
   font-size: 0.74rem;
@@ -3997,6 +4043,292 @@ section > label,
   color: var(--danger);
 }
 /* ---------- Staff control room ---------- */
+.staff-page {
+  max-width: 1320px;
+}
+.staff-layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.staff-main {
+  min-width: 0;
+}
+.staff-title {
+  margin: 4px 0 16px;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+/* Grouped sidebar: 12 sections no longer wrap into a two-line pill. */
+.staff-nav {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 18px;
+}
+.staff-nav-group {
+  display: grid;
+  gap: 2px;
+}
+.staff-nav-heading {
+  padding: 0 12px 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.staff-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast);
+}
+.staff-nav button:hover {
+  background: var(--fill);
+}
+.staff-nav button.active {
+  background: var(--ink);
+  color: #fff;
+}
+.staff-nav-badge {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filter toolbar: one consistent control height, count at the far end. */
+.staff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.staff-toolbar input:not([type="checkbox"]),
+.staff-toolbar select {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.88rem;
+  min-width: 0;
+}
+.staff-toolbar input[type="search"] {
+  flex: 1 1 220px;
+  max-width: 300px;
+  padding-left: 34px;
+  background: var(--surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E")
+    no-repeat 12px center;
+}
+.staff-toolbar select {
+  padding-right: 8px;
+  cursor: pointer;
+}
+.staff-toolbar input:hover,
+.staff-toolbar select:hover {
+  border-color: var(--muted-2);
+}
+.staff-toolbar input:focus,
+.staff-toolbar select:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+.staff-toolbar label {
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.staff-toolbar .filter-chip {
+  height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.staff-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.staff-count strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row "⋯" menu: the only action column in every staff table. */
+.table td:has(> .row-menu) {
+  width: 1%;
+  text-align: right;
+}
+.row-menu > .btn {
+  min-width: 34px;
+  font-size: 1.1rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+.row-menu-pop {
+  position: fixed;
+  min-width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  z-index: 60;
+}
+.row-menu-pop a,
+.row-menu-pop button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.row-menu-pop a span,
+.row-menu-pop button span {
+  flex: 1;
+}
+.row-menu-pop a svg {
+  color: var(--muted-2);
+}
+.row-menu-pop a:hover,
+.row-menu-pop button:hover:not(:disabled) {
+  background: var(--fill);
+}
+.row-menu-pop button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.row-menu-pop button.danger {
+  color: var(--danger);
+}
+.row-menu-pop button.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+.row-menu-pop button.ok {
+  color: var(--success);
+}
+.row-menu-pop .divided {
+  margin-top: 5px;
+  position: relative;
+}
+.row-menu-pop .divided::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -4px;
+  border-top: 1px solid var(--border);
+}
+
+.staff-entity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.staff-entity > .min-w-0,
+.staff-entity > strong {
+  min-width: 0;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.staff-open {
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--muted-2);
+}
+.staff-open:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 860px) {
+  .staff-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  /* Phones: the sidebar becomes one scrollable strip; headings drop out. */
+  .staff-nav {
+    position: static;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -18px;
+    padding: 0 18px 4px;
+  }
+  .staff-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .staff-nav-group {
+    display: contents;
+  }
+  .staff-nav-heading {
+    display: none;
+  }
+  .staff-nav button {
+    flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--fill);
+    white-space: nowrap;
+  }
+  .staff-toolbar input[type="search"] {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .staff-count {
+    margin-left: 0;
+  }
+}
+@media (max-width: 639px) {
+  .table-wrap td:has(> .row-menu) {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  /* The fixed menu lives inside a stacked-row td: undo its flex/right-align. */
+  .row-menu-pop {
+    text-align: left;
+  }
+  .table-wrap td .row-menu-pop a {
+    min-height: 0;
+    margin-block: 0;
+    padding-block: 9px;
+  }
+}
 .staff-pager {
   justify-content: center;
   margin-top: 14px;
@@ -4140,8 +4472,13 @@ section > label,
 .duration-presets {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 10px;
+}
+.duration-presets .btn[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
 }
 
 /* ---------- Branches: hours toolbar ---------- */
@@ -4151,10 +4488,6 @@ section > label,
 }
 
 /* ---------- Billing ---------- */
-.renewal-row {
-  display: grid;
-  gap: 6px;
-}
 .billing-count {
   font-size: 0.84rem;
 }
@@ -4410,7 +4743,7 @@ section > label,
 }
 .demo-pay-badge {
   padding: 4px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: #111111;
   color: #ffffff;
   font-size: 0.72rem;
@@ -4423,7 +4756,7 @@ section > label,
   flex-direction: column;
   gap: 16px;
   padding: 20px;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   background: #ffffff;
   box-shadow: 0 10px 30px rgb(15 30 60 / 0.08);
   animation: demo-pay-in 260ms var(--ease-out);
@@ -4532,7 +4865,7 @@ section > label,
   min-height: 50px;
   padding: 12px 14px;
   border: 1.5px solid #d5dbe3;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: #f8fafc;
   color: var(--ink);
   font: inherit;
@@ -4686,7 +5019,7 @@ section > label,
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .demo-pay-receipt > div {
   display: flex;

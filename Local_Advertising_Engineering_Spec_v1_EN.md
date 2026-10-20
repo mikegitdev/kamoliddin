@@ -137,6 +137,12 @@ Admin may issue placement grant with effective term and a reason, creating zero-
 
 ## 8. Automatic renewal — mandatory at launch
 
+> **SUPERSEDED (2026-10-20, ADR-0007):** product owner decision — every campaign
+> order is a single one-time payment; there is no auto-renewal. This section and
+> every renewal/recurrence item elsewhere in this spec (RenewalAgreement,
+> RenewalAttempt, `/renewals` endpoints, `auto_renew` quote field, renewal
+> acceptance criteria, recurring provider gates) are retained for history only.
+
 **[C]** Advertiser selects optional renewal explicitly, with default OFF. Renew the SAME already-approved content, same banner, location set and paid duration. No automatic content edits, no automatic volume discounts. If auto-charge fails, public placement ends on the paid term boundary, with no unpaid grace display.
 
 **[R] Implementation design:** RenewalAgreement holds consent metadata and provider token identifier (not card details), campaign content/version hash, fixed location snapshot, 24-hour billing duration, and agreed tariff policy. [O] Future renewal price can track current tariff or preserve original agreed price; recommended default: show and require consent for the price policy, notify on tariff changes, and prevent silent increases beyond consent.

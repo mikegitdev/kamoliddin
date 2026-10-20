@@ -7,10 +7,14 @@ import { formatDateTime, formatMinor, formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { OrderChip, QueryError } from "@/shared/ui";
 import type { OrderState } from "@/entities/types";
-import { IconBlock, IconCheck, IconShield } from "@/shared/icons";
+import { IconShield } from "@/shared/icons";
 import {
+  ListCount,
+  RowMenu,
   ServerPager,
   StatusChip,
+  StatusToggle,
+  statusItem,
   shortId,
   useDebounced,
   useHistoryState,
@@ -55,8 +59,9 @@ export function UsersTab({ locale }: { locale: string }) {
           busy={action.busy}
         />
       )}
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.phone}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -71,14 +76,10 @@ export function UsersTab({ locale }: { locale: string }) {
           <option value="staff">{t.roleStaff}</option>
           <option value="deleted">{t.stUserDeleted}</option>
         </select>
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -116,21 +117,15 @@ export function UsersTab({ locale }: { locale: string }) {
                 <td className="muted-2">{u.last_login ? formatDateTime(u.last_login, lang) : t.never}</td>
                 <td className="muted-2">{formatDateTime(u.created_at, lang)}</td>
                 <td>
-                  <div className="row">
-                    <button className="btn small" onClick={() => link.go("users", { user: u.id })}>
-                      {t.details}
-                    </button>
-                    {!u.is_staff && !u.is_deleted && (
-                      <button
-                        className={`btn small${u.is_active ? " danger" : ""}`}
-                        disabled={action.busy}
-                        onClick={() => void toggleBlock(u)}
-                      >
-                        {u.is_active ? <IconBlock size={12} /> : <IconCheck size={12} />}{" "}
-                        {u.is_active ? t.block : t.unblock}
-                      </button>
-                    )}
-                  </div>
+                  <RowMenu
+                    items={[
+                      { label: t.details, onClick: () => link.go("users", { user: u.id }) },
+                      { label: t.viewLog, onClick: () => link.go("logs", { actor: u.phone_e164 }) },
+                      ...(!u.is_staff && !u.is_deleted
+                        ? [statusItem(u.is_active, t.block, t.unblock, action.busy, () => void toggleBlock(u))]
+                        : []),
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
@@ -175,13 +170,13 @@ function UserDetail({
         </h3>
         <div className="row">
           {!u.is_staff && !u.is_deleted && (
-            <button
-              className={`btn small${u.is_active ? " danger" : ""}`}
-              disabled={busy}
+            <StatusToggle
+              live={u.is_active}
+              downLabel={t.block}
+              upLabel={t.unblock}
+              busy={busy}
               onClick={() => void onToggleBlock(u)}
-            >
-              {u.is_active ? t.block : t.unblock}
-            </button>
+            />
           )}
           <button className="btn small" onClick={() => link.go("logs", { actor: u.phone_e164 })}>
             {t.viewLog}

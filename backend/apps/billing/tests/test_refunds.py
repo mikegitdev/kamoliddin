@@ -1,6 +1,6 @@
 """Refund flow (spec §7.2, ADR-0003): truthfulness of provider references,
 exact placement cancellation via the Placement->order link (immune to
-late-moderation interval shifts), renewal disabling, and the no-adapter guard.
+late-moderation interval shifts), and the no-adapter guard.
 """
 from datetime import timedelta
 
@@ -17,7 +17,6 @@ from apps.billing.services import (
 from apps.moderation.services import approve_campaign, reject_campaign, submit_for_review
 from apps.payments.settlement import settle_payment_attempt
 from apps.placements.models import Placement
-from apps.renewals.models import RenewalAgreement
 
 pytestmark = pytest.mark.django_db
 
@@ -64,22 +63,6 @@ def test_refund_cancels_shifted_placements_and_never_fakes_provider_ref(
 
     placement.refresh_from_db()
     assert placement.state == Placement.State.CANCELLED  # exact order link worked
-
-
-def test_refund_disables_renewal_agreement(
-    owner, tariff, business, campaign, location, staff
-):
-    order, _ = _paid_order_with_shifted_placement(
-        owner, tariff, business, campaign, location, staff
-    )
-    assert RenewalAgreement.objects.filter(campaign=campaign).count() == 0
-    reject_campaign(campaign=campaign, reviewer=staff, reason="takedown")
-    refund = request_refund(user=owner, order_id=order.id, reason="please")
-    processed = process_refund(
-        staff=staff, refund_id=str(refund.id), decision="approve"
-    )
-    # No agreement existed; the filter must simply be a no-op, not crash.
-    assert processed.state == "refunded"
 
 
 def test_unverified_provider_refund_requires_manual_reference(

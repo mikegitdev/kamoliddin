@@ -655,34 +655,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Refund'
           description: ''
-  /api/v1/admin/renewals:
-    get:
-      operationId: api_v1_admin_renewals_list
-      description: GET /admin/renewals?state=&agreement_status=&q=
-      parameters:
-      - name: limit
-        required: false
-        in: query
-        description: Number of results to return per page.
-        schema:
-          type: integer
-      - name: offset
-        required: false
-        in: query
-        description: The initial index from which to return the results.
-        schema:
-          type: integer
-      tags:
-      - api
-      security:
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedAdminRenewalAttemptList'
-          description: ''
   /api/v1/admin/reports:
     get:
       operationId: api_v1_admin_reports_list
@@ -954,8 +926,8 @@ paths:
           description: ''
     delete:
       operationId: api_v1_auth_me_destroy
-      description: Anonymizes the phone, disables owned businesses and auto-renewals;
-        financial records are retained (spec §14). Terminates the session.
+      description: Anonymizes the phone and disables owned businesses; financial records
+        are retained (spec §14). Terminates the session.
       summary: Delete own account (soft)
       tags:
       - Auth
@@ -1829,71 +1801,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PublicSearchResult'
           description: ''
-  /api/v1/renewals:
-    get:
-      operationId: api_v1_renewals_list
-      tags:
-      - api
-      security:
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RenewalAgreement'
-          description: ''
-  /api/v1/renewals/{id}/cancel:
-    post:
-      operationId: api_v1_renewals_cancel_create
-      summary: Disable future charge attempts (paid time remains)
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-          format: uuid
-        required: true
-      tags:
-      - Renewals
-      security:
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RenewalAgreement'
-          description: ''
-  /api/v1/renewals/enable:
-    post:
-      operationId: api_v1_renewals_enable_create
-      summary: Re-enable explicit recurrence
-      tags:
-      - Renewals
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RenewalEnable'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/RenewalEnable'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/RenewalEnable'
-        required: true
-      security:
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RenewalAgreement'
-          description: ''
   /health:
     get:
       operationId: health_probe
@@ -2150,9 +2057,6 @@ components:
           maxLength: 3
         state:
           $ref: '#/components/schemas/OrderStateEnum'
-        auto_renew:
-          type: boolean
-          description: Advertiser consent to auto-renewal captured at quote time
         attempts_count:
           type: integer
           readOnly: true
@@ -2376,66 +2280,6 @@ components:
       - order_id
       - start_at
       - visible
-    AdminRenewalAttempt:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          readOnly: true
-        agreement_id:
-          type: string
-          format: uuid
-          readOnly: true
-        agreement_status:
-          type: string
-          readOnly: true
-        renewal_period_key:
-          type: string
-          description: e.g. 2026-W43; one charge per period
-          maxLength: 40
-        state:
-          $ref: '#/components/schemas/AdminRenewalAttemptStateEnum'
-        order_id:
-          type: string
-          format: uuid
-          nullable: true
-          readOnly: true
-        amount:
-          type: integer
-          readOnly: true
-        business_name:
-          type: string
-          readOnly: true
-        campaign_headline:
-          type: string
-          readOnly: true
-        attempted_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - agreement_id
-      - agreement_status
-      - amount
-      - attempted_at
-      - business_name
-      - campaign_headline
-      - id
-      - order_id
-      - renewal_period_key
-    AdminRenewalAttemptStateEnum:
-      enum:
-      - pending
-      - succeeded
-      - failed
-      - reconciliation
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `succeeded` - Succeeded
-        * `failed` - Failed
-        * `reconciliation` - Ambiguous — reconciliation required
     AdminUser:
       type: object
       properties:
@@ -2503,6 +2347,7 @@ components:
         * `reject` - reject
     Business:
       type: object
+      description: validate_<field> hooks for serializers exposing the contact fields.
       properties:
         id:
           type: string
@@ -2825,6 +2670,7 @@ components:
       - locations
     Location:
       type: object
+      description: validate_<field> hooks for serializers exposing the contact fields.
       properties:
         id:
           type: string
@@ -2907,15 +2753,10 @@ components:
             $ref: '#/components/schemas/_ExpiringPlacement'
         spend:
           $ref: '#/components/schemas/_Spend'
-        next_renewal:
-          allOf:
-          - $ref: '#/components/schemas/_NextRenewal'
-          nullable: true
       required:
       - active_placements
       - campaigns
       - expiring_soon
-      - next_renewal
       - spend
     MediaUploadResult:
       type: object
@@ -3023,10 +2864,6 @@ components:
           readOnly: true
           nullable: true
           description: Requested advertising interval end (quote snapshot)
-        auto_renew:
-          type: boolean
-          readOnly: true
-          description: Advertiser consent to auto-renewal captured at quote time
         items:
           type: array
           items:
@@ -3042,7 +2879,6 @@ components:
           readOnly: true
       required:
       - amount_total
-      - auto_renew
       - business
       - business_name
       - campaign
@@ -3110,10 +2946,6 @@ components:
           readOnly: true
           nullable: true
           description: Requested advertising interval end (quote snapshot)
-        auto_renew:
-          type: boolean
-          readOnly: true
-          description: Advertiser consent to auto-renewal captured at quote time
         items:
           type: array
           items:
@@ -3140,7 +2972,6 @@ components:
       required:
       - amount_total
       - attempts
-      - auto_renew
       - business
       - business_name
       - campaign
@@ -3386,29 +3217,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminPlacement'
-    PaginatedAdminRenewalAttemptList:
-      type: object
-      required:
-      - count
-      - results
-      properties:
-        count:
-          type: integer
-          example: 123
-        next:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?offset=400&limit=100
-        previous:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?offset=200&limit=100
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/AdminRenewalAttempt'
     PaginatedAdminUserList:
       type: object
       required:
@@ -3441,6 +3249,7 @@ components:
           minimum: 1
     PatchedBusiness:
       type: object
+      description: validate_<field> hooks for serializers exposing the contact fields.
       properties:
         id:
           type: string
@@ -3543,6 +3352,7 @@ components:
           readOnly: true
     PatchedLocation:
       type: object
+      description: validate_<field> hooks for serializers exposing the contact fields.
       properties:
         id:
           type: string
@@ -4187,10 +3997,6 @@ components:
           readOnly: true
           nullable: true
           description: Requested advertising interval end (quote snapshot)
-        auto_renew:
-          type: boolean
-          readOnly: true
-          description: Advertiser consent to auto-renewal captured at quote time
         items:
           type: array
           items:
@@ -4210,7 +4016,6 @@ components:
           readOnly: true
       required:
       - amount_total
-      - auto_renew
       - business
       - business_name
       - campaign
@@ -4247,9 +4052,6 @@ components:
         requested_end_at:
           type: string
           format: date-time
-        auto_renew:
-          type: boolean
-          default: false
       required:
       - business_id
       - campaign_id
@@ -4367,107 +4169,6 @@ components:
         * `provider_refund_processing` - Provider refund processing
         * `refunded` - Refunded
         * `refund_failed` - Refund failed
-    RenewalAgreement:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          readOnly: true
-        business:
-          type: string
-          format: uuid
-          readOnly: true
-        business_name:
-          type: string
-          readOnly: true
-        campaign:
-          type: string
-          format: uuid
-          readOnly: true
-        campaign_headline:
-          type: string
-          readOnly: true
-        locations_snapshot:
-          readOnly: true
-          description: Frozen location id list for renewal
-        locations_count:
-          type: integer
-          readOnly: true
-        charge_days:
-          type: integer
-          readOnly: true
-        duration_seconds:
-          type: integer
-          readOnly: true
-        status:
-          allOf:
-          - $ref: '#/components/schemas/RenewalAgreementStatusEnum'
-          readOnly: true
-          description: |-
-            pending_token agreements never charge — no verified provider token (ADR-0005)
-
-            * `active` - Active
-            * `alert` - Alert (last charge failed)
-            * `disabled` - Disabled (cancelled by advertiser)
-            * `pending_token` - Awaiting provider token (no verified adapter)
-        price_policy:
-          type: string
-          readOnly: true
-          description: current_tariff | locked_price — must be shown and consented
-            to (spec §8 [O])
-        consent_at:
-          type: string
-          format: date-time
-          readOnly: true
-        next_run_at:
-          type: string
-          format: date-time
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - business
-      - business_name
-      - campaign
-      - campaign_headline
-      - charge_days
-      - consent_at
-      - created_at
-      - duration_seconds
-      - id
-      - locations_count
-      - locations_snapshot
-      - next_run_at
-      - price_policy
-      - status
-      - updated_at
-    RenewalAgreementStatusEnum:
-      enum:
-      - active
-      - alert
-      - disabled
-      - pending_token
-      type: string
-      description: |-
-        * `active` - Active
-        * `alert` - Alert (last charge failed)
-        * `disabled` - Disabled (cancelled by advertiser)
-        * `pending_token` - Awaiting provider token (no verified adapter)
-    RenewalEnable:
-      type: object
-      properties:
-        agreement_id:
-          type: string
-          format: uuid
-      required:
-      - agreement_id
     Report:
       type: object
       properties:
@@ -4633,12 +4334,6 @@ components:
     _Attention:
       type: object
       properties:
-        renewal_alerts:
-          type: integer
-          description: Agreements in ALERT
-        renewal_reconciliation:
-          type: integer
-          description: Renewal attempts with an ambiguous provider outcome
         capacity_blocked:
           type: integer
           description: Paid placements blocked by a capacity conflict (refund queue)
@@ -4656,8 +4351,6 @@ components:
       - capacity_blocked
       - disabled_businesses
       - disabled_locations
-      - renewal_alerts
-      - renewal_reconciliation
       - staff_blocked
     _ExpiringPlacement:
       type: object
@@ -4745,27 +4438,6 @@ components:
       - location_name
       - reason
       - start_at
-    _NextRenewal:
-      type: object
-      properties:
-        agreement_id:
-          type: string
-          format: uuid
-        campaign_headline:
-          type: string
-        next_run_at:
-          type: string
-          format: date-time
-        locations_count:
-          type: integer
-        charge_days:
-          type: integer
-      required:
-      - agreement_id
-      - campaign_headline
-      - charge_days
-      - locations_count
-      - next_run_at
     _Revenue:
       type: object
       properties:

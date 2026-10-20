@@ -316,7 +316,10 @@ export function ResultsPanel(props: ResultsPanelProps) {
           <div className="panel-head">
             <strong className="panel-title">{t.resultsTitle}</strong>
             <span className="panel-count" aria-live="polite">
-              {searchMode
+              {/* No "0 locations · 0 ads" before the first response arrives. */}
+              {loading
+                ? "…"
+                : searchMode
                 ? `${t.found}: ${results.length}`
                 : `${locationsCount} ${plural(locale, "locations", locationsCount)} · ${adsCount} ${plural(locale, "ads", adsCount)}`}
             </span>

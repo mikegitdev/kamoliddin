@@ -78,9 +78,6 @@ class Order(models.Model):
     interval_end_at = models.DateTimeField(
         null=True, blank=True, help_text="Requested advertising interval end (quote snapshot)"
     )
-    auto_renew = models.BooleanField(
-        default=False, help_text="Advertiser consent to auto-renewal captured at quote time"
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

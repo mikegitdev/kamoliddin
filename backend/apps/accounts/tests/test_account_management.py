@@ -1,8 +1,6 @@
 """Account lifecycle invariants (spec §9/§14): phone change requires OTP proof
 of the NEW number and reclaim-blocks the abandoned one; deletion anonymizes
-PII, stops future charges, and retains financial records."""
-
-from datetime import timedelta
+PII, disables businesses, and retains financial records."""
 
 import pytest
 from django.test import override_settings
@@ -19,7 +17,6 @@ from apps.accounts.services import (
 )
 from apps.billing.models import Order
 from apps.businesses.models import Business
-from apps.renewals.models import RenewalAgreement
 
 pytestmark = pytest.mark.django_db
 
@@ -68,7 +65,7 @@ def test_phone_change_rejects_late_taker(owner, db):
     assert owner.phone_e164 == OLD_PHONE  # unchanged
 
 
-def test_delete_account_anonymizes_stops_charges_retains_records(
+def test_delete_account_anonymizes_retains_records(
     owner, business, campaign
 ):
     order = Order.objects.create(
@@ -76,29 +73,15 @@ def test_delete_account_anonymizes_stops_charges_retains_records(
         campaign=campaign,
         amount_total=100,
         state=Order.State.PAID,
-        auto_renew=True,
-    )
-    agreement = RenewalAgreement.objects.create(
-        business=business,
-        campaign=campaign,
-        locations_snapshot=[],
-        duration_seconds=86_400,
-        charge_days=1,
-        content_version_hash="x" * 64,
-        token_ref="tok",
-        consent_at=timezone.now(),
-        next_run_at=timezone.now() + timedelta(days=1),
     )
 
     delete_account(owner)
 
-    for obj in (owner, business, order, agreement):
+    for obj in (owner, business, order):
         obj.refresh_from_db()
     assert owner.deleted_at is not None and not owner.is_active
     assert owner.phone_e164 != OLD_PHONE and owner.phone_e164.startswith("+998000")
     assert business.status == Business.Status.DISABLED
-    assert order.auto_renew is False  # no future charges...
-    assert order.state == Order.State.PAID  # ...but records retained (spec §14)
-    assert agreement.status == RenewalAgreement.Status.DISABLED
+    assert order.state == Order.State.PAID  # records retained (spec §14)
     with pytest.raises(OTPError):  # abandoned phone is reclaim-blocked
         request_otp(OLD_PHONE)

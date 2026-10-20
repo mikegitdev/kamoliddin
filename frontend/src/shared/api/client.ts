@@ -47,8 +47,6 @@ const CODE_MESSAGES: Record<string, keyof Dict> = {
   invalid_refund_amount: "errRefundAmount",
   provider_ref_required: "errProviderRef",
   invalid_transition: "errInvalidTransition",
-  renewal_unavailable: "errRenewalUnavailable",
-  renewal_term_ended: "errRenewalTermEnded",
   file_required: "errFileRequired",
   file_too_large: "errFileTooLarge",
   invalid_image: "errInvalidImage",

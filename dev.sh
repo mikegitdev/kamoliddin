@@ -20,7 +20,7 @@
 #   - Migrations are applied automatically before the servers start (idempotent).
 #   - Demo data is NOT seeded automatically (it would reset the DB). Run manually:
 #       cd backend && uv run python manage.py seed --demo --reset
-#   - Celery worker/beat are NOT started; background jobs (renewals) need them:
+#   - Celery worker/beat are NOT started; background jobs (placement states) need them:
 #       cd backend && uv run celery -A config worker -l info
 
 set -euo pipefail

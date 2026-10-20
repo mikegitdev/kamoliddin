@@ -48,14 +48,14 @@ import {
   IconPlus,
   IconSave,
 } from "@/shared/icons";
-import { useI18n } from "@/shared/i18n";
+import { plural, useI18n } from "@/shared/i18n";
 import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import type { ApiCampaign } from "@/entities/types";
 
 /* ------------------------------------------------------------------ *
  * Staged campaign editor (spec §7.1 workflow):
  *   1. content      — headline, text, banner
- *   2. placement    — branches, schedule, auto-renew (used at quote time)
+ *   2. placement    — branches, schedule (used at quote time)
  *   3. preview      — full ad as reviewers/public will see it, then submit
  *
  * Saved-vs-editing contract:
@@ -82,6 +82,21 @@ function defaultDates(): { start: string; end: string } {
 function addDays(localInput: string, days: number): string {
   const ms = tashkentInputMs(localInput);
   return Number.isFinite(ms) ? toTashkentInput(new Date(ms + days * 86_400_000)) : localInput;
+}
+
+// One-time purchase spans offered as one tap (days of 24h slots).
+const DURATION_PRESETS = [1, 3, 7, 14, 30, 60, 90] as const;
+
+/** Start presets in Tashkent wall time: now, tomorrow 09:00, next Monday 09:00. */
+function startPresets(): { now: string; tomorrow: string; nextMonday: string } {
+  const now = toTashkentInput(new Date(Date.now() + 5 * 60 * 1000));
+  const today = now.slice(0, 10);
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return {
+    now,
+    tomorrow: addDays(`${today}T09:00`, 1),
+    nextMonday: addDays(`${today}T09:00`, (8 - weekday) % 7 || 7),
+  };
 }
 
 const CONTENT_STEPS = 3;
@@ -122,7 +137,6 @@ export function CampaignEditorPage() {
   const [start, setStart] = useState(dates.start);
   const [end, setEnd] = useState(dates.end);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [autoRenew, setAutoRenew] = useState(false); // default OFF (spec §8 [C])
   const [saved, setSaved] = useState<ApiCampaign | null>(null);
   const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [restoredAt, setRestoredAt] = useState<number | null>(null);
@@ -159,7 +173,6 @@ export function CampaignEditorPage() {
       setStart(draft.start);
       setEnd(draft.end);
       setSelected(new Set(draft.selected));
-      setAutoRenew(draft.autoRenew);
       setStage(Math.min(draft.stage, CONTENT_STEPS - 1));
       setRestoredAt(draft.savedAt);
     } else {
@@ -168,6 +181,9 @@ export function CampaignEditorPage() {
       setBody(editing.body);
       setBannerKey(editing.banner_key);
       setBannerUrl(editing.banner_url);
+      // Content is locked under review, but placements can still be bought:
+      // open straight on the placement step.
+      if (["submitted", "under_review"].includes(editing.review_status)) setStage(1);
     }
     setSaved(editing);
     // Baseline is ALWAYS the server content: restored drafts are unsaved
@@ -179,7 +195,6 @@ export function CampaignEditorPage() {
       start: dates.start,
       end: dates.end,
       selected: [],
-      autoRenew: false,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, business]);
@@ -200,7 +215,6 @@ export function CampaignEditorPage() {
       setStart(draft.start);
       setEnd(draft.end);
       setSelected(new Set(draft.selected));
-      setAutoRenew(draft.autoRenew);
       setStage(Math.min(draft.stage, CONTENT_STEPS - 1));
       setRestoredAt(draft.savedAt);
     }
@@ -211,7 +225,6 @@ export function CampaignEditorPage() {
       start: draft?.start ?? dates.start,
       end: draft?.end ?? dates.end,
       selected: draft?.selected ?? [],
-      autoRenew: draft?.autoRenew ?? false,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [business, editId]);
@@ -221,12 +234,11 @@ export function CampaignEditorPage() {
     if (!baseline) return false;
     if (headline !== baseline.headline || body !== baseline.body || bannerKey !== baseline.bannerKey)
       return true;
-    if (start !== baseline.start || end !== baseline.end || autoRenew !== baseline.autoRenew)
-      return true;
+    if (start !== baseline.start || end !== baseline.end) return true;
     if (selected.size !== baseline.selected.length) return true;
     for (const id of selected) if (!baseline.selected.includes(id)) return true;
     return false;
-  }, [baseline, headline, body, bannerKey, start, end, autoRenew, selected]);
+  }, [baseline, headline, body, bannerKey, start, end, selected]);
 
   // Confirm (once) when leaving with unsaved edits — covers nav tabs and the
   // back button alike; intentional flows call bypassNextNav() first.
@@ -250,7 +262,6 @@ export function CampaignEditorPage() {
       start,
       end,
       selected: [...selected],
-      autoRenew,
       stage,
       baseUpdatedAt: saved?.updated_at ?? null,
       savedAt: Date.now(),
@@ -261,7 +272,7 @@ export function CampaignEditorPage() {
       /* storage full/unavailable — editing still works, recovery just won't */
     }
   }, [baseline, dirty, locked, business, headline, body, bannerKey, bannerUrl,
-      start, end, selected, autoRenew, stage, draftKey, saved]);
+      start, end, selected, stage, draftKey, saved]);
 
   // Warn on browser close/refresh with unsaved edits.
   useEffect(() => {
@@ -291,7 +302,7 @@ export function CampaignEditorPage() {
       headline: campaign.headline,
       body: campaign.body,
       bannerKey: campaign.banner_key,
-      start, end, selected: [...selected], autoRenew,
+      start, end, selected: [...selected],
     });
     setRestoredAt(null);
     qc.invalidateQueries({ queryKey: ["campaigns"] });
@@ -329,20 +340,48 @@ export function CampaignEditorPage() {
     onError: applyError,
   });
 
+  const quoteFor = (campaignId: string) =>
+    requestQuote({
+      business_id: business!.id,
+      campaign_id: campaignId,
+      location_ids: [...selected],
+      requested_start_at: localInputToIso(start),
+      requested_end_at: localInputToIso(end),
+    });
+
+  const goToCheckout = (order: { id: string }) => {
+    bypassNextNav();
+    navigate(`/app/checkout/${order.id}`);
+  };
+
   const quote = useMutation({
-    mutationFn: () =>
-      requestQuote({
-        business_id: business!.id,
-        campaign_id: saved!.id,
-        location_ids: [...selected],
-        requested_start_at: localInputToIso(start),
-        requested_end_at: localInputToIso(end),
-        auto_renew: autoRenew,
-      }),
-    onSuccess: (order) => {
-      bypassNextNav();
-      navigate(`/app/checkout/${order.id}`);
+    mutationFn: () => quoteFor(saved!.id),
+    onSuccess: goToCheckout,
+    onError: applyError,
+  });
+
+  // Pay-first flow (spec §7.2: payment and moderation are separate gates):
+  // save → submit → quote → checkout in one action. A paid order on an
+  // unapproved campaign keeps PENDING placements until approval; rejection
+  // unlocks the refund flow. If the quote step fails after a successful
+  // submit, `saved` already reflects the submitted campaign, so the user can
+  // retry with "Get quote & pay" without resubmitting.
+  const payAndSubmit = useMutation({
+    mutationFn: async () => {
+      let current = saved;
+      if (dirty || !current) {
+        current = current
+          ? await updateCampaign(current.id, contentPayload())
+          : await createCampaign(contentPayload());
+      }
+      if (["draft", "rejected"].includes(current.review_status)) {
+        current = await submitCampaign(current.id);
+      }
+      settleSaved(current);
+      qc.invalidateQueries({ queryKey: ["campaign-reviews", current.id] });
+      return quoteFor(current.id);
     },
+    onSuccess: goToCheckout,
     onError: applyError,
   });
 
@@ -379,7 +418,6 @@ export function CampaignEditorPage() {
     setStart(baseline.start);
     setEnd(baseline.end);
     setSelected(new Set(baseline.selected));
-    setAutoRenew(baseline.autoRenew);
     clearDraft(draftKey);
     setRestoredAt(null);
   };
@@ -390,6 +428,8 @@ export function CampaignEditorPage() {
   // ---------- stage gating & live estimate ----------
   const headlineOk = headline.trim().length > 2;
   const scheduleOk = tashkentInputMs(end) > tashkentInputMs(start);
+  const durationMs = tashkentInputMs(end) - tashkentInputMs(start);
+  const presets = startPresets();
   // The quote endpoint refuses past starts (a minute of slack for "now").
   const startInPast = tashkentInputMs(start) < Date.now() - 60_000;
   // Schedule fields live on stage 2 — stage 1 only gates on the headline.
@@ -481,12 +521,13 @@ export function CampaignEditorPage() {
     selected.size > 0 &&
     !!bannerKey &&
     !startInPast;
+  const busy = submit.isPending || payAndSubmit.isPending || quote.isPending;
 
   const stages = [t.stepContent, t.stepPlacement, t.stepPreview];
 
   // Editing APPROVED content re-enters moderation (spec §7.1 [R]) and takes
   // every live placement of this campaign off the public map until
-  // re-approval; auto-renewal pauses as well (content hash mismatch, §8).
+  // re-approval.
   // The user must confirm that consciously — no silent going-dark.
   const confirmApprovedEdit = async (): Promise<boolean> => {
     if (saved?.review_status !== "approved") return true;
@@ -737,7 +778,9 @@ export function CampaignEditorPage() {
 
       {/* ---------------- stage 2: placement ---------------- */}
       {stage === 1 && (
-        <fieldset className="form-section flush" disabled={locked}>
+        // Only content is review-locked; placements stay purchasable while the
+        // campaign is under review (the quote API accepts submitted campaigns).
+        <fieldset className="form-section flush" disabled={saved?.review_status === "suspended"}>
           <h3 className="section-title">
             {t.secBranches}
             {selected.size > 0 && (
@@ -803,21 +846,41 @@ export function CampaignEditorPage() {
             </div>
           </div>
 
-          {/* Duration presets: the product sells 24h slots — offer the common
-              spans as one tap instead of manual datetime math. */}
-          <div className="duration-presets" role="group" aria-label={t.secSchedule}>
+          {/* Date presets: one tap instead of manual datetime math. Moving
+              the start keeps the chosen duration. */}
+          <div className="duration-presets" role="group" aria-label={t.presetStartLabel}>
+            <span className="muted-2">{t.presetStartLabel}:</span>
             {[
-              { days: 1, label: t.duration24h },
-              { days: 3, label: t.duration3d },
-              { days: 7, label: t.duration7d },
-            ].map(({ days, label }) => (
+              { value: presets.now, label: t.startNow },
+              { value: presets.tomorrow, label: t.startTomorrow },
+              { value: presets.nextMonday, label: t.startNextMonday },
+            ].map(({ value, label }) => (
+              <button
+                key={label}
+                type="button"
+                className="btn subtle small"
+                onClick={() => {
+                  setStart(value);
+                  if (durationMs > 0) {
+                    setEnd(toTashkentInput(new Date(tashkentInputMs(value) + durationMs)));
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="duration-presets" role="group" aria-label={t.presetDurationLabel}>
+            <span className="muted-2">{t.presetDurationLabel}:</span>
+            {DURATION_PRESETS.map((days) => (
               <button
                 key={days}
                 type="button"
                 className="btn subtle small"
+                aria-pressed={durationMs === days * 86_400_000}
                 onClick={() => setEnd(addDays(start, days))}
               >
-                {label}
+                {days === 1 ? t.duration24h : `${days} ${plural(locale, "days", days)}`}
               </button>
             ))}
           </div>
@@ -843,19 +906,6 @@ export function CampaignEditorPage() {
               <span className="muted-2">{t.estimateNoTariff}</span>
             )}
           </div>
-
-          <h3 className="section-title mt-18">
-            {t.secRenewal}
-          </h3>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={autoRenew}
-              onChange={(e) => setAutoRenew(e.target.checked)}
-            />
-            {t.autoRenew}
-          </label>
-          <span className="field-hint">{t.autoRenewHint}</span>
 
           <div className="stage-actions">
             <button className="btn" onClick={() => setStage(0)}>
@@ -942,9 +992,9 @@ export function CampaignEditorPage() {
             <p className="callout danger"><IconAlert size={14} /> {t.reReviewWarning}</p>
           )}
 
-          {!canQuote && !locked && saved && ["draft", "rejected"].includes(saved.review_status) && (
+          {canSubmit && selected.size === 0 && (
             <p className="field-hint stage-hint">
-              <IconAlert size={12} /> {t.quoteNeedsSubmit}
+              <IconAlert size={12} /> {t.payNeedsBranches}
             </p>
           )}
 
@@ -954,27 +1004,39 @@ export function CampaignEditorPage() {
             </button>
             <div className="row">
               {saveButton}
-              {canQuote && (
+              {canSubmit && (
                 <button
                   className="btn"
-                  disabled={quote.isPending}
-                  onClick={() => quote.mutate()}
+                  disabled={busy}
+                  onClick={() => submit.mutate()}
                 >
-                  {quote.isPending ? t.loading : t.getQuoteAndPay}
+                  {submit.isPending ? t.sending : t.submitWithoutPay}
                 </button>
               )}
               {canSubmit && (
                 <button
                   className="btn primary"
-                  disabled={submit.isPending}
-                  onClick={() => submit.mutate()}
+                  disabled={busy || selected.size === 0 || startInPast}
+                  onClick={() => payAndSubmit.mutate()}
                 >
-                  {submit.isPending ? t.sending : dirty ? t.saveAndSubmit : t.submitReview}
+                  {payAndSubmit.isPending ? t.loading : t.payAndSubmit}
+                </button>
+              )}
+              {canQuote && (
+                <button
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={() => quote.mutate()}
+                >
+                  {quote.isPending ? t.loading : t.getQuoteAndPay}
                 </button>
               )}
             </div>
           </div>
-          {canSubmit && !bannerKey && <p className="field-hint"><IconAlert size={12} /> {t.bannerRequired}</p>}
+          {(canSubmit || canQuote) && (
+            <p className="field-hint">{t.payFirstNote}</p>
+          )}
+          {!locked && !approved && !bannerKey && <p className="field-hint"><IconAlert size={12} /> {t.bannerRequired}</p>}
         </div>
       )}
     </section>

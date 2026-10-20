@@ -1,105 +1,21 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useOrders, useRenewals } from "@/shared/api/queries";
+import { useOrders } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
-import { cancelRenewal, enableRenewal, requestRefund } from "@/features/advertiser/api";
+import { requestRefund } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { OrderChip, QueryError } from "@/shared/ui";
-import { confirmDialog, mountDialog, RefundDialogBody } from "@/shared/dialog";
+import { mountDialog, RefundDialogBody } from "@/shared/dialog";
 import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
-import type { ApiRenewal } from "@/entities/types";
 
 const PAGE_SIZE = 20;
-
-const RENEWAL_LABEL: Record<string, "renewalActive" | "renewalAlert" | "renewalDisabled"> = {
-  active: "renewalActive",
-  alert: "renewalAlert",
-  disabled: "renewalDisabled",
-};
-
-const RENEWAL_CHIP: Record<string, string> = {
-  active: "chip green",
-  alert: "chip orange",
-  disabled: "chip gray",
-};
-
-function RenewalRow({ renewal }: { renewal: ApiRenewal }) {
-  const { t, locale } = useI18n();
-  const queryClient = useQueryClient();
-
-  const cancel = useMutation({
-    mutationFn: () => cancelRenewal(renewal.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["renewals"] }),
-  });
-  const enable = useMutation({
-    mutationFn: () => enableRenewal(renewal.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["renewals"] }),
-  });
-
-  const pending = cancel.isPending || enable.isPending;
-  const lastError = cancel.error ?? enable.error;
-  const failed = lastError ? (lastError instanceof ApiError ? lastError.message : t.error) : null;
-
-  const toggle = async () => {
-    const cancelling = renewal.status !== "disabled";
-    const ok = await confirmDialog({
-      t,
-      body: cancelling ? t.confirmCancelRenewal : t.confirmEnableRenewal,
-      confirmLabel: cancelling ? t.cancelRenewal : t.enableRenewal,
-      cancelLabel: t.cancel,
-    });
-    if (!ok) return;
-    // Clear the previous attempt's error so only the latest failure shows.
-    cancel.reset();
-    enable.reset();
-    if (cancelling) cancel.mutate();
-    else enable.mutate();
-  };
-
-  return (
-    <li className="renewal-row">
-      <div className="row-between items-start">
-        <div className="min-w-0 stack-text">
-          <strong className="wrap-anywhere">{renewal.campaign_headline}</strong>
-          <span className="muted-2">
-            {renewal.locations_count} {t.locationsCount} · {renewal.charge_days} {t.days} ·{" "}
-            {t.nextCharge}: {formatDateTime(renewal.next_run_at, locale)}
-          </span>
-        </div>
-        <div className="row justify-end">
-          <span className={RENEWAL_CHIP[renewal.status] ?? "chip gray"}>
-            {t[RENEWAL_LABEL[renewal.status] as "renewalActive"]}
-          </span>
-          <button
-            className="btn small"
-            disabled={pending}
-            onClick={() => void toggle()}
-            title={t.paidTimeStays}
-          >
-            {pending
-              ? t.loading
-              : renewal.status !== "disabled"
-                ? t.cancelRenewal
-                : t.enableRenewal}
-          </button>
-        </div>
-      </div>
-      {failed && (
-        <p className="error" role="alert">
-          {failed}
-        </p>
-      )}
-    </li>
-  );
-}
 
 export function BillingPage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const { data: orders, isError: ordersFailed, refetch: refetchOrders } = useOrders();
-  const { data: renewals } = useRenewals();
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const refund = useMutation({
@@ -223,18 +139,6 @@ export function BillingPage() {
             {t.showMore} ({orders.length - visibleCount})
           </button>
         </p>
-      )}
-
-      {renewals && renewals.length > 0 && (
-        <>
-          <hr className="divider" />
-          <h2>{t.renewals}</h2>
-          <ul className="list">
-            {renewals.map((r) => (
-              <RenewalRow key={r.id} renewal={r} />
-            ))}
-          </ul>
-        </>
       )}
     </section>
   );

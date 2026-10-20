@@ -91,7 +91,6 @@ class QuoteView(APIView):
                 location_ids=serializer.validated_data["location_ids"],
                 requested_start_at=serializer.validated_data["requested_start_at"],
                 requested_end_at=serializer.validated_data["requested_end_at"],
-                auto_renew=serializer.validated_data["auto_renew"],
             )
         except PermissionDenied:
             raise

@@ -4,6 +4,9 @@
 financial invariants (repo AGENTS.md rule 3) — read before editing billing,
 payments, renewals or moderation services.
 
+> **Partially superseded by ADR-0007 (2026-10-20):** auto-renewal was removed;
+> the renewal items below (§4, §5, §7 and renewal parts of §8) are history only.
+
 ## Context
 
 Spec §7 defines the order/payment and campaign lifecycles. Implementation

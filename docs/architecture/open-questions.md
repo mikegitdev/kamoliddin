@@ -2,16 +2,16 @@
 
 | # | Question | Current provisional default | Decided by |
 |---|---|---|---|
-| 1 | CLICK merchant-initiated recurring charges | Adapter unimplemented until merchant confirmation; agreements created as `pending_token` with empty token (ADR-0005) | pending provider |
+| 1 | CLICK one-time checkout | Adapter unimplemented until merchant confirmation; recurring charges are out of scope (ADR-0007) | pending provider |
 | 2 | 2GIS licensing / tile economics | MapLibre + OSM tiles in dev only; production tiles unresolved — **launch blocker: public OSM tiles must not serve prod** | pending provider |
 | 3 | Eskiz vs Play Mobile | Fake adapter in dev; Eskiz adapter implemented from published docs (ADR-0006) but benchmark not run; Play Mobile unverified | pending benchmark |
 | 4 | Final daily rate (UZS) | Demo tariff 30,000 UZS/24h | product owner |
-| 5 | Renewal price policy (current tariff vs locked) | `current_tariff`, consent shown at opt-in | product owner |
+| 5 | ~~Renewal price policy~~ | Moot — no auto-renewal, one-time payment per order (ADR-0007) | product owner |
 | 6 | 25h request: display 25h (charge 2 days) vs display 48h entitlement | Honor requested display duration, disclose 2-day charge before payment | product owner |
 | 7 | Partial-term refund on admin suspension | Manual review queue, no auto-proration | product owner |
 | 8 | DNS / VPS sizing / RPO-RTO | VPS sizing proposed (see "Provisional VPS sizing" below, unvalidated estimate); DNS and RPO/RTO not yet chosen | ops design |
 | 9 | Reconciliation sweep command | Not shipped; `ops_report` surfaces ambiguous states for manual resolution | engineering backlog |
-| 10 | Renewal timed retries | One-shot (ALERT, no retry) — revisit with real provider (ADR-0005 §7) | engineering backlog |
+| 10 | ~~Renewal timed retries~~ | Moot — auto-renewal removed (ADR-0007) | product owner |
 
 ## Provisional VPS sizing (open question #8)
 

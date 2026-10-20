@@ -25,7 +25,6 @@ urlpatterns = [
         path("", include("apps.locations.urls")),
         path("", include("apps.campaigns.urls")),
         path("", include("apps.billing.urls")),
-        path("", include("apps.renewals.urls")),
         path("", include("apps.moderation.api_urls")),
     ])),
     path("api/v1/media/upload", MediaUploadView.as_view(), name="media-upload"),

@@ -27,7 +27,7 @@ const PLURAL_FORMS: Record<Locale, Record<"locations" | "ads" | "days", [string,
     days: ["день", "дня", "дней"],
   },
   uz: {
-    locations: ["nuqta", "nuqta"],
+    locations: ["joy", "joy"],
     ads: ["e'lon", "e'lon"],
     days: ["kun", "kun"],
   },

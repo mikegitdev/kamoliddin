@@ -3,15 +3,18 @@ import { formatDateTime } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { CampaignChip, FallImg, PlacementChip, QueryError } from "@/shared/ui";
 import type { CampaignStatus } from "@/entities/types";
-import { IconBlock, IconCheck, IconEye } from "@/shared/icons";
+import { IconEye } from "@/shared/icons";
 import {
   FilterPill,
+  RowMenu,
   ServerPager,
+  statusItem,
   useDebounced,
   useHistoryState,
   usePagedOffset,
   useStaffAction,
   useStaffLink,
+  ListCount,
 } from "./controls";
 
 /** Every placement on the platform with live public visibility, plus the
@@ -58,8 +61,9 @@ export function PlacementsTab({ locale }: { locale: string }) {
 
   return (
     <section>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.campaign} / ${t.branch}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -97,14 +101,10 @@ export function PlacementsTab({ locale }: { locale: string }) {
         {campaign && (
           <FilterPill label={first?.campaign_headline ?? t.campaign} onClear={() => link.clear("campaign")} />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -121,7 +121,7 @@ export function PlacementsTab({ locale }: { locale: string }) {
             {data?.results.map((p) => (
               <tr key={p.id}>
                 <td className="max-w-240 wrap-anywhere">
-                  <div className="row">
+                  <div className="staff-entity">
                     <FallImg className="thumb" src={p.banner_url} alt="" />
                     <div className="min-w-0">
                       <strong>{p.campaign_headline}</strong>
@@ -148,31 +148,21 @@ export function PlacementsTab({ locale }: { locale: string }) {
                     )}
                   </div>
                 </td>
-                <td className="muted-2">
+                <td className="muted-2 nowrap">
                   {formatDateTime(p.start_at, lang)}
                   <div>→ {formatDateTime(p.end_at, lang)}</div>
                 </td>
                 <td className="muted-2">{p.source_type === "grant" ? t.sourceGrant : t.sourcePaid}</td>
                 <td>
-                  <div className="row">
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: "placement", entity_id: p.id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                    {(p.state === "active" || p.state === "scheduled" ||
-                      (p.state === "blocked" && p.block_reason === "admin_takedown")) && (
-                      <button
-                        className={`btn small${p.state !== "blocked" ? " danger" : ""}`}
-                        disabled={action.busy}
-                        onClick={() => void toggle(p)}
-                      >
-                        {p.state !== "blocked" ? <IconBlock size={12} /> : <IconCheck size={12} />}{" "}
-                        {p.state !== "blocked" ? t.block : t.unblock}
-                      </button>
-                    )}
-                  </div>
+                  <RowMenu
+                    items={[
+                      { label: t.viewLog, onClick: () => link.go("logs", { entity: "placement", entity_id: p.id }) },
+                      ...(p.state === "active" || p.state === "scheduled" ||
+                        (p.state === "blocked" && p.block_reason === "admin_takedown")
+                        ? [statusItem(p.state !== "blocked", t.block, t.unblock, action.busy, () => void toggle(p))]
+                        : []),
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

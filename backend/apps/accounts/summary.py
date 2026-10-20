@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 from apps.billing.models import Order
 from apps.campaigns.models import Campaign
 from apps.placements.models import Placement
-from apps.renewals.models import RenewalAgreement
 
 EXPIRING_WINDOW = timedelta(hours=48)
 
@@ -30,14 +29,6 @@ class _SpendSerializer(serializers.Serializer):
     currency = serializers.CharField()
 
 
-class _NextRenewalSerializer(serializers.Serializer):
-    agreement_id = serializers.UUIDField()
-    campaign_headline = serializers.CharField()
-    next_run_at = serializers.DateTimeField()
-    locations_count = serializers.IntegerField()
-    charge_days = serializers.IntegerField()
-
-
 class MeSummarySerializer(serializers.Serializer):
     """Response shape of GET /auth/me/summary (schema documentation only)."""
 
@@ -47,7 +38,6 @@ class MeSummarySerializer(serializers.Serializer):
     active_placements = serializers.IntegerField()
     expiring_soon = _ExpiringPlacementSerializer(many=True)
     spend = _SpendSerializer()
-    next_renewal = _NextRenewalSerializer(allow_null=True)
 
 
 class MeSummaryView(APIView):
@@ -86,14 +76,6 @@ class MeSummaryView(APIView):
             or 0
         )
 
-        renewal = (
-            RenewalAgreement.objects.filter(business__owner=owner,
-                                            status=RenewalAgreement.Status.ACTIVE)
-            .select_related("campaign")
-            .order_by("next_run_at")
-            .first()
-        )
-
         return Response({
             "campaigns": by_status,
             "active_placements": active.count(),
@@ -108,15 +90,4 @@ class MeSummaryView(APIView):
                 for p in expiring
             ],
             "spend": {"total": total_spent, "month": month_spent, "currency": "UZS"},
-            "next_renewal": (
-                {
-                    "agreement_id": renewal.id,
-                    "campaign_headline": renewal.campaign.headline,
-                    "next_run_at": renewal.next_run_at,
-                    "locations_count": len(renewal.locations_snapshot),
-                    "charge_days": renewal.charge_days,
-                }
-                if renewal
-                else None
-            ),
         })

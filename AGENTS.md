@@ -18,11 +18,11 @@ Spec status markers: **[C]** confirmed decision (never change silently),
    gate (§19). Never simulate a production payment success outside the fake adapter.
 5. Every PR that changes models **includes migrations**; API changes include the
    regenerated OpenAPI schema; behavior changes include tests (per repo testing policy).
-6. **Never write raw card data** (PAN/CVV) anywhere. Renewal tokens are opaque
-   provider references only.
+6. **Never write raw card data** (PAN/CVV) anywhere. Payments are one-time per
+   order — no stored tokens or recurring charges (ADR-0007).
 7. Never bypass permission checks or disable throttling to "make it work".
 8. **Preserve idempotency**: order creation, webhook processing, placement
-   activation, and renewal charging must stay idempotent under retries and
+   activation, and refunds must stay idempotent under retries and
    duplicate callbacks.
 9. Security-sensitive and paid-entitlement changes require maintainer review —
    flag them explicitly in the PR description.
@@ -43,6 +43,6 @@ docs/       product, architecture/ADR, runbooks, acceptance
 ## Module ownership (parallel-agent model, spec §16)
 
 - **Architect/maintainer owns:** domain schema (`backend/apps/*/models.py` migration
-  chain), API versioning (`/api/v1`), payments/renewals state machines.
+  chain), API versioning (`/api/v1`), payments/refunds state machines.
 - Feature agents own everything behind those contracts.
 - Do not parallel-edit: migration chains, financial invariants, `docker-compose` files.

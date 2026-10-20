@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
 import { useReports } from "@/shared/api/queries";
@@ -9,12 +8,11 @@ import { ReportStateChip, QueryError } from "@/shared/ui";
 import {
   IconCheck,
   IconClock,
-  IconExternal,
   IconMegaphone,
   IconPin,
   IconScale,
 } from "@/shared/icons";
-import { useStaffLink } from "./controls";
+import { RowMenu, useStaffLink } from "./controls";
 
 export function ReportsTab({
   onError,
@@ -66,7 +64,7 @@ export function ReportsTab({
             <div className="review-body">
               <div className="row-between">
                 <strong>
-                  {r.entity === "campaign" ? <IconMegaphone size={12} /> : <IconPin size={12} />}{" "}
+                  {r.entity === "campaign" ? <IconMegaphone size={16} /> : <IconPin size={16} />}{" "}
                   {r.entity === "campaign" ? t.campaign : t.branch} · …{r.entity_id.slice(0, 8)}
                 </strong>
                 <ReportStateChip state={r.state} />
@@ -123,31 +121,25 @@ export function ReportsTab({
                     >
                       <IconScale size={12} /> {t.process}
                     </button>
-                    <button
-                      className="btn small"
-                      onClick={() =>
-                        link.go("placements", r.entity === "campaign"
-                          ? { campaign: r.entity_id }
-                          : { location: r.entity_id })
-                      }
-                    >
-                      {t.viewPlacements}
-                    </button>
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: r.entity, entity_id: r.entity_id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                    {r.entity === "campaign" ? (
-                      <Link className="btn subtle small" to={`/ads/${r.entity_id}`}>
-                        <IconExternal size={12} /> {t.openEntity}
-                      </Link>
-                    ) : (
-                      <Link className="btn subtle small" to={`/locations/${r.entity_id}`}>
-                        <IconExternal size={12} /> {t.openEntity}
-                      </Link>
-                    )}
+                    <RowMenu
+                      items={[
+                        {
+                          label: t.viewPlacements,
+                          onClick: () =>
+                            link.go("placements", r.entity === "campaign"
+                              ? { campaign: r.entity_id }
+                              : { location: r.entity_id }),
+                        },
+                        {
+                          label: t.viewLog,
+                          onClick: () => link.go("logs", { entity: r.entity, entity_id: r.entity_id }),
+                        },
+                        {
+                          label: t.openEntity,
+                          to: r.entity === "campaign" ? `/ads/${r.entity_id}` : `/locations/${r.entity_id}`,
+                        },
+                      ]}
+                    />
                   </div>
                 ))}
             </div>

@@ -12,7 +12,6 @@ every mutation requires a reason and appends an ActivityEvent.
 - GET  /admin/activity/export            same filters as CSV
 - GET  /admin/payments                   payment attempts log
 - GET  /admin/payment-events             provider webhook log
-- GET  /admin/renewals                   renewal attempt log
 
 Lists use the default LimitOffset pagination ({count, next, previous, results}).
 No endpoint here moves money or grants staff rights (by design).
@@ -49,7 +48,6 @@ from apps.moderation.services import (
 )
 from apps.payments.models import PaymentAttempt, PaymentEvent
 from apps.placements.models import Placement, eligible_now_q
-from apps.renewals.models import RenewalAttempt
 
 User = get_user_model()
 
@@ -598,38 +596,3 @@ class AdminPaymentEventListView(ListAPIView):
             qs = qs.filter(event_id__icontains=q)
         return qs
 
-
-class AdminRenewalAttemptSerializer(serializers.ModelSerializer):
-    agreement_status = serializers.CharField(source="agreement.status", read_only=True)
-    business_name = serializers.CharField(source="agreement.business.name",
-                                          read_only=True)
-    campaign_headline = serializers.CharField(source="agreement.campaign.headline",
-                                              read_only=True)
-    amount = serializers.IntegerField(source="order.amount_total", read_only=True,
-                                      default=None)
-
-    class Meta:
-        model = RenewalAttempt
-        fields = ("id", "agreement_id", "agreement_status", "renewal_period_key",
-                  "state", "order_id", "amount", "business_name",
-                  "campaign_headline", "attempted_at")
-
-
-class AdminRenewalAttemptListView(ListAPIView):
-    """GET /admin/renewals?state=&agreement_status=&q="""
-
-    serializer_class = AdminRenewalAttemptSerializer
-    permission_classes = [IsAdminUser]
-
-    def get_queryset(self):
-        qs = RenewalAttempt.objects.select_related(
-            "agreement", "agreement__business", "agreement__campaign", "order"
-        ).order_by("-attempted_at")
-        if flt := _param(self.request, "state"):
-            qs = qs.filter(state=flt)
-        if agreement_status := _param(self.request, "agreement_status"):
-            qs = qs.filter(agreement__status=agreement_status)
-        if q := _param(self.request, "q"):
-            qs = qs.filter(Q(agreement__business__name__icontains=q)
-                           | Q(agreement__campaign__headline__icontains=q))
-        return qs

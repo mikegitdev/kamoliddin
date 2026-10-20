@@ -1,6 +1,6 @@
 """Per-location ad cap (spec §14): the sixth concurrent ad cannot be purchased.
 
-Capacity semantics (ADR-0003): a campaign extending/renewing ITSELF never
+Capacity semantics (ADR-0003): a campaign extending ITSELF never
 counts its own ads — so the cap test fills the location with a DIFFERENT
 campaign's placements, which is also the real-world scenario (six distinct
 advertisers competing for five slots)."""
@@ -57,7 +57,7 @@ def test_sixth_ad_at_location_is_rejected(owner, tariff, business, campaign, loc
 def test_own_campaign_extension_at_capped_location_is_allowed(
     owner, tariff, business, campaign, location
 ):
-    """ADR-0003: renewals/extensions of the same campaign work at a full
+    """ADR-0003: extensions (a new one-time order) of the same campaign work at a full
     location because the new term starts AFTER the campaign's own current
     term ends — the overlap filter never counts the campaign's own ads.
     Stacking a SECOND simultaneous ad of the same campaign is NOT free: it

@@ -41,15 +41,6 @@ def approve_campaign(*, campaign: Campaign, reviewer) -> CampaignReview:
     )
     # Separate gate (spec §7.2): approval activates already-paid placements.
     from apps.placements.services import on_campaign_approved
-    from apps.renewals.models import RenewalAgreement
-    from apps.renewals.services import content_hash
-
-    # Renewals charge only for approved content: once an edited version is
-    # re-approved, it becomes the content the agreement renews (otherwise the
-    # agreement would fail "content_changed_needs_re_review" forever).
-    RenewalAgreement.objects.filter(campaign=campaign).update(
-        content_version_hash=content_hash(campaign)
-    )
 
     moved = on_campaign_approved(campaign)
     if moved:
@@ -163,8 +154,8 @@ def set_business_status(*, business, staff, status: str, reason: str) -> None:
 @transaction.atomic
 def set_location_status(*, location, staff, status: str, reason: str) -> None:
     """Disable/enable one branch: the live eligibility filter
-    (location__status=active) hides its placements; renewals touching it fail
-    their `locations_inactive` gate. Sibling branches are untouched (spec §14)."""
+    (location__status=active) hides its placements. Sibling branches are
+    untouched (spec §14)."""
     if status not in {"active", "disabled"}:
         raise ModerationError(f"Unsupported status {status!r}")
     location.status = status

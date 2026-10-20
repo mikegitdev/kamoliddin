@@ -7,53 +7,28 @@ Cron (docs/runbooks/deploy.md):
 Prints a plain-text report to stdout (cron mail delivers it) and, when
 OPS_TELEGRAM_BOT_TOKEN + OPS_TELEGRAM_CHAT_ID are set, sends the same text to
 a Telegram chat. Exits non-zero when something needs human eyes: ambiguous
-reconciliation states, unsettled succeeded payments, blocked placements, or a
+unsettled succeeded payments, blocked placements, or a
 stale backup stamp — so a simple `|| alert` wrapper also works.
 """
 import os
 import shutil
 import sys
-from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = "Daily ops report: payment/renewal health, disk, backup freshness, worker heartbeat."
+    help = "Daily ops report: payment health, disk, backup freshness, worker heartbeat."
 
     def handle(self, *args, **options):
         from apps.billing.models import Order
         from apps.payments.models import PaymentAttempt
         from apps.placements.models import Placement
-        from apps.renewals.models import RenewalAgreement, RenewalAttempt
 
         now = timezone.now()
-        day_ago = now - timedelta(hours=24)
         lines = [f"== LocalAds ops report {now:%Y-%m-%d %H:%M} UTC =="]
         critical = False
-
-        recon = RenewalAttempt.objects.filter(
-            state=RenewalAttempt.State.RECONCILIATION
-        ).count()
-        recon_new = RenewalAttempt.objects.filter(
-            state=RenewalAttempt.State.RECONCILIATION, attempted_at__gte=day_ago
-        ).count()
-        lines.append(f"renewal reconciliation attempts: {recon} ({recon_new} in last 24h)")
-        critical |= recon > 0
-
-        failed_24h = RenewalAttempt.objects.filter(
-            state=RenewalAttempt.State.FAILED, attempted_at__gte=day_ago
-        ).count()
-        lines.append(f"renewal failures (24h): {failed_24h}")
-
-        alerting = RenewalAgreement.objects.filter(
-            status=RenewalAgreement.Status.ALERT
-        ).count()
-        pending_token = RenewalAgreement.objects.filter(
-            status=RenewalAgreement.Status.PENDING_TOKEN
-        ).count()
-        lines.append(f"renewal agreements: alert={alerting} pending_token={pending_token}")
 
         # Succeeded provider money that never settled onto its order — the
         # crash window between webhook commit and settlement (needs the

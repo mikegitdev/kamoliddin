@@ -19,7 +19,7 @@ Related code: `apps/accounts/services.py` (phone change, soft delete),
   account for `PHONE_RECLAIM_BLOCK_DAYS` (default **30**) — recycled-SIM
   takeover guard. Blocks are visible as `PhoneChangeRecord` rows.
 - Account deletion is **soft**: phone anonymized (`+998000xxxxxx`), user
-  deactivated, businesses disabled (placements hide), auto-renewals cancelled;
+  deactivated, businesses disabled (placements hide);
   orders/payment records are retained (spec §14). Refunds stay manual.
 
 ## Scenario 1 — Owner lost the phone number

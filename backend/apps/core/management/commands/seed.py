@@ -3,8 +3,8 @@
 The demo dataset is idempotent (keyed on business slug + campaign headline) and
 `--reset` wipes previously-seeded demo data first. It exercises the REAL
 pipeline: submit -> quote -> checkout -> fake payment -> settle -> approve,
-plus a rejected+refunded campaign, a paid-but-pending one, an auto-renew
-agreement and a free grant, so the cabinet and map have meaningful content.
+plus a rejected+refunded campaign, a paid-but-pending one, a one-day
+purchase and a free grant, so the cabinet and map have meaningful content.
 
 Demo accounts (fake SMS prints codes to the server log):
   owner: +998901234567   staff: +998901110000 (password: admin12345)

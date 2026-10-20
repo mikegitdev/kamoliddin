@@ -4,8 +4,10 @@ Everything goes through the real services — no fabricated state transitions.
 Banner images are generated with Pillow into MEDIA_ROOT so /media/... URLs work.
 
 The dataset imitates real Tashkent street advertising: local business naming
-(UZ/RU mix), real districts and streets, realistic UZS pricing, and promo
-banners with the «РЕКЛАМА» marking required on ads in Uzbekistan.
+(UZ/RU mix), ad copy written by businesses in Russian or Uzbek (roughly half
+of each, like the real ad market), real districts and streets, realistic UZS
+pricing, and promo banners with the «РЕКЛАМА» marking required on ads in
+Uzbekistan.
 """
 
 import hashlib
@@ -20,8 +22,11 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 
 
-def _biz(name, slug, category, phone, description, headline, body, branches):
-    """branches: [(label, address, lon, lat), ...]"""
+def _biz(name, slug, category, phone, description, headline, body, branches, lang="ru"):
+    """branches: [(label, address, lon, lat), ...]; lang — the language the
+    business writes its ad copy in ("ru" | "uz"). Ad text is advertiser
+    content, not UI: each ad is written in one language, and the corpus
+    carries both, as businesses in Tashkent do."""
     return {
         "name": name,
         "slug": slug,
@@ -30,6 +35,7 @@ def _biz(name, slug, category, phone, description, headline, body, branches):
         "description": description,
         "headline": headline,
         "body": body,
+        "lang": lang,
         "branches": branches,
     }
 
@@ -59,12 +65,13 @@ DEMO_BUSINESSES = [
         "restaurant",
         "+998 90 340 55 18",
         "Osh markazi Chorsu yaqinida: tandir va qozon taomlari.",
-        "Ош в казане, каждое утро с 7:00",
-        "Настоящий ош из дровяной печи, плов по-фергански по средам и "
-        "пятницам. Порция 30 000 сум, чайник чая в подарок до 10:00.",
+        "Qozonda osh, har tong soat 7:00 dan",
+        "O'tin pechida haqiqiy osh, chorshanba va juma kunlari Farg'ona "
+        "palovi. Porsiya 30 000 so'm, soat 10:00 gacha choy idishi bepul.",
         [
             ("Чорсу", "Ташкент, Кичик Бешёгоч, 12 (рядом с Чорсу)", 69.2290, 41.3270),
         ],
+        lang="uz",
     ),
     _biz(
         "Choyxona Qumush",
@@ -85,12 +92,13 @@ DEMO_BUSINESSES = [
         "cafe",
         "+998 94 632 18 09",
         "Pechka nonlar: obi-non, patir, chim-chirma.",
-        "Горячая патир и оби-нон с 6:00 утра",
-        "Свежий хлеб из тандыра к утреннему чаю. Патир — 4 000, оби-нон — "
-        "3 000 сум. К вечеру всегда горячие лепёшки к плову.",
+        "Issiq patir va obi-non ertalab soat 6:00 dan",
+        "Tandirdan ertalabki choyga issiq non. Patir — 4 000, obi-non — "
+        "3 000 so'm. Kechqurun palovga doim issiq patirlar bor.",
         [
             ("Олмазор-2", "Ташкент, Олмазор-2, ул. Соглик, 17", 69.2080, 41.3440),
         ],
+        lang="uz",
     ),
     _biz(
         "Kafe Bahor",
@@ -124,9 +132,9 @@ DEMO_BUSINESSES = [
         "beauty",
         "+998 90 925 31 44",
         "Go'zallik saloni: soch, tirnoq, grim.",
-        "Свадебный макияж — запись за 3 дня",
-        "Свадебный пакет: макияж, причёска и пробный образ — 800 000 сум. "
-        "Наращивание ресниц от 180 000 сум. Работаем с 9:00 до 20:00.",
+        "Toy makiyaji — 3 kun oldin yozilish",
+        "Toy paketi: makiyaj, soch turmagi va sinov ko'rinish — 800 000 so'm. "
+        "Kiprik uzaytirish 180 000 so'mdan. Soat 9:00–20:00 ishlaymiz.",
         [
             (
                 "Юнусабад Mall, 2 этаж",
@@ -141,6 +149,7 @@ DEMO_BUSINESSES = [
                 41.3520,
             ),
         ],
+        lang="uz",
     ),
     _biz(
         "Studio Zuhra",
@@ -161,12 +170,13 @@ DEMO_BUSINESSES = [
         "fitness",
         "+998 97 120 88 53",
         "Sport zal: kardi-zona, og'ir atletika, kurash.",
-        "Годовой абонемент — 4 месяца в подарок",
-        "Тренажёрный зал 1200 м², кардио-зона и зал единоборств. Персональный "
-        "тренер — первая тренировка бесплатно. Открыты 6:00–23:00.",
+        "Yillik abonement — 4 oy sovg'a",
+        "1200 m² mashg'ulot zali, kardi-zona va kurash zali. Shaxsiy murabbiy "
+        "— birinchi mashg'ulot bepul. Soat 6:00–23:00 ochiq.",
         [
             ("Юнусабад-19", "Ташкент, Юнусабад-19, ул. Богишамол, 205", 69.3220, 41.3390),
         ],
+        lang="uz",
     ),
     _biz(
         "Yoga Bog'i",
@@ -187,12 +197,14 @@ DEMO_BUSINESSES = [
         "medicine",
         "+998 71 200 30 40",
         "Stomatologiya: davolash, plomba, gigiyena.",
-        "Чистка и полировка зубов — 250 000 сум",
-        "Ультразвуковая чистка + Air Flow + полировка. Консультация "
-        "бесплатная. Работаем без обеда, с 9:00 до 20:00. Рассрочка на лечение.",
+        "Tish tozalash va sayqallash — 250 000 so'm",
+        "Ultratovushli tozalash + Air Flow + sayqallash. Konsultatsiya "
+        "bepul. Tushlik tanaffusisiz, soat 9:00–20:00. Davolashga bo'lib "
+        "to'lash.",
         [
             ("Чиланзор", "Ташкент, ул. Хамида Олимжона, 5", 69.2350, 41.2840),
         ],
+        lang="uz",
     ),
     _biz(
         "Tez Natija Lab",
@@ -200,12 +212,14 @@ DEMO_BUSINESSES = [
         "medicine",
         "+998 90 177 62 98",
         "Tibbiy laboratoriya: 200+ tahlil turi.",
-        "Анализы за 2 часа — результаты в Telegram",
-        "Более 200 видов анализов, забор крови с 7:30. Общий анализ крови — "
-        "45 000 сум. Результаты отправим в WhatsApp или Telegram.",
+        "Tahlillar 2 soatda — natija Telegram orqali",
+        "200 dan ortiq tahlil turi, qon tekshiruvi soat 7:30 dan. Qonning "
+        "umumiy tahlili — 45 000 so'm. Natijani WhatsApp yoki Telegram'ga "
+        "yuboramiz.",
         [
             ("Юнусабад-6", "Ташкент, Юнусабад-6, ул. Увайсий, 3", 69.2810, 41.3480),
         ],
+        lang="uz",
     ),
     _biz(
         "Mebel Bazar",
@@ -226,12 +240,14 @@ DEMO_BUSINESSES = [
         "retail",
         "+998 93 388 21 47",
         "Smartfon va noutbuklar do'koni.",
-        "Смартфоны в рассрочку 0% на 12 месяцев",
-        "Официальная гарантия 12 месяцев. Trade-in: обменяйте старый смартфон "
-        "на новый с доплатой. Наушники в подарок к покупкам от 2 млн сум.",
+        "Smartfonlar 12 oyga 0% muddatli to'lovda",
+        "Rasmiy kafolat 12 oy. Trade-in: eski smartfonni qo'shimcha to'lov "
+        "bilan yangisiga almashtiring. 2 mln so'mdan yuqori xaridga quloqchin "
+        "sovg'a.",
         [
             ("Юнусабад-4", "Ташкент, Юнусабад-4, ул. Амира Темура, 108", 69.2960, 41.3460),
         ],
+        lang="uz",
     ),
     _biz(
         "Avtoservis 24 Soat",
@@ -252,12 +268,14 @@ DEMO_BUSINESSES = [
         "services",
         "+998 90 601 38 25",
         "Kimyoviy tozalash: palto, kostyum, gilam.",
-        "Химчистка пальто — 60 000 сум",
-        "Чистка верхней одежды, костюмов и ковров. Заберём и привезём сами — "
-        "бесплатно по городу. Срочная чистка за сутки.",
+        "Palto kimyoviy tozalash — 60 000 so'm",
+        "Yuqori kiyim, kostyum va gilamlarni tozalash. Olib ketamiz va "
+        "yetkazib beramiz — shahar bo'ylab bepul. Shoshilinch tozalash bir "
+        "kunda.",
         [
             ("Шайхантахур", "Ташкент, ул. Фаргона йули, 12", 69.2460, 41.3220),
         ],
+        lang="uz",
     ),
     _biz(
         "IELTS Studio",
@@ -278,12 +296,13 @@ DEMO_BUSINESSES = [
         "education",
         "+998 99 822 47 16",
         "Dasturlash kurslari: Python, frontend.",
-        "Python для школьников 12–16 лет",
-        "Курс программирования с нуля: 5 месяцев, 2 занятия в неделю. Свои "
-        "проекты и защита в конце курса. Первое занятие — бесплатно.",
+        "12–16 yoshdagi o'quvchilar uchun Python",
+        "Noldan dasturlash kursi: 5 oy, haftada 2 dars. Kurs oxirida o'z "
+        "loyihangiz va himoya. Birinchi dars — bepul.",
         [
             ("Якасарай", "Ташкент, ул. Шота Руставели, 32", 69.2570, 41.2900),
         ],
+        lang="uz",
     ),
     _biz(
         "Registon Toyxona",
@@ -291,12 +310,13 @@ DEMO_BUSINESSES = [
         "restaurant",
         "+998 90 500 11 08",
         "Toy va bazmlar uchun zal: 300 o'rin, o'z oshpazi.",
-        "Свадебный зал на 300 гостей, свой ош",
-        "Два зала: большой на 300 и малый на 80 гостей. Свой повар, плов на "
-        "дровах, живая музыка. Бронь на лето открыта.",
+        "300 kishilik toy zali, o'z oshpazimiz",
+        "Ikki zal: 300 o'rinli katta va 80 o'rinli kichik. O'z oshpazi, "
+        "o'tin olovida palov, jonli musiqa. Yozga bron ochiq.",
         [
             ("Сергели-6", "Ташкент, Сергели-6, ул. Янги Хаёт, 4", 69.2280, 41.2300),
         ],
+        lang="uz",
     ),
     _biz(
         "Kebob Uy",
@@ -487,56 +507,110 @@ _PRICE_RANGES = {
     "burger": (18, 28),
 }
 
+# Ad copy templates per language — businesses write ads in Russian or Uzbek.
 _HEADLINES = {
-    "restaurant": [
-        "Бизнес-ланч от {lunch} 000 сум",
-        "Лаваш от {lavash} 000 сум",
-        "Ош в казане — {osh} 000 сум",
-        "Доставка за 30 минут по району",
-        "Бургер комбо — {burger} 000 сум",
-    ],
-    "cafe": [
-        "Завтраки с 7:00 — от {lunch} 000 сум",
-        "Свежая выпечка каждое утро",
-        "Кофе + десерт = {lavash} 000 сум",
-        "Плов по субботам — {osh} 000 сум",
-    ],
-    "beauty": [
-        "Стрижка от {haircut} 000 сум",
-        "Маникюр — {nails} 000 сум",
-        "Наращивание ресниц от {lash} 000 сум",
-        "Скидка 20% на первое посещение",
-    ],
-    "fitness": [
-        "Абонемент на месяц — {month} 000 сум",
-        "Первая тренировка бесплатно",
-        "Год без ограничений — 3 000 000 сум",
-        "Утренние группы с 7:00",
-    ],
-    "retail": [
-        "Рассрочка 0% на 12 месяцев",
-        "Скидки до 30% на весь ассортимент",
-        "Trade-in — доплата от 200 000 сум",
-        "Новинки каждую неделю",
-    ],
-    "services": [
-        "Химчистка — от {dry} 000 сум",
-        "Ремонт от {repair} 000 сум",
-        "Диагностика бесплатно",
-        "Срочный заказ за сутки",
-    ],
-    "medicine": [
-        "Чистка зубов — {clean} 000 сум",
-        "Консультация — 50 000 сум",
-        "Комплексный чекап — от {checkup} 000 сум",
-        "Анализы за 2 часа",
-    ],
-    "education": [
-        "Пробный урок бесплатно",
-        "Курс — от {course} 000 сум",
-        "Занятия 3 раза в неделю",
-        "IELTS подготовка, группы до 10 человек",
-    ],
+    "ru": {
+        "restaurant": [
+            "Бизнес-ланч от {lunch} 000 сум",
+            "Лаваш от {lavash} 000 сум",
+            "Ош в казане — {osh} 000 сум",
+            "Доставка за 30 минут по району",
+            "Бургер комбо — {burger} 000 сум",
+        ],
+        "cafe": [
+            "Завтраки с 7:00 — от {lunch} 000 сум",
+            "Свежая выпечка каждое утро",
+            "Кофе + десерт = {lavash} 000 сум",
+            "Плов по субботам — {osh} 000 сум",
+        ],
+        "beauty": [
+            "Стрижка от {haircut} 000 сум",
+            "Маникюр — {nails} 000 сум",
+            "Наращивание ресниц от {lash} 000 сум",
+            "Скидка 20% на первое посещение",
+        ],
+        "fitness": [
+            "Абонемент на месяц — {month} 000 сум",
+            "Первая тренировка бесплатно",
+            "Год без ограничений — 3 000 000 сум",
+            "Утренние группы с 7:00",
+        ],
+        "retail": [
+            "Рассрочка 0% на 12 месяцев",
+            "Скидки до 30% на весь ассортимент",
+            "Trade-in — доплата от 200 000 сум",
+            "Новинки каждую неделю",
+        ],
+        "services": [
+            "Химчистка — от {dry} 000 сум",
+            "Ремонт от {repair} 000 сум",
+            "Диагностика бесплатно",
+            "Срочный заказ за сутки",
+        ],
+        "medicine": [
+            "Чистка зубов — {clean} 000 сум",
+            "Консультация — 50 000 сум",
+            "Комплексный чекап — от {checkup} 000 сум",
+            "Анализы за 2 часа",
+        ],
+        "education": [
+            "Пробный урок бесплатно",
+            "Курс — от {course} 000 сум",
+            "Занятия 3 раза в неделю",
+            "IELTS подготовка, группы до 10 человек",
+        ],
+    },
+    "uz": {
+        "restaurant": [
+            "Biznes-lanch {lunch} 000 so'mdan",
+            "Lavash {lavash} 000 so'mdan",
+            "Qozon oshi — {osh} 000 so'm",
+            "Tumanga 30 daqiqada yetkazib berish",
+            "Burger kombo — {burger} 000 so'm",
+        ],
+        "cafe": [
+            "Nonushta soat 7:00 dan — {lunch} 000 so'mdan",
+            "Har tong yangi pishirilgan non",
+            "Kofe + desert = {lavash} 000 so'm",
+            "Shanba kunlari palov — {osh} 000 so'm",
+        ],
+        "beauty": [
+            "Soch kesish {haircut} 000 so'mdan",
+            "Manikyur — {nails} 000 so'm",
+            "Kiprik uzaytirish {lash} 000 so'mdan",
+            "Birinchi tashrifga 20% chegirma",
+        ],
+        "fitness": [
+            "Oylik abonement — {month} 000 so'm",
+            "Birinchi mashg'ulot bepul",
+            "Chegarlovsiz yil — 3 000 000 so'm",
+            "Ertalabki guruhlar soat 7:00 dan",
+        ],
+        "retail": [
+            "12 oyga 0% muddatli to'lov",
+            "Butun assortimentga 30% gacha chegirma",
+            "Trade-in — 200 000 so'mdan qo'shimcha to'lov",
+            "Har hafta yangi mahsulotlar",
+        ],
+        "services": [
+            "Kimyoviy tozalash — {dry} 000 so'mdan",
+            "Ta'mirlash {repair} 000 so'mdan",
+            "Diagnostika bepul",
+            "Shoshilinch buyurtma bir kunda",
+        ],
+        "medicine": [
+            "Tish tozalash — {clean} 000 so'm",
+            "Konsultatsiya — 50 000 so'm",
+            "Kompleks tekshiruv — {checkup} 000 so'mdan",
+            "Tahlil natijalari 2 soatda",
+        ],
+        "education": [
+            "Sinov darsi bepul",
+            "Kurs — {course} 000 so'mdan",
+            "Haftada 3 mashg'ulot",
+            "IELTS tayyorlov, 10 kishilik guruhlar",
+        ],
+    },
 }
 
 _CATEGORY_UZ = {
@@ -550,55 +624,125 @@ _CATEGORY_UZ = {
     "education": "O'quv kurslari.",
 }
 
+_CATEGORY_RU = {
+    "restaurant": "Национальная и европейская кухня.",
+    "cafe": "Кафе и кондитерские изделия.",
+    "beauty": "Салон красоты и парикмахерская.",
+    "fitness": "Спортзал и групповые занятия.",
+    "retail": "Розничная торговля.",
+    "services": "Услуги и ремонт.",
+    "medicine": "Медицинские услуги.",
+    "education": "Учебные курсы.",
+}
+
 _BODIES = {
-    "restaurant": [
-        "Готовим на открытом огне, тесто и соусы делаем сами. Работаем с 10:00 "
-        "до 23:00, без выходных. Доставка по району — бесплатно от 50 000 сум.",
-        "Свежие продукты каждое утро с рынка. Порции большие, чайник чая в "
-        "подарок к обеду. Бронь столов по телефону.",
-    ],
-    "cafe": [
-        "Уютный зал, Wi-Fi и розетки. Завтраки подаём до 12:00, бизнес-ланч "
-        "с 12:00 до 16:00. Кофе зерновой, десерты собственной кондитерской.",
-        "Тихий двор, топчаны и самовар. Настольные игры для гостей бесплатно. "
-        "По выходным живая музыка с 19:00.",
-    ],
-    "beauty": [
-        "Мастера с опытом от 5 лет, стерильные инструменты. Запись по телефону "
-        "или в Telegram. Работаем ежедневно с 9:00 до 21:00.",
-        "Используем профессиональную косметику. Пенсионерам скидка 10% по "
-        "будням до 12:00. Оплата наличными и картой.",
-    ],
-    "fitness": [
-        "Тренажёрный зал, кардио-зона и раздевалки с душем. Персональный "
-        "тренер составит программу. Абонемент можно заморозить на месяц.",
-        "Групповые занятия утром и вечером. Первое пробное занятие — "
-        "бесплатно. Коврики и инвентарь выдаём на месте.",
-    ],
-    "retail": [
-        "Более 300 товаров в наличии. Официальная гарантия, рассрочка без "
-        "первого взноса. Доставка по Ташкенту на следующий день.",
-        "Прямые поставки от производителя. Обмен и возврат в течение 14 дней. "
-        "Оптовым покупателям — скидка до 15%.",
-    ],
-    "services": [
-        "Опытные мастера, работа под ключ с гарантией 6 месяцев. Выезд "
-        "специалиста на дом — бесплатно. Работаем ежедневно с 8:00 до 20:00.",
-        "Срочные заказы выполняем за сутки. Оплата после приёмки работы. "
-        "Скидка 10% при заказе от двух услуг.",
-    ],
-    "medicine": [
-        "Приём по записи и в порядке живой очереди. Современное оборудование, "
-        "врачи с сертификатами. Детский приём после 15:00.",
-        "Работаем без обеда с 8:00 до 20:00. Рассрочка на лечение, страховки "
-        "принимаем. Результаты анализов — в WhatsApp или Telegram.",
-    ],
-    "education": [
-        "Группы до 10 человек, занятия 2–3 раза в неделю. Пробное занятие "
-        "бесплатно. Сертификат по окончании курса.",
-        "Преподаватели с опытом от 5 лет. Занятия утром и вечером, есть "
-        "группы выходного дня. Оплата частями — возможна.",
-    ],
+    "ru": {
+        "restaurant": [
+            "Готовим на открытом огне, тесто и соусы делаем сами. Работаем с 10:00 "
+            "до 23:00, без выходных. Доставка по району — бесплатно от 50 000 сум.",
+            "Свежие продукты каждое утро с рынка. Порции большие, чайник чая в "
+            "подарок к обеду. Бронь столов по телефону.",
+        ],
+        "cafe": [
+            "Уютный зал, Wi-Fi и розетки. Завтраки подаём до 12:00, бизнес-ланч "
+            "с 12:00 до 16:00. Кофе зерновой, десерты собственной кондитерской.",
+            "Тихий двор, топчаны и самовар. Настольные игры для гостей бесплатно. "
+            "По выходным живая музыка с 19:00.",
+        ],
+        "beauty": [
+            "Мастера с опытом от 5 лет, стерильные инструменты. Запись по телефону "
+            "или в Telegram. Работаем ежедневно с 9:00 до 21:00.",
+            "Используем профессиональную косметику. Пенсионерам скидка 10% по "
+            "будням до 12:00. Оплата наличными и картой.",
+        ],
+        "fitness": [
+            "Тренажёрный зал, кардио-зона и раздевалки с душем. Персональный "
+            "тренер составит программу. Абонемент можно заморозить на месяц.",
+            "Групповые занятия утром и вечером. Первое пробное занятие — "
+            "бесплатно. Коврики и инвентарь выдаём на месте.",
+        ],
+        "retail": [
+            "Более 300 товаров в наличии. Официальная гарантия, рассрочка без "
+            "первого взноса. Доставка по Ташкенту на следующий день.",
+            "Прямые поставки от производителя. Обмен и возврат в течение 14 дней. "
+            "Оптовым покупателям — скидка до 15%.",
+        ],
+        "services": [
+            "Опытные мастера, работа под ключ с гарантией 6 месяцев. Выезд "
+            "специалиста на дом — бесплатно. Работаем ежедневно с 8:00 до 20:00.",
+            "Срочные заказы выполняем за сутки. Оплата после приёмки работы. "
+            "Скидка 10% при заказе от двух услуг.",
+        ],
+        "medicine": [
+            "Приём по записи и в порядке живой очереди. Современное оборудование, "
+            "врачи с сертификатами. Детский приём после 15:00.",
+            "Работаем без обеда с 8:00 до 20:00. Рассрочка на лечение, страховки "
+            "принимаем. Результаты анализов — в WhatsApp или Telegram.",
+        ],
+        "education": [
+            "Группы до 10 человек, занятия 2–3 раза в неделю. Пробное занятие "
+            "бесплатно. Сертификат по окончании курса.",
+            "Преподаватели с опытом от 5 лет. Занятия утром и вечером, есть "
+            "группы выходного дня. Оплата частями — возможна.",
+        ],
+    },
+    "uz": {
+        "restaurant": [
+            "Ochiq olovda pishiramiz, xamir va souslarni o'zimiz tayyorlaymiz. "
+            "Soat 10:00–23:00, dam olish kunlarisiz. Tumanga yetkazish — 50 000 "
+            "so'mdan bepul.",
+            "Har ertalab bozordan yangi mahsulotlar. Porsiyalar katta, tushlikka "
+            "choy idishi sovg'a. Stollarni telefon orqali band qilamiz.",
+        ],
+        "cafe": [
+            "Istiqliqli zal, Wi-Fi va rozetkalar. Nonushta soat 12:00 gacha, "
+            "biznes-lanch 12:00–16:00. Don qahva, o'z konditersiyamizdan "
+            "desertlar.",
+            "Tinch hovli, topchanlar va samovar. Mehmonlar uchun stol o'yinlari "
+            "bepul. Dam olish kunlari soat 19:00 dan jonli musiqa.",
+        ],
+        "beauty": [
+            "5 yildan ortiq tajribali ustalar, steril asboblar. Telefon yoki "
+            "Telegram orqali yozilish. Har kuni soat 9:00–21:00.",
+            "Professional kosmetikadan foydalanamiz. Ish kunlari soat 12:00 "
+            "gacha nafaqaxo'rlarga 10% chegirma. Naqd va karta to'lovi.",
+        ],
+        "fitness": [
+            "Mashg'ulot zali, kardi-zona va dushli kiyim almashtirish xonasi. "
+            "Shaxsiy murabbiy dastur tuzib beradi. Abonementni bir oyga "
+            "muzlatish mumkin.",
+            "Ertalabki va kechki guruh mashg'ulotlari. Birinchi sinov mashg'uloti "
+            "bepul. Gilam va jihozlarni joyida beramiz.",
+        ],
+        "retail": [
+            "300 dan ortiq mahsulot do'konda mavjud. Rasmiy kafolat, "
+            "boshlang'ich to'lovsiz muddatli to'lov. Toshkent bo'ylab ertasi "
+            "kunga yetkazish.",
+            "Ishlab chiqaruvchidan to'g'ridan-to'g'ri yetkazib berish. 14 kun "
+            "ichida almashtirish va qaytarish. Ulgurji xaridorlarga 15% gacha "
+            "chegirma.",
+        ],
+        "services": [
+            "Tajribali ustalar, 6 oy kafolat bilan kalit topshirish. Uyga "
+            "mutaxassis chaqirish — bepul. Har kuni soat 8:00–20:00.",
+            "Shoshilinch buyurtmalarni bir kunda bajarimiz. To'lov — ishni "
+            "qabul qilgandan keyin. Ikki va undan ortiq xizmatga 10% chegirma.",
+        ],
+        "medicine": [
+            "Yozilish bo'yicha va navbatsiz qabul. Zamonaviy jihozlar, "
+            "sertifikatli shifokorlar. Bolalar qabuli soat 15:00 dan.",
+            "Tushlik tanaffusisiz soat 8:00–20:00. Davolashga bo'lib to'lash, "
+            "sug'urtalarni qabul qilamiz. Tahlil natijalari — WhatsApp yoki "
+            "Telegram.",
+        ],
+        "education": [
+            "10 kishilik guruhlar, haftada 2–3 mashg'ulot. Sinov mashg'uloti "
+            "bepul. Kurs oxirida sertifikat.",
+            "5 yildan ortiq tajribali o'qituvchilar. Ertalabki va kechki "
+            "guruhlar, dam olish kunlari guruhlari ham bor. Bo'lib to'lash — "
+            "mumkin.",
+        ],
+    },
 }
 
 
@@ -617,10 +761,11 @@ def _extra_offers(biz) -> list[tuple[str, str]]:
     max_active_ads_per_location). Deterministic per slug."""
     rng = random.Random(f"{_RANDOM_SEED}:{biz['slug']}")
     n = rng.choices([0, 1, 2, 3, 4], weights=[55, 20, 12, 8, 5])[0]
-    templates = _HEADLINES[biz["category"]]
+    lang = biz["lang"]
+    templates = _HEADLINES[lang][biz["category"]]
     candidates = [h for h in (_format_headline(rng, t) for t in templates) if h != biz["headline"]]
     headlines = rng.sample(candidates, min(n, len(candidates)))
-    return [(h, rng.choice(_BODIES[biz["category"]])) for h in headlines]
+    return [(h, rng.choice(_BODIES[lang][biz["category"]])) for h in headlines]
 
 
 def _generate_extra_businesses(rng, used_names):
@@ -637,6 +782,7 @@ def _generate_extra_businesses(rng, used_names):
 
             district = rng.choice(_DISTRICTS)
             street = rng.choice(district["streets"])
+            lang = "uz" if rng.random() < 0.4 else "ru"
 
             branches = []
             n_branches = 2 if rng.random() < 0.15 else 1
@@ -654,13 +800,16 @@ def _generate_extra_businesses(rng, used_names):
                     )
                 )
 
-            headline = _format_headline(rng, rng.choice(_HEADLINES[category]))
-            body = rng.choice(_BODIES[category])
+            headline = _format_headline(rng, rng.choice(_HEADLINES[lang][category]))
+            body = rng.choice(_BODIES[lang][category])
             phone = (
                 f"+998 {rng.choice([90, 91, 93, 94, 95, 97, 98, 99])} "
                 f"{rng.randint(200, 999)} {rng.randint(10, 99)} {rng.randint(10, 99)}"
             )
-            description = f"{_CATEGORY_UZ[category]} {district['label']} tumanida."
+            if lang == "uz":
+                description = f"{_CATEGORY_UZ[category]} {district['label']} tumanida."
+            else:
+                description = f"{_CATEGORY_RU[category]} Район {district['label']}."
             out.append(
                 _biz(
                     name,
@@ -671,6 +820,7 @@ def _generate_extra_businesses(rng, used_names):
                     headline,
                     body,
                     branches,
+                    lang=lang,
                 )
             )
     return out
@@ -682,13 +832,13 @@ DEMO_BUSINESSES = DEMO_BUSINESSES + _generate_extra_businesses(
 
 # Campaign scenarios beyond the default approved+active ones.
 # (slug, scenario) — scenario in {pending_payment, paid_pending_review, draft,
-# submitted, rejected_refunded, auto_renew, grant}
+# submitted, rejected_refunded, one_day, grant}
 SCENARIOS = {
     "non-tuygusi": "draft",
     "ielts-studio": "submitted",
     "avtoservis-24-soat": "rejected_refunded",
     "shifo-dent": "paid_pending_review",
-    "registon-sport": "auto_renew",
+    "registon-sport": "one_day",
     "yoga-bogi": "grant",
 }
 
@@ -810,7 +960,6 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
     from apps.payments.settlement import settle_payment_attempt
     from apps.placements.models import Placement
     from apps.placements.services import issue_free_grant
-    from apps.renewals.models import RenewalAgreement
 
     owner, _ = User.objects.get_or_create(phone_e164="+998901234567")
     staff, _ = User.objects.get_or_create(
@@ -826,10 +975,7 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
         from apps.campaigns.models import CampaignReview
         from apps.payments.models import PaymentAttempt, PaymentEvent
         from apps.placements.models import FreeGrant
-        from apps.renewals.models import RenewalAgreement, RenewalAttempt
 
-        RenewalAttempt.objects.all().delete()
-        RenewalAgreement.objects.filter(business__owner=owner).delete()
         Placement.objects.filter(campaign__business__owner=owner).delete()
         FreeGrant.objects.filter(business__owner=owner).delete()
         CampaignReview.objects.filter(
@@ -864,16 +1010,19 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
 
     now = timezone.now()
 
-    def purchase(campaign, locations, days, *, auto_renew=False):
+    def purchase(campaign, locations, days):
+        # Fresh clock per call: the loop below runs long (banner rendering),
+        # and create_quote only accepts starts within QUOTE_START_GRACE of
+        # now — the shared `now` above would drift past it.
+        started = timezone.now()
         submit_for_review(campaign=campaign)
         order = create_quote(
             user=owner,
             business_id=campaign.business_id,
             campaign_id=campaign.id,
             location_ids=[loc.id for loc in locations],
-            requested_start_at=now - timedelta(minutes=30),
-            requested_end_at=now + timedelta(days=days),
-            auto_renew=auto_renew,
+            requested_start_at=started - timedelta(minutes=10),  # within grace
+            requested_end_at=started + timedelta(days=days),
         )
         attempt, _ = create_checkout(user=owner, order_id=order.id)
         attempt.status = PaymentAttempt.Status.SUCCEEDED
@@ -940,8 +1089,8 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
                 )
                 refund = request_refund(user=owner, order_id=order.id, reason="Кампания отклонена")
                 process_refund(staff=staff, refund_id=str(refund.id), decision="approve")
-            elif scenario == "auto_renew":
-                purchase(campaign, locations[:1], days=1, auto_renew=True)
+            elif scenario == "one_day":
+                purchase(campaign, locations[:1], days=1)
                 approve_campaign(campaign=campaign, reviewer=staff)
             elif scenario == "grant":
                 submit_for_review(campaign=campaign)
@@ -979,9 +1128,7 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
     stats["active_placements"] = Placement.objects.filter(
         state=Placement.State.ACTIVE, campaign__business__owner=owner
     ).count()
-    stats["renewal_agreements"] = RenewalAgreement.objects.filter(business__owner=owner).count()
     log(
         f"demo ready: +{stats['businesses']} businesses, +{stats['locations']} locations, "
-        f"+{stats['campaigns']} campaigns, {stats['active_placements']} active placements, "
-        f"{stats['renewal_agreements']} renewal agreement(s)"
+        f"+{stats['campaigns']} campaigns, {stats['active_placements']} active placements"
     )

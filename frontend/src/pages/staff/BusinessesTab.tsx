@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
 import {
   useStaffPage,
   type ApiAdminBusiness,
@@ -7,18 +6,20 @@ import {
 } from "@/shared/api/queries";
 import { formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { IconBlock, IconCheck, IconExternal } from "@/shared/icons";
 import { QueryError } from "@/shared/ui";
 import {
   FilterPill,
+  RowMenu,
   ServerPager,
   StatusChip,
+  statusItem,
   SubTabs,
   useDebounced,
   useHistoryState,
   usePagedOffset,
   useStaffAction,
   useStaffLink,
+  ListCount,
 } from "./controls";
 
 type View = "businesses" | "branches";
@@ -80,8 +81,9 @@ function BusinessList({ locale }: { locale: string }) {
 
   return (
     <>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.businessesTab} / ${t.phone}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -100,14 +102,10 @@ function BusinessList({ locale }: { locale: string }) {
             onClear={() => link.clear("owner")}
           />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -145,30 +143,16 @@ function BusinessList({ locale }: { locale: string }) {
                 <td>{b.campaigns_count}</td>
                 <td>{b.live_ads}</td>
                 <td>
-                  <div className="row">
-                    <button className="btn small" onClick={() => link.go("businesses", { business: b.id })}>
-                      {t.viewBranches}
-                    </button>
-                    <button className="btn small" onClick={() => link.go("placements", { business: b.id })}>
-                      {t.viewPlacements}
-                    </button>
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: "business", entity_id: b.id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                    {b.status !== "under_review" && (
-                      <button
-                        className={`btn small${b.status === "active" ? " danger" : ""}`}
-                        disabled={action.busy}
-                        onClick={() => void toggle(b)}
-                      >
-                        {b.status === "active" ? <IconBlock size={12} /> : <IconCheck size={12} />}{" "}
-                        {b.status === "active" ? t.disable : t.enable}
-                      </button>
-                    )}
-                  </div>
+                  <RowMenu
+                    items={[
+                      { label: t.viewBranches, onClick: () => link.go("businesses", { business: b.id }) },
+                      { label: t.viewPlacements, onClick: () => link.go("placements", { business: b.id }) },
+                      { label: t.viewLog, onClick: () => link.go("logs", { entity: "business", entity_id: b.id }) },
+                      ...(b.status !== "under_review"
+                        ? [statusItem(b.status === "active", t.disable, t.enable, action.busy, () => void toggle(b))]
+                        : []),
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
@@ -207,8 +191,9 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
 
   return (
     <>
-      <div className="row mb-14">
+      <div className="staff-toolbar">
         <input
+          type="search"
           placeholder={`${t.branch} / ${t.address}…`}
           value={qInput}
           onChange={(e) => setQInput(e.target.value)}
@@ -227,14 +212,10 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
             onClear={() => link.clear("business")}
           />
         )}
+        <ListCount count={data?.count} />
       </div>
       {isLoading && <div className="skeleton skeleton-card" />}
       {isError && <QueryError onRetry={() => refetch()} />}
-      {data && (
-        <p className="muted-2 mb-10">
-          {t.countLabel}: {data.count}
-        </p>
-      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -275,30 +256,16 @@ function BranchList({ businessFilter }: { businessFilter: string }) {
                 </td>
                 <td>{l.live_ads}</td>
                 <td>
-                  <div className="row">
-                    <button className="btn small" onClick={() => link.go("placements", { location: l.id })}>
-                      {t.viewPlacements}
-                    </button>
-                    <button
-                      className="btn small"
-                      onClick={() => link.go("logs", { entity: "location", entity_id: l.id })}
-                    >
-                      {t.viewLog}
-                    </button>
-                    <Link className="btn small" to={`/locations/${l.id}`}>
-                      <IconExternal size={12} />
-                    </Link>
-                    {l.status !== "under_review" && (
-                      <button
-                        className={`btn small${l.status === "active" ? " danger" : ""}`}
-                        disabled={action.busy}
-                        onClick={() => void toggle(l)}
-                      >
-                        {l.status === "active" ? <IconBlock size={12} /> : <IconCheck size={12} />}{" "}
-                        {l.status === "active" ? t.disable : t.enable}
-                      </button>
-                    )}
-                  </div>
+                  <RowMenu
+                    items={[
+                      { label: t.viewPlacements, onClick: () => link.go("placements", { location: l.id }) },
+                      { label: t.viewLog, onClick: () => link.go("logs", { entity: "location", entity_id: l.id }) },
+                      { label: t.openEntity, to: `/locations/${l.id}` },
+                      ...(l.status !== "under_review"
+                        ? [statusItem(l.status === "active", t.disable, t.enable, action.busy, () => void toggle(l))]
+                        : []),
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

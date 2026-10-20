@@ -88,7 +88,7 @@ def _advisory_lock_location(location_id) -> None:
 def capacity_usage(location: Location, *, start_at, end_at, exclude_id=None) -> int:
     """Placements occupying a capacity slot overlapping [start_at, end_at).
 
-    No own-campaign exclusion: the overlap filter already gives renewals a
+    No own-campaign exclusion: the overlap filter already gives extensions a
     free hand (a new term starts at the old term's end — zero overlap), while
     stacking a second simultaneous ad of the SAME campaign at a location must
     consume a slot like anyone else's (ADR-0003). `exclude_id` leaves out only
@@ -116,7 +116,7 @@ def assert_capacity(
     """Raise CapacityExhausted if `location` has no free slot for the interval.
 
     With lock=True, takes the per-location advisory lock first so concurrent
-    checkouts/renewals serialize their decision (acceptance #13)."""
+    checkouts serialize their decision (acceptance #13)."""
     if lock:
         _advisory_lock_location(location.id)
     usage = capacity_usage(location, start_at=start_at, end_at=end_at, exclude_id=exclude_id)
@@ -251,7 +251,7 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
     under retries and duplicate callbacks.
 
     The order's checkout reservations are promoted; orders without
-    reservations (renewals, legacy rows) get placements created here under the
+    reservations (legacy rows) get placements created here under the
     capacity lock. If capacity vanished in between, the placement is BLOCKED
     with an audit event for the admin refund queue — never silently overbooked."""
     now = timezone.now()
@@ -267,7 +267,7 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
             .filter(order=order, location=item.location)
             .first()
         )
-        # No placement yet (renewal/legacy orders), or a reservation that was
+        # No placement yet (legacy orders), or a reservation that was
         # released (CANCELLED) before the payment actually succeeded — a late
         # webhook for real money must still deliver its entitlement, so the
         # released row is resurrected under a fresh capacity check.

@@ -127,12 +127,10 @@ export function CheckoutPage() {
             </div>
           </div>
         )}
-        {order.auto_renew && (
-          <div className="info-card">
-            <div className="label">{t.autoRenew}</div>
-            <div className="value">{t.autoRenewHint}</div>
-          </div>
-        )}
+        <div className="info-card">
+          <div className="label">{t.paymentTypeLabel}</div>
+          <div className="value">{t.oneTimePaymentHint}</div>
+        </div>
       </div>
 
       <div className="table-wrap">

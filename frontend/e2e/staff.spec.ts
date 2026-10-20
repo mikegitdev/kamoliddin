@@ -13,7 +13,7 @@ test.describe("staff moderation console", () => {
   test("login as staff shows all tabs with overview counters", async () => {
     const page = await session.open();
     await page.goto("/staff");
-    await expect(page.locator(".app-nav")).toContainText("Жалобы");
+    await expect(page.locator(".staff-nav")).toContainText("Жалобы");
     await expect(page.locator(".stat-card").first()).toBeVisible({ timeout: 15_000 });
   });
 
