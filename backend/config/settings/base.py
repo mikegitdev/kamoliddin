@@ -115,6 +115,40 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+
+# --- Logging ------------------------------------------------------------------------
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {
+            "format": "{levelname} {asctime} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        },
+    },
+    # Root catches apps.* loggers (exception handler tracebacks, webhook
+    # warnings). Without this they only reached stderr via Python's
+    # last-resort handler: WARNING+, no level name/timestamp formatting.
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,  # avoid double emission via root
+        },
+    },
+}
+
 # --- Auth (phone OTP -> session) ----------------------------------------------
 
 AUTH_USER_MODEL = "accounts.User"

@@ -150,7 +150,7 @@ class FakeCheckoutCompleteView(APIView):
     def post(self, request, provider_payment_id: str):
         if settings.PAYMENT_PROVIDER != "fake":
             raise Http404
-        attempt =PaymentAttempt.objects.filter(
+        attempt = PaymentAttempt.objects.filter(
             provider="fake", provider_payment_id=provider_payment_id
         ).first()
         if attempt is None:

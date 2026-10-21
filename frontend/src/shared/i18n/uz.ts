@@ -83,6 +83,8 @@ export const uz: Dict = {
   errImageTooSmall: "Rasm juda kichik — kattaroq faylni tanlang",
   errCampaignNotApproved: "Bepul joylashtirish faqat tasdiqlangan kampaniyalar uchun mavjud",
   errLocationMismatch: "Filial bu kampaniya biznesiga tegishli emas",
+  errValidationError: "Ma'lumotlarni tekshiring — nimadir noto'g'ri kiritilgan",
+  errCheckout: "To'lovni boshlab bo'lmadi — qayta urinib ko'ring",
   errCheckFields: "Belgilangan maydonlarni tekshiring",
   errRequestFailed: "Amalni bajarib bo'lmadi — qayta urinib ko'ring",
   errFieldRequired: "Majburiy maydon",

@@ -54,6 +54,9 @@ const CODE_MESSAGES: Record<string, keyof Dict> = {
   image_too_small: "errImageTooSmall",
   campaign_not_approved: "errCampaignNotApproved",
   location_mismatch: "errLocationMismatch",
+  // Generic fallbacks for raise sites without a specific code
+  validation_error: "errValidationError",
+  checkout_error: "errCheckout",
 };
 
 /** Generic DRF field-validation codes -> short inline field messages. */
