@@ -5,7 +5,8 @@ from apps.moderation.models import Report
 
 class PublicLocationSerializer(serializers.Serializer):
     """Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
-    (spec §10) — not historical ones."""
+    (spec §10) — not historical ones — plus a deterministic preview of the
+    first ad the visitor sees when the pin opens (null when none)."""
 
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
@@ -14,6 +15,8 @@ class PublicLocationSerializer(serializers.Serializer):
     category = serializers.SerializerMethodField()
     business_name = serializers.SerializerMethodField()
     active_ads_count = serializers.IntegerField(read_only=True)
+    preview_headline = serializers.SerializerMethodField()
+    preview_banner_url = serializers.SerializerMethodField()
 
     def get_lon(self, obj) -> float:
         return obj.point.x
@@ -26,6 +29,15 @@ class PublicLocationSerializer(serializers.Serializer):
 
     def get_business_name(self, obj) -> str:
         return obj.business.name
+
+    # Annotated by pins/search views; absent annotations degrade to null so
+    # any other caller of this serializer keeps working.
+    def get_preview_headline(self, obj) -> "str | None":
+        return getattr(obj, "preview_headline", None)
+
+    def get_preview_banner_url(self, obj) -> "str | None":
+        key = getattr(obj, "preview_banner_key", None)
+        return f"/media/{key}" if key else None
 
 
 class PublicCampaignSerializer(serializers.Serializer):

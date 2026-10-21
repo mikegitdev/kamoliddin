@@ -20,15 +20,19 @@ function ResultCard({
   index,
   selected,
   onSelect,
+  categoryLabel,
 }: {
   pin: ApiLocationPin;
   /** Position in the list; drives the staggered entrance (capped in CSS). */
   index: number;
   selected: boolean;
   onSelect: (id: string) => void;
+  /** Localized category name for pin.category ("" when unknown). */
+  categoryLabel?: (slug: string) => string;
 }) {
   const { locale } = useI18n();
   const hasAds = pin.active_ads_count > 0;
+  const category = categoryLabel?.(pin.category);
   return (
     <li style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
       <button
@@ -38,22 +42,33 @@ function ResultCard({
         aria-current={selected ? "true" : undefined}
         onClick={() => onSelect(pin.id)}
       >
-        {/* Monogram mirrors the map: yellow = has ads, gray = none. */}
-        <span className={hasAds ? "rc-mono" : "rc-mono idle"} aria-hidden="true">
-          {pin.business_name.trim().charAt(0)}
-        </span>
+        {/* Preview banner of the first live ad (detail-sheet order) replaces
+            the monogram; the monogram (yellow = has ads, gray = none) mirrors
+            the map pin when no banner is available. */}
+        {pin.preview_banner_url ? (
+          <FallImg src={pin.preview_banner_url} alt="" className="rc-thumb" />
+        ) : (
+          <span className={hasAds ? "rc-mono" : "rc-mono idle"} aria-hidden="true">
+            {pin.business_name.trim().charAt(0)}
+          </span>
+        )}
         <span className="rc-text">
           <strong>{pin.business_name}</strong>
+          {pin.preview_headline && (
+            <span className="rc-ad" title={pin.preview_headline}>
+              {pin.preview_headline}
+            </span>
+          )}
           <span className="muted-2">
             {pin.name}
+            {category && <> · {category}</>}
             {pin.distance_m != null && <> · {formatDistanceM(pin.distance_m, locale)}</>}
           </span>
         </span>
         {hasAds && (
           <span className="rc-ads">
             <IconMegaphone />
-            {pin.active_ads_count}
-            <span className="sr-only"> {plural(locale, "ads", pin.active_ads_count)}</span>
+            {pin.active_ads_count} {plural(locale, "ads", pin.active_ads_count)}
           </span>
         )}
       </button>
@@ -211,6 +226,8 @@ export interface ResultsPanelProps {
   /** True when search distances are measured from the user's location
    *  (not the map center) — explains the "8,6 km" on result cards. */
   distanceFromUser?: boolean;
+  /** Localized category name for a pin's category slug ("" when unknown). */
+  categoryLabel?: (slug: string) => string;
 }
 
 export function ResultsPanel(props: ResultsPanelProps) {
@@ -234,6 +251,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
     locationsCount,
     adsCount,
     distanceFromUser = false,
+    categoryLabel,
   } = props;
   const { t, locale } = useI18n();
   const listRef = useRef<HTMLUListElement>(null);
@@ -407,6 +425,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
                       index={i}
                       selected={pin.id === selectedPin}
                       onSelect={onSelect}
+                      categoryLabel={categoryLabel}
                     />
                   ))}
                 </ul>

@@ -475,6 +475,15 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   const activeCategory = categories?.find((c) => c.slug === category);
   const categoryName = (c: { name_ru: string; name_uz: string }) =>
     locale === "uz" ? c.name_uz : c.name_ru;
+  /** Pin.category is a slug; result cards show the localized label. */
+  const categoryLabel = useCallback(
+    (slug: string) => {
+      const c = categories?.find((c) => c.slug === slug);
+      return c ? categoryName(c) : "";
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- categoryName closes over locale
+    [categories, locale],
+  );
   const clearFilters = () => {
     setQuery("");
     setCategory("");
@@ -746,6 +755,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
           locationsCount={searchActive ? results.length : pins?.length ?? 0}
           adsCount={searchActive ? searchAdsTotal : totalAds}
           distanceFromUser={searchActive && !!userOrigin}
+          categoryLabel={categoryLabel}
         />
       )}
 

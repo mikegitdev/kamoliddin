@@ -1899,7 +1899,8 @@ export interface components {
         };
         /**
          * @description Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
-         *     (spec §10) — not historical ones.
+         *     (spec §10) — not historical ones — plus a deterministic preview of the
+         *     first ad the visitor sees when the pin opens (null when none).
          */
         PublicLocation: {
             /** Format: uuid */
@@ -1912,6 +1913,8 @@ export interface components {
             readonly category: string;
             readonly business_name: string;
             readonly active_ads_count: number;
+            readonly preview_headline: string | null;
+            readonly preview_banner_url: string | null;
         };
         PublicLocationDetail: {
             /** Format: uuid */
@@ -1986,7 +1989,8 @@ export interface components {
         };
         /**
          * @description Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
-         *     (spec §10) — not historical ones.
+         *     (spec §10) — not historical ones — plus a deterministic preview of the
+         *     first ad the visitor sees when the pin opens (null when none).
          */
         PublicSearchLocation: {
             /** Format: uuid */
@@ -1999,6 +2003,8 @@ export interface components {
             readonly category: string;
             readonly business_name: string;
             readonly active_ads_count: number;
+            readonly preview_headline: string | null;
+            readonly preview_banner_url: string | null;
             /** @description Present only when lat/lon are given */
             readonly distance_m: number;
         };

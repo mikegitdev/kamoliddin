@@ -1148,6 +1148,46 @@ svg.ico {
   background: var(--fill);
   color: var(--muted);
 }
+/* Live-ad headline: one ellipsized line between business name and the
+   branch/category/distance meta — the "why to visit" without opening the
+   pin (the sheet still owns the full ad). */
+.rc-ad {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Preview thumb: the first live ad's banner at the monogram's spot. Same
+   footprint family as the monogram; cover-crop is fine at thumbnail size
+   (the full banner stays uncropped on the ad page and feed cards). */
+.rc-thumb {
+  width: 56px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: none;
+  background: var(--fill);
+}
+/* FallImg puts the class on the <img> itself (fallback is a div.rc-thumb).
+   The img therefore sizes via .rc-thumb above and only needs the fit rule —
+   banners (~3:1) cover-crop into the 56×44 box instead of stretching. */
+img.rc-thumb {
+  object-fit: cover;
+  display: block;
+}
+.rc-thumb.img-fallback {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: var(--fill);
+  color: var(--muted);
+}
+.rc-thumb.img-fallback svg {
+  width: 18px;
+  height: 18px;
+}
 .result-card:hover .rc-mono,
 .result-card.selected .rc-mono {
   transform: scale(1.06) rotate(-4deg);

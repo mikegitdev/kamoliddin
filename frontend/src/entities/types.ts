@@ -18,6 +18,10 @@ export interface ApiLocationPin {
   active_ads_count: number;
   /** Distance from the search origin in meters (search results only). */
   distance_m?: number;
+  /** First eligible ad at this location (detail-sheet order: earliest start).
+   *  null when none — drives the result-card thumbnail. */
+  preview_headline?: string | null;
+  preview_banner_url?: string | null;
 }
 
 export interface ApiActiveAd {

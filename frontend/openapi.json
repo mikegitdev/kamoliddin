@@ -3801,7 +3801,8 @@ components:
       type: object
       description: |-
         Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
-        (spec §10) — not historical ones.
+        (spec §10) — not historical ones — plus a deterministic preview of the
+        first ad the visitor sees when the pin opens (null when none).
       properties:
         id:
           type: string
@@ -3827,6 +3828,14 @@ components:
         active_ads_count:
           type: integer
           readOnly: true
+        preview_headline:
+          type: string
+          nullable: true
+          readOnly: true
+        preview_banner_url:
+          type: string
+          nullable: true
+          readOnly: true
       required:
       - active_ads_count
       - business_name
@@ -3835,6 +3844,8 @@ components:
       - lat
       - lon
       - name
+      - preview_banner_url
+      - preview_headline
     PublicLocationDetail:
       type: object
       properties:
@@ -4042,7 +4053,8 @@ components:
       type: object
       description: |-
         Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
-        (spec §10) — not historical ones.
+        (spec §10) — not historical ones — plus a deterministic preview of the
+        first ad the visitor sees when the pin opens (null when none).
       properties:
         id:
           type: string
@@ -4068,6 +4080,14 @@ components:
         active_ads_count:
           type: integer
           readOnly: true
+        preview_headline:
+          type: string
+          nullable: true
+          readOnly: true
+        preview_banner_url:
+          type: string
+          nullable: true
+          readOnly: true
         distance_m:
           type: integer
           readOnly: true
@@ -4081,6 +4101,8 @@ components:
       - lat
       - lon
       - name
+      - preview_banner_url
+      - preview_headline
     PublicSearchResult:
       type: object
       properties:

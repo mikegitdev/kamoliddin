@@ -79,6 +79,21 @@ def _active_ads_count(now):
     return Coalesce(Subquery(counts, output_field=IntegerField()), 0)
 
 
+def _preview_field(now, field: str):
+    """Deterministic per-location ad preview: the campaign field of the FIRST
+    eligible placement, ordered exactly like the location detail sheet
+    (start_at, pk) — the preview is always the first ad a visitor sees when
+    the pin opens. Same live eligibility predicate as the count (spec §7.2).
+    Both preview subqueries share this ordering, so headline and banner are
+    guaranteed to come from the same campaign."""
+    return Subquery(
+        Placement.objects.filter(location=OuterRef("pk"))
+        .filter(eligible_now_q(now))
+        .order_by("start_at", "pk")
+        .values(field)[:1]
+    )
+
+
 def _relevance_annotation(q: str):
     """Tiered relevance (spec §10, acceptance #12): location name match (3)
     beats business name match (2), which beats an approved campaign headline
@@ -148,7 +163,11 @@ class PublicLocationListView(ListAPIView):
             Location.objects.filter(status=Location.Status.ACTIVE)
             .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
-            .annotate(active_ads_count=_active_ads_count(now))
+            .annotate(
+                active_ads_count=_active_ads_count(now),
+                preview_headline=_preview_field(now, "campaign__headline"),
+                preview_banner_key=_preview_field(now, "campaign__banner_key"),
+            )
             .filter(point__contained=envelope)
         )
 
@@ -194,7 +213,10 @@ class PublicLocationDetailView(RetrieveAPIView):
             Placement.objects.filter(location=location)
             .filter(eligible_now_q(now))
             .select_related("campaign", "campaign__business")
-            .order_by("start_at")[:20]
+            # Same ordering as the pins' preview subquery (start_at, pk): the
+            # thumbnail/headline on a map card always names the FIRST ad here,
+            # even when two placements share a start time.
+            .order_by("start_at", "pk")[:20]
         )
         location.active_ads = [
             {
@@ -312,7 +334,11 @@ class PublicSearchView(APIView):
             Location.objects.filter(status=Location.Status.ACTIVE)
             .filter(business__status=Business.Status.ACTIVE)
             .select_related("business", "business__category")
-            .annotate(active_ads_count=_active_ads_count(now))
+            .annotate(
+                active_ads_count=_active_ads_count(now),
+                preview_headline=_preview_field(now, "campaign__headline"),
+                preview_banner_key=_preview_field(now, "campaign__banner_key"),
+            )
             .filter(_text_match_q(q))
             # Relevance first, then distance when an origin is given,
             # otherwise name (spec §10, acceptance #12).
