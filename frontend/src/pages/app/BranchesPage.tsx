@@ -5,7 +5,7 @@ import { useBusinessLocations, useBusinesses } from "@/shared/api/queries";
 import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { ApiError } from "@/shared/api/client";
 import { createLocation, deleteLocation, updateLocation } from "@/features/advertiser/api";
-import { MapLibreAdapter, type MapAdapter } from "@/map-adapters";
+import { MapLibreAdapter, mapAdapterOptions, type MapAdapter } from "@/map-adapters";
 import { useI18n, plural } from "@/shared/i18n";
 import { toast } from "@/shared/toast";
 import { confirmDialog } from "@/shared/dialog";
@@ -46,9 +46,7 @@ function MapPicker({
   useEffect(() => {
     if (!containerRef.current) return;
     const adapter = new MapLibreAdapter();
-    adapter.initialize(containerRef.current, {
-      tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
-    });
+    adapter.initialize(containerRef.current, mapAdapterOptions());
     // Street-picking needs closer zoom than the shared city default; 260px of
     // map at z11.5 makes precise placement impractical without zooming first.
     adapter.setCenterZoom([69.2401, 41.2995], 13);

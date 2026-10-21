@@ -1,5 +1,5 @@
 import maplibregl from "maplibre-gl";
-import type { LatLngBounds, MapAdapter, MapMarker } from "../types";
+import type { LatLngBounds, MapAdapter, MapAdapterOptions, MapMarker } from "../types";
 
 /** Mirrors --brand / --ink in index.css (map paint can't read CSS vars). */
 const BRAND = "#fee02a";
@@ -111,6 +111,12 @@ function badgeImage(fill: string): { image: ImageData; options: Partial<maplibre
  * tile provider (2GIS tiles or a self-hosted/bought OSM stack); swap the style
  * URL via the tilesUrl option then.
  */
+/** Dev defaults: public OSM tiles, MapLibre demo glyphs, OSM attribution.
+ *  Every value can be overridden per deploy (spec §10 [E]). */
+const DEV_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEV_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+const DEV_ATTRIBUTION = "© OpenStreetMap contributors";
+
 export class MapLibreAdapter implements MapAdapter {
   private map: maplibregl.Map | null = null;
   private clickCallback: ((id: string) => void) | null = null;
@@ -125,17 +131,18 @@ export class MapLibreAdapter implements MapAdapter {
   private density = 1;
 
   // Style with a raster tile source; replaced by a licensed provider in prod.
-  private static style(tilesUrl: string): maplibregl.StyleSpecification {
+  private static style(tilesUrl: string, glyphsUrl: string, attribution: string): maplibregl.StyleSpecification {
     return {
       version: 8,
-      // Demo glyphs host for the count labels (swap with the licensed provider).
-      glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+      // Glyph host for the count labels; the demo host is dev-only and is
+      // overridden in prod via VITE_MAP_GLYPHS_URL (spec §10 [E]).
+      glyphs: glyphsUrl,
       sources: {
         tiles: {
           type: "raster",
           tiles: [tilesUrl],
           tileSize: 256,
-          attribution: "© OpenStreetMap contributors",
+          attribution,
         },
       },
       layers: [
@@ -156,11 +163,11 @@ export class MapLibreAdapter implements MapAdapter {
     };
   }
 
-  initialize(container: HTMLElement, opts?: { tilesUrl?: string }): void {
-    const tilesUrl = opts?.tilesUrl ?? "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  initialize(container: HTMLElement, opts?: MapAdapterOptions): void {
+    const tilesUrl = opts?.tilesUrl ?? DEV_TILES;
     this.map = new maplibregl.Map({
       container,
-      style: MapLibreAdapter.style(tilesUrl),
+      style: MapLibreAdapter.style(tilesUrl, opts?.glyphsUrl ?? DEV_GLYPHS, opts?.attribution ?? DEV_ATTRIBUTION),
       center: [69.2401, 41.2995], // Tashkent
       zoom: 11.5,
     });

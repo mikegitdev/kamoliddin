@@ -205,9 +205,12 @@ export interface ResultsPanelProps {
   /** Frame the map on the (relevance-first, possibly off-viewport) search
    *  results so list and map tell the same story. */
   onFitResults?: () => void;
-  /** Viewport counts for the collapsed pill / header. */
+  /** Viewport counts for the collapsed pill / header (search-aware). */
   locationsCount: number;
   adsCount: number;
+  /** True when search distances are measured from the user's location
+   *  (not the map center) — explains the "8,6 km" on result cards. */
+  distanceFromUser?: boolean;
 }
 
 export function ResultsPanel(props: ResultsPanelProps) {
@@ -230,11 +233,27 @@ export function ResultsPanel(props: ResultsPanelProps) {
     onFitResults,
     locationsCount,
     adsCount,
+    distanceFromUser = false,
   } = props;
   const { t, locale } = useI18n();
   const listRef = useRef<HTMLUListElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  /** List scroll survives the detail round-trip: the list view unmounts while
+   *  a location card is open, so its position is recorded here and restored. */
+  const listScrollRef = useRef(0);
   const selected = selectedPin ? results.find((p) => p.id === selectedPin) : undefined;
+
+  // Restore the recorded list scroll when the list view comes back, and start
+  // from the top when the result set itself changes character (search ↔ area).
+  const prevSearchMode = useRef(searchMode);
+  useEffect(() => {
+    if (prevSearchMode.current !== searchMode) {
+      prevSearchMode.current = searchMode;
+      listScrollRef.current = 0;
+    }
+    if (state === "list" && bodyRef.current) bodyRef.current.scrollTop = listScrollRef.current;
+  }, [state, searchMode]);
 
   // Keep the selected card visible in the list (map pin click → scroll).
   useEffect(() => {
@@ -342,7 +361,19 @@ export function ResultsPanel(props: ResultsPanelProps) {
             </button>
           </div>
 
-          <div className="panel-body">
+          {/* Scope note: viewport browsing vs city-wide search (plus the
+              distance origin) — keeps the list from looking arbitrary. */}
+          {!loading && (
+            <p className="panel-scope">
+              {searchMode
+                ? `${t.scopeCity} · ${distanceFromUser ? t.distanceFromYou : t.distanceFromMap}`
+                : t.scopeArea}
+            </p>
+          )}
+
+          <div className="panel-body" ref={bodyRef} onScroll={(e) => {
+            listScrollRef.current = e.currentTarget.scrollTop;
+          }}>
             {error ? (
               <div className="callout danger" role="alert">
                 <span>{t.loadError}</span>
@@ -359,7 +390,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
             ) : results.length === 0 && campaigns.length === 0 ? (
               <div className="panel-empty">
                 <strong>{t.emptyTitle}</strong>
-                <span className="muted">{t.emptyHint}</span>
+                <span className="muted">{searchMode ? t.emptyHintSearch : t.emptyHint}</span>
                 {hasFilters && (
                   <button className="btn small" onClick={onClearFilters}>
                     {t.clearFilters}

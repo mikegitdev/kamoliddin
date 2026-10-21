@@ -5,6 +5,20 @@
  * (map-adapters/maplibre). The rest of the app only talks to this interface.
  */
 
+/** Map style configuration (spec §10 [E]): dev defaults come from the
+ *  adapter; production overrides each knob via env (see mapAdapterOptions).
+ * Any override must be a correctly licensed provider — public OSM tiles and
+ *  the MapLibre demo glyphs are for local development ONLY. */
+export interface MapAdapterOptions {
+  /** Raster tile URL template ({z}/{x}/{y}), e.g. a licensed 2GIS/OSM host. */
+  tilesUrl?: string;
+  /** Glyph PBF URL template ({fontstack}/{range}) for text layers.
+   * Overrides the MapLibre demo glyphs host (no SLA — never for prod). */
+  glyphsUrl?: string;
+  /** Tile-source attribution string shown in the map's attribution control. */
+  attribution?: string;
+}
+
 export interface MapMarker {
   id: string;
   lng: number;
@@ -24,7 +38,7 @@ export interface LatLngBounds {
 }
 
 export interface MapAdapter {
-  initialize(container: HTMLElement): void;
+  initialize(container: HTMLElement, opts?: MapAdapterOptions): void;
   /** Current viewport bounds; null before initialize(). */
   getBounds(): LatLngBounds | null;
   /** Current camera position; null before initialize(). */

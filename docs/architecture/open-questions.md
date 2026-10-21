@@ -3,7 +3,7 @@
 | # | Question | Current provisional default | Decided by |
 |---|---|---|---|
 | 1 | CLICK one-time checkout | Adapter unimplemented until merchant confirmation; recurring charges are out of scope (ADR-0007) | pending provider |
-| 2 | 2GIS licensing / tile economics | MapLibre + OSM tiles in dev only; production tiles unresolved — **launch blocker: public OSM tiles must not serve prod** | pending provider |
+| 2 | 2GIS licensing / tile economics | MapLibre + OSM tiles in dev only; production tiles unresolved — **launch blocker: public OSM tiles must not serve prod**. Deploy wiring ready: set `VITE_MAP_TILES_URL` / `VITE_MAP_GLYPHS_URL` / `VITE_MAP_ATTRIBUTION` (frontend) — commercial provider still to be chosen | pending provider |
 | 3 | Eskiz vs Play Mobile | Fake adapter in dev; Eskiz adapter implemented from published docs (ADR-0006) but benchmark not run; Play Mobile unverified | pending benchmark |
 | 4 | Final daily rate (UZS) | Demo tariff 30,000 UZS/24h | product owner |
 | 5 | ~~Renewal price policy~~ | Moot — no auto-renewal, one-time payment per order (ADR-0007) | product owner |
@@ -47,7 +47,7 @@ Constraints to resolve before choosing a provider:
 | Gate | Evidence required to close |
 |---|---|
 | CLICK recurring | Sandbox + production merchant-initiated charge, retry with same idempotency key, refund, and settlement report, recorded in `docs/architecture/click-verification.md`; then implement `charge_recurring`/`refund_charge` in `ClickPaymentGateway` and backfill `pending_token` agreements |
-| 2GIS / tiles | Signed commercial offer with quota + data-use terms, or a licensed OSM tile host; configure `VITE_MAP_TILES_URL` (frontend) and update `docs/runbooks/deploy.md` |
+| 2GIS / tiles | Signed commercial offer with quota + data-use terms, or a licensed OSM tile host; configure `VITE_MAP_TILES_URL`, `VITE_MAP_GLYPHS_URL`, `VITE_MAP_ATTRIBUTION` (frontend) and update `docs/runbooks/deploy.md` |
 | SMS benchmark | Test batches through Eskiz (and Play Mobile once documented): latency per network, delivery success, price per message, sender registration lead time → `docs/architecture/sms-benchmark.md` |
 | Legal | Reviewed privacy notice, advertising content rules, refund policy for Uzbekistan → `docs/product/legal-review.md` |
 ## Assumptions made while scaffolding (to be reviewed)

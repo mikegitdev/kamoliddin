@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { MapLibreAdapter } from "@/map-adapters";
+import { MapLibreAdapter, mapAdapterOptions } from "@/map-adapters";
 import { IconPin } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
 
@@ -27,9 +27,7 @@ export function MiniMap({
   useEffect(() => {
     if (!containerRef.current) return;
     const adapter = new MapLibreAdapter();
-    adapter.initialize(containerRef.current, {
-      tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
-    });
+    adapter.initialize(containerRef.current, mapAdapterOptions());
     // Center slightly north so the pin and its name tag sit below the
     // "show on map" pill in the top-left corner.
     adapter.setCenterZoom([lon, lat + 0.0004], 15);
