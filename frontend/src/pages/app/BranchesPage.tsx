@@ -4,9 +4,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessLocations, useBusinesses } from "@/shared/api/queries";
 import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { ApiError } from "@/shared/api/client";
-import { createLocation, updateLocation } from "@/features/advertiser/api";
+import { createLocation, deleteLocation, updateLocation } from "@/features/advertiser/api";
 import { MapLibreAdapter, type MapAdapter } from "@/map-adapters";
 import { useI18n, plural } from "@/shared/i18n";
+import { toast } from "@/shared/toast";
+import { confirmDialog } from "@/shared/dialog";
 import { WEEK_DAYS, weekdayLabel, type WeekDay } from "@/shared/format";
 import { useDirtyRouteGuard } from "@/shared/route-guard";
 import {
@@ -16,6 +18,7 @@ import {
   IconPhone,
   IconPencil,
   IconPin,
+  IconTrash,
 } from "@/shared/icons";
 import { ContactActions, directionsUrl } from "@/shared/ui";
 import type { ApiBusiness, ApiOwnerLocation } from "@/entities/types";
@@ -36,6 +39,9 @@ function MapPicker({
   // Latest callback without re-initializing the map on every pick.
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  // True only when the component mounts with a pre-filled point (edit mode);
+  // consumed by the point effect to fly in exactly once.
+  const prefillRef = useRef(point !== null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -43,9 +49,27 @@ function MapPicker({
     adapter.initialize(containerRef.current, {
       tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
     });
-    adapter.onMapClick((lng, lat) => onPickRef.current(lng, lat));
+    // Street-picking needs closer zoom than the shared city default; 260px of
+    // map at z11.5 makes precise placement impractical without zooming first.
+    adapter.setCenterZoom([69.2401, 41.2995], 13);
+    // Double-click is the native map zoom gesture. Without this guard its
+    // first click also drops/moves the pin, so every zoom attempt leaves a
+    // stray pin behind. Debounce: a second click within 300ms cancels the pick.
+    let clickTimer: ReturnType<typeof setTimeout> | null = null;
+    adapter.onMapClick((lng, lat) => {
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+        return;
+      }
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        onPickRef.current(lng, lat);
+      }, 300);
+    });
     adapterRef.current = adapter;
     return () => {
+      if (clickTimer) clearTimeout(clickTimer);
       adapter.destroy();
       adapterRef.current = null;
     };
@@ -60,9 +84,15 @@ function MapPicker({
       return;
     }
     adapter.setPickMarker(point, (lng, lat) => onPickRef.current(lng, lat));
-    // First placement (or edit prefill): zoom in so the position can be confirmed.
-    const cam = adapter.getCenterZoom();
-    if (cam && cam.zoom < 13.5) adapter.flyTo([point.lng, point.lat], 14.5);
+    // Fly in ONCE on mount-prefill (edit mode) so an existing position can be
+    // confirmed. Never on user clicks or marker drags: jumping the camera after
+    // a click moves the map out from under the spot the user just aimed at —
+    // the pin must land exactly where they clicked, camera stays put.
+    if (prefillRef.current) {
+      prefillRef.current = false;
+      const cam = adapter.getCenterZoom();
+      if (cam && cam.zoom < 13.5) adapter.flyTo([point.lng, point.lat], 14.5);
+    }
   }, [point]);
 
   return <div className="map-picker" ref={containerRef} role="img" aria-label={label} />;
@@ -206,6 +236,29 @@ export function BranchesPage() {
     },
     onError: applyError,
   });
+
+  const removeBranch = useMutation({
+    mutationFn: (id: string) => deleteLocation(id),
+    onSuccess: () => {
+      toast.success(t.branchDeleted);
+      void queryClient.invalidateQueries({ queryKey: ["business-locations", business?.id] });
+      void queryClient.invalidateQueries({ queryKey: ["location-pins"] }); // public map
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
+  const confirmDeleteBranch = (id: string) => {
+    void confirmDialog({
+      t,
+      title: t.deleteBranchTitle,
+      body: t.deleteBranchBody,
+      confirmLabel: t.deleteBranchConfirm,
+      cancelLabel: t.cancel,
+      danger: true,
+    }).then((ok) => {
+      if (ok) removeBranch.mutate(id);
+    });
+  };
 
   const set =
     (key: "name" | "address" | "phone" | "telegram" | "whatsapp") =>
@@ -358,6 +411,15 @@ export function BranchesPage() {
                 </Link>
                 <button className="btn small" onClick={() => startEdit(loc)}>
                   <IconPencil size={12} /> {t.editBranch}
+                </button>
+                <button
+                  className="btn small danger"
+                  aria-label={t.deleteBranch}
+                  title={t.deleteBranch}
+                  disabled={removeBranch.isPending && removeBranch.variables === loc.id}
+                  onClick={() => confirmDeleteBranch(loc.id)}
+                >
+                  <IconTrash size={12} />
                 </button>
               </div>
             </li>

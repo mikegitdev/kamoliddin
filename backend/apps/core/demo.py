@@ -169,9 +169,9 @@ DEMO_BUSINESSES = [
         "registon-sport",
         "fitness",
         "+998 97 120 88 53",
-        "Sport zal: kardi-zona, og'ir atletika, kurash.",
+        "Sport zal: kardio-zona, og'ir atletika, kurash.",
         "Yillik abonement — 4 oy sovg'a",
-        "1200 m² mashg'ulot zali, kardi-zona va kurash zali. Shaxsiy murabbiy "
+        "1200 m² mashg'ulot zali, kardio-zona va kurash zali. Shaxsiy murabbiy "
         "— birinchi mashg'ulot bepul. Soat 6:00–23:00 ochiq.",
         [
             ("Юнусабад-19", "Ташкент, Юнусабад-19, ул. Богишамол, 205", 69.3220, 41.3390),
@@ -583,7 +583,7 @@ _HEADLINES = {
         "fitness": [
             "Oylik abonement — {month} 000 so'm",
             "Birinchi mashg'ulot bepul",
-            "Chegarlovsiz yil — 3 000 000 so'm",
+            "Chegarasiz yil — 3 000 000 so'm",
             "Ertalabki guruhlar soat 7:00 dan",
         ],
         "retail": [
@@ -695,7 +695,7 @@ _BODIES = {
             "choy idishi sovg'a. Stollarni telefon orqali band qilamiz.",
         ],
         "cafe": [
-            "Istiqliqli zal, Wi-Fi va rozetkalar. Nonushta soat 12:00 gacha, "
+            "Qulay zal, Wi-Fi va rozetkalar. Nonushta soat 12:00 gacha, "
             "biznes-lanch 12:00–16:00. Don qahva, o'z konditersiyamizdan "
             "desertlar.",
             "Tinch hovli, topchanlar va samovar. Mehmonlar uchun stol o'yinlari "
@@ -708,7 +708,7 @@ _BODIES = {
             "gacha nafaqaxo'rlarga 10% chegirma. Naqd va karta to'lovi.",
         ],
         "fitness": [
-            "Mashg'ulot zali, kardi-zona va dushli kiyim almashtirish xonasi. "
+            "Mashg'ulot zali, kardio-zona va dushli kiyim almashtirish xonasi. "
             "Shaxsiy murabbiy dastur tuzib beradi. Abonementni bir oyga "
             "muzlatish mumkin.",
             "Ertalabki va kechki guruh mashg'ulotlari. Birinchi sinov mashg'uloti "
@@ -725,7 +725,7 @@ _BODIES = {
         "services": [
             "Tajribali ustalar, 6 oy kafolat bilan kalit topshirish. Uyga "
             "mutaxassis chaqirish — bepul. Har kuni soat 8:00–20:00.",
-            "Shoshilinch buyurtmalarni bir kunda bajarimiz. To'lov — ishni "
+            "Shoshilinch buyurtmalarni bir kunda bajaramiz. To'lov — ishni "
             "qabul qilgandan keyin. Ikki va undan ortiq xizmatga 10% chegirma.",
         ],
         "medicine": [

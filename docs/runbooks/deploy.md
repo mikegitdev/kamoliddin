@@ -143,7 +143,10 @@ Cron on the VPS (07:00 local, output goes to cron mail; non-zero exit alerts):
 ```
 
 The report covers: succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
-placements, disk usage, and the Celery worker heartbeat. Set
+placements, disk usage, and the Celery worker heartbeat. The reconciliation
+sweep itself runs automatically as the `reconcile-payments` beat task (every
+5 min, `manage.py reconcile_payments` for manual runs; non-zero exit = manual
+queue). Set
 `OPS_TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID` in `.env.prod` to mirror it
 to Telegram. For backup freshness, mount/copy the `~/.localads-last-backup`
 stamp into the container and set `OPS_LAST_BACKUP_FILE`.

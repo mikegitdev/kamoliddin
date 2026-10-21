@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useCampaign,
   useCampaignPlacements,
@@ -10,6 +11,9 @@ import { ApiError } from "@/shared/api/client";
 import { CampaignChip, OrderChip, PlacementChip, FallImg, QueryError } from "@/shared/ui";
 import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { toast } from "@/shared/toast";
+import { mountDialog, RefundDialogBody, confirmDialog } from "@/shared/dialog";
+import { deleteCampaign, requestRefund } from "@/features/advertiser/api";
 import {
   IconAlert,
   IconArrowLeft,
@@ -19,8 +23,10 @@ import {
   IconClock,
   IconExternal,
   IconGift,
+  IconMoney,
   IconOrb,
   IconPencil,
+  IconTrash,
 } from "@/shared/icons";
 
 /** "2 дня 3 ч" / "45 мин" remaining for an active placement. */
@@ -52,6 +58,8 @@ function useMinuteTick() {
 export function CampaignDetailPage() {
   const { t, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: campaign, isLoading, isError, error, refetch } = useCampaign(id);
   const { data: placements } = useCampaignPlacements(id);
   const { data: orders } = useOrders();
@@ -61,6 +69,54 @@ export function CampaignDetailPage() {
   const latestRejection = reviews?.find((r) => r.decision === "rejected");
   const lang = locale as "ru" | "uz";
   useMinuteTick();
+
+  const removeDraft = useMutation({
+    mutationFn: () => deleteCampaign(id!),
+    onSuccess: () => {
+      toast.success(t.draftDeleted);
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      navigate("/app/campaigns");
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
+  const refund = useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
+      requestRefund(orderId, reason),
+    onSuccess: () => {
+      toast.success(t.refundSent);
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
+  const confirmDeleteDraft = () => {
+    void confirmDialog({
+      t,
+      title: t.deleteDraftTitle,
+      body: t.deleteDraftBody,
+      confirmLabel: t.deleteDraftConfirm,
+      cancelLabel: t.cancel,
+      danger: true,
+    }).then((ok) => {
+      if (ok) removeDraft.mutate();
+    });
+  };
+
+  /** Cancellation of a rejected paid campaign enters the admin refund
+   *  workflow (spec §7.1: correction OR cancellation options). */
+  const openRefundDialog = (orderId: string) => {
+    void mountDialog((close) => (
+      <RefundDialogBody
+        t={t}
+        locale={locale}
+        onSubmit={async (reason) => {
+          await refund.mutateAsync({ orderId, reason });
+        }}
+        close={close}
+      />
+    ));
+  };
 
   if (isLoading) {
     return (
@@ -110,6 +166,15 @@ export function CampaignDetailPage() {
               <IconPencil size={12} /> {t.editCampaign}
             </Link>
           )}
+          {campaign.review_status === "draft" && (
+            <button
+              className="btn small danger"
+              disabled={removeDraft.isPending}
+              onClick={confirmDeleteDraft}
+            >
+              <IconTrash size={12} /> {t.deleteDraft}
+            </button>
+          )}
           {/* Under review: content is locked, but placements can be paid now
               and go live on approval (the editor opens on the placement step). */}
           {["submitted", "under_review"].includes(campaign.review_status) && (
@@ -133,6 +198,18 @@ export function CampaignDetailPage() {
             <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>
               {t.rejectionFixBtn}
             </Link>
+            {campaignOrders.some((o) => o.state === "paid") && (
+              <button
+                className="btn small"
+                onClick={() =>
+                  openRefundDialog(
+                    campaignOrders.find((o) => o.state === "paid")!.id,
+                  )
+                }
+              >
+                <IconMoney size={12} /> {t.cancelWithRefund}
+              </button>
+            )}
           </div>
         </div>
       )}

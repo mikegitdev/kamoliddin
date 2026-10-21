@@ -12,6 +12,9 @@ import { formatBytes } from "@/shared/format";
 const MAX_BYTES = 5 * 1024 * 1024; // mirrors backend/apps/core/media.py
 const QUALITY = 0.85;
 const WIDTHS = [1280, 1600, 1920] as const;
+// Uploads below this are rejected server-side (backend MIN_DIMENSION
+// "banners") — gate here, before the crop flow ends in an error toast.
+const MIN_DIMS = { w: 600, h: 300 };
 
 type Aspect = "31" | "169" | "free";
 type Handle = "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w";
@@ -297,6 +300,9 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
   };
 
   const tooBig = estBytes !== null && estBytes > MAX_BYTES;
+  // The crop is always ⊆ the source image, so a too-small crop covers the
+  // too-small-original case as well ("use original" is gated by it too).
+  const tooSmall = !!outDims && (outDims.w < MIN_DIMS.w || outDims.h < MIN_DIMS.h);
   const handles: Handle[] =
     ratio === null
       ? ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
@@ -449,7 +455,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
 
           <p className="be-meta">
             {outDims && (
-              <span>
+              <span className={tooSmall ? "field-error" : undefined}>
                 {t.beDims}: {outDims.w} × {outDims.h} px
               </span>
             )}
@@ -459,6 +465,11 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
               </span>
             )}
           </p>
+          {tooSmall && (
+            <p className="field-error" role="alert">
+              {t.beTooSmall}
+            </p>
+          )}
 
           <div className="be-prevs">
             <figure>
@@ -485,7 +496,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
         <button
           type="button"
           className="btn small"
-          disabled={file.size > MAX_BYTES || applying}
+          disabled={file.size > MAX_BYTES || tooSmall || applying}
           onClick={() => onApply(file)}
         >
           {t.beUseOriginal}
@@ -493,7 +504,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
         <button
           type="button"
           className="btn primary small"
-          disabled={!estBytes || tooBig || applying}
+          disabled={!estBytes || tooBig || tooSmall || applying}
           onClick={apply}
         >
           {applying ? t.loading : t.beApply}

@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCampaigns } from "@/shared/api/queries";
 import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
 import { formatDate } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { IconBulb, IconPencil } from "@/shared/icons";
+import { toast } from "@/shared/toast";
+import { confirmDialog } from "@/shared/dialog";
+import { deleteCampaign } from "@/features/advertiser/api";
+import { ApiError } from "@/shared/api/client";
+import { IconBulb, IconPencil, IconTrash } from "@/shared/icons";
 import type { CampaignStatus } from "@/entities/types";
 
 type Filter = "all" | "draft" | "review" | "approved" | "suspended" | "rejected";
@@ -24,9 +29,36 @@ const PAGE_SIZE = 10;
 
 export function CampaignsPage() {
   const { t, locale } = useI18n();
+  const queryClient = useQueryClient();
   const { data: campaigns, isLoading, isError, refetch } = useCampaigns();
   const [filter, setFilter] = useState<Filter>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const removeDraft = useMutation({
+    mutationFn: (id: string) => deleteCampaign(id),
+    onSuccess: () => {
+      toast.success(t.draftDeleted);
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof ApiError ? e.message : t.error);
+    },
+  });
+
+  /** Delete is drafts-only (backend-enforced): nothing was submitted, paid
+   *  or reviewed — no moderation or financial record to preserve (spec §7.1). */
+  const confirmDeleteDraft = (id: string) => {
+    void confirmDialog({
+      t,
+      title: t.deleteDraftTitle,
+      body: t.deleteDraftBody,
+      confirmLabel: t.deleteDraftConfirm,
+      cancelLabel: t.cancel,
+      danger: true,
+    }).then((ok) => {
+      if (ok) removeDraft.mutate(id);
+    });
+  };
 
   const countFor = (key: Filter) =>
     (campaigns ?? []).filter((c) => MATCHER[key](c.review_status)).length;
@@ -122,6 +154,17 @@ export function CampaignsPage() {
                 <Link className="btn small" to={`/app/campaigns/${c.id}/edit`}>
                   <IconPencil size={12} /> {c.review_status === "rejected" ? t.rejectionFixBtn : t.continueDraft}
                 </Link>
+              )}
+              {c.review_status === "draft" && (
+                <button
+                  className="btn small danger"
+                  disabled={removeDraft.isPending && removeDraft.variables === c.id}
+                  aria-label={t.deleteDraft}
+                  title={t.deleteDraft}
+                  onClick={() => confirmDeleteDraft(c.id)}
+                >
+                  <IconTrash size={12} />
+                </button>
               )}
             </div>
           </li>

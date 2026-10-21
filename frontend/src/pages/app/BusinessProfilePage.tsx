@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinesses, useCategories } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
-import { saveBusiness } from "@/features/advertiser/api";
-import { useCurrentBusiness } from "@/features/advertiser/currentBusiness";
+import { deleteBusiness, saveBusiness } from "@/features/advertiser/api";
+import { selectBusiness, useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { useI18n } from "@/shared/i18n";
 import { useDirtyRouteGuard } from "@/shared/route-guard";
 import { toast } from "@/shared/toast";
-import { IconAlert } from "@/shared/icons";
+import { confirmDialog } from "@/shared/dialog";
+import { IconAlert, IconTrash } from "@/shared/icons";
 import { QueryError } from "@/shared/ui";
 
 export function BusinessProfilePage() {
@@ -90,6 +91,31 @@ export function BusinessProfilePage() {
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
   });
+
+  const removeBusiness = useMutation({
+    mutationFn: () => deleteBusiness(existing!.id),
+    onSuccess: () => {
+      toast.success(t.businessDeleted);
+      // Drop the stale selection; the header falls back to the next remaining
+      // business, or the cabinet flips to its create-business state.
+      selectBusiness("");
+      queryClient.invalidateQueries({ queryKey: ["businesses"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
+  const confirmDeleteBusiness = () => {
+    void confirmDialog({
+      t,
+      title: t.deleteBusinessTitle,
+      body: t.deleteBusinessBody,
+      confirmLabel: t.deleteBusinessConfirm,
+      cancelLabel: t.cancel,
+      danger: true,
+    }).then((ok) => {
+      if (ok) removeBusiness.mutate();
+    });
+  };
 
   const set =
     (key: keyof typeof form) =>
@@ -209,6 +235,22 @@ export function BusinessProfilePage() {
           </span>
         )}
       </div>
+
+      {/* Danger zone — empty businesses only (backend-enforced); anything
+          used carries records the platform must retain (spec §7.1/§14). */}
+      {existing && (
+        <div className="form-section flush mt-14">
+          <h3 className="section-title">{t.deleteBusiness}</h3>
+          <span className="field-hint">{t.deleteBusinessBody}</span>
+          <button
+            className="btn danger"
+            disabled={removeBusiness.isPending}
+            onClick={confirmDeleteBusiness}
+          >
+            <IconTrash size={12} /> {t.deleteBusinessConfirm}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

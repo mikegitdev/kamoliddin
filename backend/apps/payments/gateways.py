@@ -80,7 +80,11 @@ class FakePaymentGateway:
         )
 
     def get_payment_status(self, *, provider_payment_id: str) -> str:
-        return "succeeded"
+        # A completed fake checkout settles synchronously (FakeCheckoutCompleteView),
+        # so any attempt still pending when reconciliation asks was abandoned.
+        # Answering "succeeded" here would turn abandoned demo checkouts into
+        # paid orders.
+        return "expired"
 
     def refund_charge(
         self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str

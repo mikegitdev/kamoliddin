@@ -79,3 +79,15 @@ def after_owner_write(*, user, location: Location, before: dict | None) -> None:
         entity_id=str(location.id),
         metadata=metadata,
     )
+
+
+def log_owner_delete(*, user, location: Location) -> None:
+    """Log an owner branch deletion (spec §3 action logs). Only unused branches
+    are deletable, so there is no ad/live-placement context to record."""
+    ActivityEvent.objects.create(
+        actor=user,
+        action="location.deleted",
+        entity="location",
+        entity_id=str(location.id),
+        metadata={"of": snapshot(location)},
+    )

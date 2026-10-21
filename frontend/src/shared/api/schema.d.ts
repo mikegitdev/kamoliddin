@@ -675,7 +675,11 @@ export interface paths {
         get: operations["api_v1_businesses_retrieve"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete an empty business
+         * @description Only a business with no branches, campaigns or orders can be deleted (e.g. an accidental duplicate). Anything that has been used carries records the platform must retain (spec §7.1/§14); account deletion anonymizes instead.
+         */
+        delete: operations["api_v1_businesses_destroy"];
         options?: never;
         head?: never;
         /** Edit own business */
@@ -709,7 +713,7 @@ export interface paths {
         get: operations["api_v1_campaigns_retrieve"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["api_v1_campaigns_destroy"];
         options?: never;
         head?: never;
         /** Edit draft/rejected campaign */
@@ -784,7 +788,11 @@ export interface paths {
         get: operations["api_v1_locations_retrieve"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete an unused branch
+         * @description Only branches with no orders, placements or grants can be deleted — anything with a money trail is kept (spec §7.1 financial/audit retention). A branch that advertised must instead be corrected, or disabled by staff.
+         */
+        delete: operations["api_v1_locations_destroy"];
         options?: never;
         head?: never;
         /** Edit own branch */
@@ -3274,6 +3282,26 @@ export interface operations {
             };
         };
     };
+    api_v1_businesses_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     api_v1_businesses_partial_update: {
         parameters: {
             query?: never;
@@ -3363,6 +3391,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Campaign"];
                 };
+            };
+        };
+    };
+    api_v1_campaigns_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3474,6 +3522,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Location"];
                 };
+            };
+        };
+    };
+    api_v1_locations_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

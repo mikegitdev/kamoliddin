@@ -42,6 +42,7 @@ import {
   IconAlert,
   IconArrowLeft,
   IconArrowRight,
+  IconCheck,
   IconEye,
   IconLock,
   IconPencil,
@@ -151,6 +152,9 @@ export function CampaignEditorPage() {
   const [cardPreview, setCardPreview] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // "Fill the headline" must not greet a blank form — only hint after the
+  // user has actually interacted with the field and left it invalid.
+  const [headlineTouched, setHeadlineTouched] = useState(false);
 
   const headlineRef = useRef<HTMLInputElement>(null);
   const initedRef = useRef<string | null>(null); // editor session guard per draft key
@@ -441,7 +445,7 @@ export function CampaignEditorPage() {
   // The quote endpoint refuses past starts (a minute of slack for "now").
   const startInPast = tashkentInputMs(start) < Date.now() - 60_000;
   // Schedule fields live on stage 2 — stage 1 only gates on the headline.
-  const stage1Hint = !headlineOk ? t.nextRequiresHeadline : null;
+  const stage1Hint = headlineTouched && !headlineOk ? t.nextRequiresHeadline : null;
   const stageReachable = (i: number) =>
     i === 0 || (i === 1 && headlineOk) || (i === 2 && headlineOk && scheduleOk);
 
@@ -632,28 +636,30 @@ export function CampaignEditorPage() {
         </div>
       )}
 
-      {/* stage stepper — forward jumps are gated on stage validity */}
+      {/* stage stepper — forward jumps are gated on stage validity; steps
+          left behind get a check so progress is visible at a glance */}
       <div className="status-filter" role="group" aria-label={t.newCampaign}>
         {stages.map((label, i) => (
           <button
             key={label}
-            className="filter-chip"
+            className={`filter-chip step-chip${stage > i ? " done" : ""}`}
             aria-current={stage === i ? "step" : undefined}
             disabled={stage !== i && !stageReachable(i)}
             onClick={() => setStage(i)}
           >
-            {i + 1}. {label}
+            <span className="step-num" aria-hidden="true">
+              {stage > i ? <IconCheck size={11} /> : i + 1}
+            </span>
+            {label}
           </button>
         ))}
       </div>
 
       {/* ---------------- stage 1: content ---------------- */}
       {stage === 0 && (
+        // No repeated section title here: the step chip right above already
+        // says "Объявление" — a duplicate heading only added noise.
         <fieldset className="form-section flush" disabled={locked}>
-          <h3 className="section-title">
-            {t.secContent}
-          </h3>
-
           <div className="field">
             <label htmlFor="ce-headline">{t.headline}</label>
             <input
@@ -661,6 +667,7 @@ export function CampaignEditorPage() {
               ref={headlineRef}
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
+              onBlur={() => setHeadlineTouched(true)}
               maxLength={200}
               aria-describedby={fieldErrors.headline ? "ce-headline-err" : undefined}
             />
@@ -907,13 +914,13 @@ export function CampaignEditorPage() {
                   {formatMinor(estimate.total, estimate.currency, locale)}
                 </span>
                 <span className="muted-2">
-                  {selected.size} {t.estimateLocations} × {estimateDays} {t.estimateDaysLabel}{" · "}
+                  {selected.size} {plural(locale, "locations", selected.size)} × {estimateDays} {t.estimateDaysLabel}{" · "}
                   {formatMinor(tariff!.amount_per_24h, tariff!.currency, locale)} {t.perDay}
                 </span>
                 <span className="muted-2">{t.estimateNote}</span>
               </>
             ) : selected.size === 0 ? (
-              <span className="muted-2">{t.placementHint}</span>
+              <span className="muted-2">{t.estimatePickLocations}</span>
             ) : (
               <span className="muted-2">{t.estimateNoTariff}</span>
             )}
@@ -988,7 +995,7 @@ export function CampaignEditorPage() {
                   <img src={bannerUrl} alt="" />
                 </div>
               ) : (
-                <p className="muted-2"><IconAlert size={12} /> {t.bannerRequired}</p>
+                <p className="muted-2">{t.bannerMissingPreview}</p>
               )}
               <h3>{headline || t.headline}</h3>
               <span className="muted-2">{business.name}</span>
@@ -1004,12 +1011,9 @@ export function CampaignEditorPage() {
             <p className="callout danger"><IconAlert size={14} /> {t.reReviewWarning}</p>
           )}
 
-          {canSubmit && selected.size === 0 && (
-            <p className="field-hint stage-hint">
-              <IconAlert size={12} /> {t.payNeedsBranches}
-            </p>
-          )}
-
+          {/* Secondary actions share one row; the money action gets its own
+              full-width row below so the hierarchy reads instantly instead of
+              wrapping into an undifferentiated button pile. */}
           <div className="stage-actions">
             <button className="btn" onClick={() => setStage(1)}>
               <IconArrowLeft size={14} /> {t.back}
@@ -1025,6 +1029,10 @@ export function CampaignEditorPage() {
                   {submit.isPending ? t.sending : t.submitWithoutPay}
                 </button>
               )}
+            </div>
+          </div>
+          {(canSubmit || canQuote) && (
+            <div className="stage-primary">
               {canSubmit && (
                 <button
                   className="btn primary"
@@ -1044,11 +1052,30 @@ export function CampaignEditorPage() {
                 </button>
               )}
             </div>
-          </div>
+          )}
           {(canSubmit || canQuote) && (
             <p className="field-hint">{t.payFirstNote}</p>
           )}
-          {!locked && !approved && !bannerKey && <p className="field-hint"><IconAlert size={12} /> {t.bannerRequired}</p>}
+          {/* Every reason the money button can be disabled is spelled out
+              right next to it — never a silently disabled primary. */}
+          {canSubmit && (selected.size === 0 || startInPast) && (
+            <p className="field-hint stage-hint">
+              <IconAlert size={12} />{" "}
+              {selected.size === 0 ? t.payNeedsBranches : t.errStartInPast}
+            </p>
+          )}
+          {/* No banner = the only missing piece; offer the fix inline instead
+              of a dead end that repeats the warning twice. */}
+          {!locked && !approved && !bannerKey && (
+            <div className="callout banner-missing" role="alert">
+              <span>
+                <IconAlert size={14} /> {t.bannerRequired}
+              </span>
+              <button className="btn small primary" onClick={() => setStage(0)}>
+                <IconPlus size={14} /> {t.uploadBanner}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>

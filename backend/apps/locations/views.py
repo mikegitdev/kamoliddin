@@ -1,14 +1,14 @@
 from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions
-from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 
 from apps.businesses.models import Business
 
 from .models import Location
 from .serializers import LocationSerializer
-from .services import after_owner_write, snapshot
+from .services import after_owner_write, log_owner_delete, snapshot
 
 
 def _owned_business(user, business_id) -> Business:
@@ -46,11 +46,19 @@ class BusinessLocationsView(ListCreateAPIView):
 @extend_schema_view(
     get=extend_schema(tags=["Locations"], summary="Own branch details"),
     patch=extend_schema(tags=["Locations"], summary="Edit own branch"),
+    delete=extend_schema(
+        tags=["Locations"],
+        summary="Delete an unused branch",
+        description="Only branches with no orders, placements or grants can be "
+                    "deleted — anything with a money trail is kept (spec §7.1 "
+                    "financial/audit retention). A branch that advertised must "
+                    "instead be corrected, or disabled by staff.",
+    ),
 )
-class LocationDetailView(RetrieveUpdateAPIView):
+class LocationDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = LocationSerializer
     permission_classes = [permissions.IsAuthenticated]
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
@@ -62,3 +70,19 @@ class LocationDetailView(RetrieveUpdateAPIView):
         before = snapshot(serializer.instance)
         location = serializer.save()
         after_owner_write(user=self.request.user, location=location, before=before)
+
+    def perform_destroy(self, instance):
+        # Unused branches only: any order item, placement or grant means the
+        # branch carries a financial/audit trail that must survive (spec §7.1).
+        # FKs are PROTECT as the final guard.
+        if (
+            instance.orderitem_set.exists()
+            or instance.placements.exists()
+            or instance.grants.exists()
+        ):
+            raise ValidationError(
+                {"detail": "Only branches without order or placement history can be deleted"},
+                code="location_in_use",
+            )
+        log_owner_delete(user=self.request.user, location=instance)
+        instance.delete()

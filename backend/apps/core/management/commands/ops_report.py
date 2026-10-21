@@ -7,7 +7,8 @@ Cron (docs/runbooks/deploy.md):
 Prints a plain-text report to stdout (cron mail delivers it) and, when
 OPS_TELEGRAM_BOT_TOKEN + OPS_TELEGRAM_CHAT_ID are set, sends the same text to
 a Telegram chat. Exits non-zero when something needs human eyes: ambiguous
-unsettled succeeded payments, blocked placements, or a
+unsettled succeeded payments, pending attempts on expired orders (the
+reconciliation manual queue), blocked placements, or a
 stale backup stamp — so a simple `|| alert` wrapper also works.
 """
 import os
@@ -31,13 +32,26 @@ class Command(BaseCommand):
         critical = False
 
         # Succeeded provider money that never settled onto its order — the
-        # crash window between webhook commit and settlement (needs the
-        # reconciliation sweep; until then a human must resolve it).
+        # crash window between webhook commit and settlement. The
+        # reconcile_payments sweep (5-min beat task) should drive this to zero;
+        # a persistent non-zero count still needs a human.
         unsettled = PaymentAttempt.objects.filter(
             status=PaymentAttempt.Status.SUCCEEDED
         ).exclude(order__state=Order.State.PAID).count()
         lines.append(f"succeeded-but-unsettled payment attempts: {unsettled}")
         critical |= unsettled > 0
+
+        # Attempts still PENDING on orders that already expired: the webhook
+        # never arrived and the reconciliation sweep could not resolve them
+        # (unimplemented gateway, or provider status still unknown). This is
+        # the manual queue the runbook's "reconciliation queue depth" means —
+        # attempts pending on still-live orders are normal checkout traffic.
+        recon_queue = PaymentAttempt.objects.filter(
+            status=PaymentAttempt.Status.PENDING,
+            order__state=Order.State.EXPIRED,
+        ).count()
+        lines.append(f"reconciliation queue (pending on expired orders): {recon_queue}")
+        critical |= recon_queue > 0
 
         blocked = Placement.objects.filter(state=Placement.State.BLOCKED).count()
         lines.append(f"blocked placements (admin queue): {blocked}")

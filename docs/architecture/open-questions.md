@@ -10,8 +10,13 @@
 | 6 | 25h request: display 25h (charge 2 days) vs display 48h entitlement | Honor requested display duration, disclose 2-day charge before payment | product owner |
 | 7 | Partial-term refund on admin suspension | Manual review queue, no auto-proration | product owner |
 | 8 | DNS / VPS sizing / RPO-RTO | VPS sizing proposed (see "Provisional VPS sizing" below, unvalidated estimate); DNS and RPO/RTO not yet chosen | ops design |
-| 9 | Reconciliation sweep command | Not shipped; `ops_report` surfaces ambiguous states for manual resolution | engineering backlog |
+| 9 | Reconciliation sweep command | Shipped: `manage.py reconcile_payments` + 5-min beat task (ADR-0005 note 8); `ops_report` stays as the daily alerting surface | done |
 | 10 | ~~Renewal timed retries~~ | Moot — auto-renewal removed (ADR-0007) | product owner |
+| 11 | Campaign headline minimum length | UI requires > 2 trimmed chars; API accepts any non-empty trim — mirror the min length into `CampaignSerializer` when validation is next touched | maintainer |
+| 12 | Banner-less campaign drafts | Model/API require non-empty `banner_key`; UI substitutes frontend-only sentinel `banners/placeholder.jpg` (no such object in storage — draft `banner_url` 404s). Either make `banner_key` blank-able with submit-time enforcement, or keep the sentinel and seed a real placeholder object | maintainer |
+| 13 | Clearing branch contacts / hours | Location PATCH omits empty contact/hours fields (`undefined`), so owners cannot clear them from the UI, while Business contacts clear via `""` — align BranchesPage to send empty strings | maintainer |
+| 14 | `Location.city` writability | Accepted by the API but never exposed in the UI — every branch is stored as "Tashkent". Intentional for the single-city MVP? | product owner |
+| 15 | `Business.logo_key` UI | API-optional field with an upload path (`purpose=logos`) but no cabinet input — ship an upload control or drop the field from the contract | product owner |
 ## Provisional VPS sizing (open question #8)
 
 Estimate derived from the spec §15 Compose stack (proxy + static frontend,

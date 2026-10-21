@@ -190,6 +190,11 @@ export const IconBag = (p: IconProps) => (
   </Line>
 );
 export const IconClose = (p: IconProps) => <Line {...p}>{paths("M18 6 6 18", "m6 6 12 12")}</Line>;
+export const IconTrash = (p: IconProps) => (
+  <Line {...p}>
+    {paths("M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6")}
+  </Line>
+);
 export const IconCheck = (p: IconProps) => <Line {...p}>{paths("M20 6 9 17l-5-5")}</Line>;
 export const IconReject = IconClose;
 export const IconBlock = (p: IconProps) => (

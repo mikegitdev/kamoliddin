@@ -2812,6 +2812,44 @@ svg.ico {
   margin-top: 18px;
   flex-wrap: wrap;
 }
+/* Staged editor stepper: numbered badge inside each chip; steps already
+   passed show a success check so progress is visible at a glance. */
+.filter-chip.step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.filter-chip.step-chip .step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  flex: none;
+}
+.filter-chip.step-chip.done .step-num {
+  background: var(--success-soft);
+  border-color: transparent;
+  color: var(--success);
+}
+/* Final step: the money action stands alone on a full-width row below the
+   secondary buttons, so the hierarchy reads instantly and never wraps into
+   an undifferentiated button pile. */
+.stage-primary {
+  margin-top: 10px;
+  display: grid;
+}
+.stage-primary .btn {
+  width: 100%;
+}
+.banner-missing {
+  margin-top: 12px;
+}
 .ad-banner img {
   display: block;
   width: 100%;
@@ -3551,6 +3589,121 @@ svg.ico {
   border-radius: var(--radius);
   background: var(--brand);
   color: var(--on-brand);
+}
+/* 404 scene: a mini street map where the route runs out at a "?",
+   with the "0" of 404 replaced by the brand pin. */
+.notfound-404 {
+  gap: var(--space-3);
+}
+.notfound-scene {
+  position: relative;
+  width: min(100%, 360px);
+  margin-bottom: var(--space-5);
+}
+.notfound-map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.nf-ground {
+  fill: var(--fill);
+}
+.nf-river {
+  fill: none;
+  stroke: #d6e6f2;
+  stroke-width: 14;
+  stroke-linecap: round;
+}
+.nf-blocks rect {
+  fill: var(--surface);
+}
+.nf-route {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 2 7;
+  animation: nf-walk 1.6s linear infinite;
+}
+.nf-start {
+  fill: var(--ink);
+}
+.nf-lost circle {
+  fill: var(--surface);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+.nf-lost text {
+  font-size: 16px;
+  font-weight: 800;
+  fill: var(--ink);
+}
+.notfound-code {
+  position: absolute;
+  left: 50%;
+  bottom: -28px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  box-shadow: var(--shadow-md);
+}
+.notfound-pin {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--on-brand);
+  animation: nf-bob 2.4s ease-in-out infinite;
+}
+.notfound-404 h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: var(--space-4);
+}
+.notfound-hint {
+  max-width: 400px;
+  margin: 0;
+}
+.notfound-actions {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.notfound-actions .btn {
+  min-width: 150px;
+}
+.notfound-business {
+  margin-top: var(--space-2);
+  font-size: 0.92rem;
+}
+.notfound-business a {
+  color: var(--muted);
+}
+.notfound-business a:hover {
+  color: var(--ink);
+}
+@keyframes nf-walk {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+@keyframes nf-bob {
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 /* ---------- Cabinet nav on phones: one scrollable row ---------- */

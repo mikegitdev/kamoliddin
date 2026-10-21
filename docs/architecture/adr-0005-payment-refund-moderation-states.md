@@ -47,10 +47,23 @@ repo ground rule 2 pretended an ADR existed.
    open-questions.md):** a failed charge sets ALERT with no automatic retry;
    timed retries can be added behind the same `(agreement, period)`
    uniqueness when the provider is real.
-8. **Reconciliation state exists but no sweep command ships yet** —
-   `renewalattempt.reconciliation` and unsettled succeeded attempts are
-   surfaced by `manage.py ops_report` for manual resolution until the
-   reconciliation worker lands (tracked open item).
+8. **Reconciliation sweep shipped (2026-10-21):** `manage.py reconcile_payments`
+   (+ `apps.payments.tasks.reconcile_payments_task`, beat every 5 min) resolves
+   the webhook crash windows: (A) succeeded-but-unsettled attempts are re-run
+   through `settle_payment_attempt` (idempotent, row-locked); (B) stale PENDING
+   attempts (webhook lost) get **one authoritative** `get_payment_status` query —
+   never a blind retry — and apply the same terminal transitions the webhook
+   would have, including rescuing money that succeeded just before quote expiry
+   (released reservations are resurrected by `activate_order_entitlements` or
+   BLOCKED with a capacity-conflict audit event). Verified webhook payloads
+   always win over a later status string; gateways that raise
+   `NotImplementedError` (CLICK pending merchant verification) leave attempts
+   untouched in the unresolved queue — the command exits non-zero and
+   `ops_report` keeps alerting. **Forward note:** the `get_payment_status ->
+   str` contract cannot re-verify the charged amount the way webhook payloads
+   do; when a real provider's status API lands, extend it to return the amount
+   and check it against the attempt before settling. *History (ADR-0007):* the renewal-side
+   `renewalattempt.reconciliation` state was retired with auto-renewal.
 
 ## Consequences
 

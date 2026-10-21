@@ -3,7 +3,12 @@ from django.db.models import Count, Min, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.exceptions import ValidationError
+from rest_framework.generics import (
+    ListAPIView,
+    ListCreateAPIView,
+    RetrieveUpdateDestroyAPIView,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -58,10 +63,10 @@ class CampaignListCreateView(ListCreateAPIView):
     get=extend_schema(tags=["Campaigns"], summary="Own campaign details"),
     patch=extend_schema(tags=["Campaigns"], summary="Edit draft/rejected campaign"),
 )
-class CampaignDetailView(RetrieveUpdateAPIView):
+class CampaignDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = CampaignSerializer
     permission_classes = [permissions.IsAuthenticated]
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
     lookup_url_kwarg = "id"
 
     def get_queryset(self):
@@ -72,6 +77,17 @@ class CampaignDetailView(RetrieveUpdateAPIView):
                 "business"
             )
         )
+
+    def perform_destroy(self, instance):
+        # Drafts only: a draft was never submitted, so it has no reviews and
+        # no orders (both FKs are PROTECT as a second guard). Anything past
+        # draft must not vanish — spec §7.1 keeps moderation/financial records
+        # and routes advertiser cancellation through the refund flow instead.
+        if instance.review_status != Campaign.ReviewStatus.DRAFT:
+            raise ValidationError(
+                {"detail": "Only draft campaigns can be deleted"}, code="not_draft"
+            )
+        instance.delete()
 
 
 @extend_schema_view(

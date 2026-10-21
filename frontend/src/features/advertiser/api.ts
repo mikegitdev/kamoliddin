@@ -18,6 +18,12 @@ export function saveBusiness(input: BusinessInput, id?: string): Promise<ApiBusi
     : api("/api/v1/businesses", { method: "POST", json: input });
 }
 
+/** Empty businesses only — the backend refuses anything with branches,
+ *  campaigns or orders (spec §7.1/§14 retention). */
+export function deleteBusiness(id: string): Promise<void> {
+  return api(`/api/v1/businesses/${id}`, { method: "DELETE" });
+}
+
 export interface LocationInput {
   name: string;
   address: string;
@@ -46,6 +52,12 @@ export function updateLocation(id: string, input: Partial<LocationInput>): Promi
   return api(`/api/v1/locations/${id}`, { method: "PATCH", json: input });
 }
 
+/** Unused branches only — the backend refuses anything with order/placement
+ *  history (spec §7.1 financial retention). */
+export function deleteLocation(id: string): Promise<void> {
+  return api(`/api/v1/locations/${id}`, { method: "DELETE" });
+}
+
 export interface CampaignInput {
   business: string;
   headline: string;
@@ -63,6 +75,11 @@ export function updateCampaign(id: string, input: Partial<CampaignInput>): Promi
 
 export function submitCampaign(id: string): Promise<ApiCampaign> {
   return api(`/api/v1/campaigns/${id}/submit`, { method: "POST", json: {} });
+}
+
+/** Drafts only — the backend refuses anything already submitted (spec §7.1). */
+export function deleteCampaign(id: string): Promise<void> {
+  return api(`/api/v1/campaigns/${id}`, { method: "DELETE" });
 }
 
 export interface QuoteInput {

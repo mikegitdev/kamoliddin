@@ -113,8 +113,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.placements.tasks.refresh_states_task",
         "schedule": 60.0,
     },
+    "reconcile-payments": {
+        "task": "apps.payments.tasks.reconcile_payments_task",
+        "schedule": 300.0,
+    },
 }
-
 
 # --- Logging ------------------------------------------------------------------------
 

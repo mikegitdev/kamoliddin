@@ -25,7 +25,7 @@ function subscribe(listener: () => void) {
   };
 }
 
-function selectBusiness(id: string) {
+export function selectBusiness(id: string) {
   selectedId = id;
   try {
     localStorage.setItem(STORAGE_KEY, id);
