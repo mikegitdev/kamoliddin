@@ -923,6 +923,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/ads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Nearby ads feed (distance-sorted list view)
+         * @description Currently eligible campaigns within radius_m of lat/lon, one card per campaign at its nearest CURRENTLY eligible branch. Ordered by distance; relevance first when q is given (sort=relevance). Cursor-paginated.
+         */
+        get: operations["api_v1_public_ads_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/campaigns/{id}": {
         parameters: {
             query?: never;
@@ -1910,6 +1930,43 @@ export interface components {
             readonly business_site: string;
             readonly category: string;
             readonly active_ads: components["schemas"]["PublicCampaign"][];
+        };
+        /**
+         * @description One card of the nearby ads feed. The feed's unit is the CAMPAIGN, not
+         *     the placement: a campaign advertised at several branches appears once,
+         *     pinned to its nearest CURRENTLY eligible branch (distance is measured to
+         *     that branch only — an ineligible nearer branch never shortens it).
+         *     `branches_count` counts all currently eligible branches city-wide.
+         *     Sourced from a Placement row; context carries a per-campaign eligible
+         *     branch count so the page stays N+1-free.
+         */
+        PublicNearbyAd: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly headline: string;
+            readonly body: string;
+            readonly banner_url: string;
+            readonly business_name: string;
+            readonly category: string;
+            readonly location: components["schemas"]["PublicNearbyAdLocation"];
+            readonly distance_m: number;
+            readonly branches_count: number;
+        };
+        /** @description Nearest eligible branch of a nearby-ads card (see PublicNearbyAdSerializer). */
+        PublicNearbyAdLocation: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly address: string;
+            /** Format: double */
+            readonly lon: number;
+            /** Format: double */
+            readonly lat: number;
+        };
+        PublicNearbyAdsResult: {
+            readonly results: components["schemas"]["PublicNearbyAd"][];
+            readonly next_cursor: string | null;
+            readonly has_more: boolean;
         };
         PublicPricing: {
             readonly tariff: components["schemas"]["PublicTariff"] | null;
@@ -3742,6 +3799,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookAck"];
+                };
+            };
+        };
+    };
+    api_v1_public_ads_retrieve: {
+        parameters: {
+            query: {
+                category?: string;
+                /** @description Opaque cursor from a previous page */
+                cursor?: string;
+                /** @description Origin latitude */
+                lat: number;
+                /** @description 1..50, default 20 */
+                limit?: number;
+                /** @description Origin longitude */
+                lon: number;
+                /** @description At least 2 characters */
+                q?: string;
+                /** @description 300..20000, default 5000 */
+                radius_m?: number;
+                /** @description Default: relevance when q is given, else distance */
+                sort?: "distance" | "relevance";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicNearbyAdsResult"];
                 };
             };
         };

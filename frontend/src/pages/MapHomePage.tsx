@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
-import { useCategories, useLocationDetail, useLocationPins, usePublicSearch } from "@/shared/api/queries";
-import { MapLibreAdapter, type LatLngBounds, type MapAdapter } from "@/map-adapters";
+import {
+  useCategories,
+  useLocationDetail,
+  useLocationPins,
+  useNearbyAds,
+  usePublicSearch,
+  type ApiNearbyAd,
+} from "@/shared/api/queries";
+import { MapLibreAdapter, mapAdapterOptions, type LatLngBounds, type MapAdapter } from "@/map-adapters";
 import { IconClose, IconDirections, IconFilter, IconList, IconPin, IconSearch } from "@/shared/icons";
 import { useMediaQuery } from "@/shared/hooks";
 import { ResultsPanel } from "@/features/map/ResultsPanel";
+import { NearbyAdsList } from "@/features/discovery/NearbyAdsList";
 import { RecentSearches, rememberSearch } from "@/features/map/RecentSearches";
 import { FilterSheet } from "@/features/map/FilterSheet";
-import { colocatedGroups, loadSnapshot, saveSnapshot, type SheetState } from "@/features/map/mapSession";
+import { colocatedGroups, loadSnapshot, saveSnapshot, type SheetState, type ViewMode } from "@/features/map/mapSession";
 import type { ApiLocationPin } from "@/entities/types";
 
 /** The public pins API rejects bboxes larger than 1 deg² (MAX_BBOX_AREA in
@@ -21,6 +29,10 @@ const DETAIL_ZOOM = 15.2;
 /** Phones: lift the target into the map strip left visible above the detail
  *  bottom sheet (≈60dvh) and below the floating toolbar. */
 const MOBILE_FLY_OFFSET: [number, number] = [0, -170];
+
+/** Fallback distance origin: central Tashkent. Always labeled as such in the
+ *  UI — never presented as the visitor's own location. */
+const DEFAULT_ORIGIN = { lat: 41.3111, lon: 69.2797 };
 
 function boundsArea(b: LatLngBounds): number {
   return (b.east - b.west) * (b.north - b.south);
@@ -91,7 +103,12 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   const [debouncedQuery, setDebouncedQuery] = useState(query.trim());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<string | null>(restored?.selectedPin ?? null);
-  const [sheet, setSheet] = useState<SheetState>(restored?.sheet ?? "collapsed");
+  // First visit (no saved session): desktop opens the results sidebar — the
+  // collapsed pill is display:none ≥768px, so "collapsed" would leave desktop
+  // with no visible counts. Mobile starts collapsed (map first).
+  const [sheet, setSheet] = useState<SheetState>(
+    restored?.sheet ?? (isMobile ? "collapsed" : "list"),
+  );
   const [camera, setCamera] = useState<{
     center: [number, number];
     zoom: number;
@@ -103,6 +120,22 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   const [userOrigin, setUserOrigin] = useState<{ lat: number; lon: number } | null>(null);
   const [geoState, setGeoState] = useState<GeoState>("idle");
   const [searchFocused, setSearchFocused] = useState(false);
+  // --- List view state: which surface, feed preferences, manual origin ---
+  const urlView = searchParams.get("view");
+  const [view, setView] = useState<ViewMode>(
+    urlView === "list" ? "list" : urlView === "map" ? "map" : restored?.view ?? "map",
+  );
+  const [listRadius, setListRadius] = useState(restored?.listRadius ?? 5000);
+  const [listSort, setListSort] = useState<"distance" | "relevance">(
+    restored?.listSort ?? "distance",
+  );
+  /** Origin picked on the map ("search around here"). Session-only — never
+   *  persisted or put in the URL (privacy: coordinates are not shareable). */
+  const [manualOrigin, setManualOrigin] = useState<{ lat: number; lon: number } | null>(null);
+  const [pickOrigin, setPickOrigin] = useState(false);
+  /** Pseudo pin for a branch opened from the list before the viewport refetch
+   *  delivers the real pin — keeps marker, selection and panel resolvable. */
+  const [pinnedFromList, setPinnedFromList] = useState<ApiLocationPin | null>(null);
   // Marker clicks arrive from the adapter created in the init effect below;
   // a ref keeps the callback current without re-initializing the map.
   const selectPinRef = useRef<(id: string, fly?: boolean) => void>(() => {});
@@ -126,9 +159,11 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     // provider (2GIS tiles or a paid/self-hosted OSM stack) — spec §10 [E],
     // ADR-0004/open-questions gate 2.
     const adapter = new MapLibreAdapter();
-    adapter.initialize(containerRef.current, {
-      tilesUrl: import.meta.env.VITE_MAP_TILES_URL || undefined,
-    });
+    // Tile/glyph/attribution source is configuration, not code: dev defaults
+    // to public OSM + demo glyphs (development ONLY); production sets
+    // VITE_MAP_TILES_URL / VITE_MAP_GLYPHS_URL / VITE_MAP_ATTRIBUTION to a
+    // licensed provider — spec §10 [E], open-questions gate 2.
+    adapter.initialize(containerRef.current, mapAdapterOptions());
     // Restore the saved camera (session persistence); otherwise seed the first
     // request from the REAL viewport, clipped to the API's area guard.
     if (restored?.center && restored.zoom != null) {
@@ -192,6 +227,35 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     [searchActive, searchData, pins],
   );
 
+  /** A branch opened from the ads list joins the result set until the real
+   *  viewport pin arrives — so the marker, selection and panel all resolve. */
+  const resultsWithPin = useMemo(() => {
+    if (!pinnedFromList) return results;
+    if (results.some((p) => p.id === pinnedFromList.id)) return results;
+    return [pinnedFromList, ...results];
+  }, [results, pinnedFromList]);
+
+  // --- Nearby ads feed (list view): one card per campaign at its nearest
+  // eligible branch, distance-ordered server-side before pagination ---
+
+  const listOrigin = userOrigin ?? manualOrigin ?? DEFAULT_ORIGIN;
+  const originKind = userOrigin ? "user" : manualOrigin ? "manual" : "default";
+  const originLabel =
+    originKind === "user" ? t.nearbyYou : originKind === "manual" ? t.nearbyPicked : t.nearbyDefault;
+  const nearbyFilters = useMemo(
+    () => ({
+      lat: listOrigin.lat,
+      lon: listOrigin.lon,
+      radius_m: listRadius,
+      category: category || undefined,
+      q: searchActive ? debouncedQuery : undefined,
+      // Without a query there is nothing to rank: always nearest-first.
+      sort: (searchActive ? listSort : "distance") as "distance" | "relevance",
+    }),
+    [listOrigin, listRadius, category, searchActive, debouncedQuery, listSort],
+  );
+  const nearbyAds = useNearbyAds(view === "list" ? nearbyFilters : null);
+
   /** Lookup for every pin we know about (viewport + search), for fly-to. */
   const pinsById = useMemo(() => {
     const m = new Map<string, ApiLocationPin>();
@@ -200,7 +264,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     return m;
   }, [pins, searchData]);
 
-  const groups = useMemo(() => colocatedGroups(results), [results]);
+  const groups = useMemo(() => colocatedGroups(resultsWithPin), [resultsWithPin]);
   const colocGroup = useMemo(
     () => groups.find((g) => g.some((p) => p.id === selectedPin)) ?? [],
     [groups, selectedPin],
@@ -241,6 +305,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     prevFilterSig.current = filterSig;
     setSelectedPin(null);
     adapterRef.current?.setSelected(null);
+    setPinnedFromList(null);
   }, [filterSig]);
 
   // Typing expands the collapsed mobile sheet so results are visible.
@@ -250,11 +315,18 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
 
   // Area mode: if the user pans far enough that the selected pin leaves the
   // fetched results, drop the stale selection instead of showing a skeleton.
+  // A branch pinned from the ads list is exempt until the refetch lands.
   useEffect(() => {
-    if (selectedPin && !searchActive && pins !== undefined && !pins.some((p) => p.id === selectedPin)) {
+    if (
+      selectedPin &&
+      pinnedFromList?.id !== selectedPin &&
+      !searchActive &&
+      pins !== undefined &&
+      !pins.some((p) => p.id === selectedPin)
+    ) {
       clearSelection();
     }
-  }, [selectedPin, searchActive, pins, clearSelection]);
+  }, [selectedPin, searchActive, pins, clearSelection, pinnedFromList]);
 
   // Deep link /?pin=<id> ("show on map" from detail pages): select the pin
   // once its data is available, then clean the URL so refresh behaves
@@ -286,7 +358,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     );
   }, [active, deepLinkPin, mapReady, pinsById, deepLinkDetail, setSearchParams, isMobile]);
 
-  // Mirror the active filters into the URL (replace: no history spam).
+  // Mirror the active filters + view into the URL (replace: no history spam).
   useEffect(() => {
     if (!active) return;
     setSearchParams(
@@ -296,11 +368,13 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         else next.delete("category");
         if (debouncedQuery) next.set("q", debouncedQuery);
         else next.delete("q");
+        if (view === "list") next.set("view", "list");
+        else next.delete("view");
         return next;
       },
       { replace: true },
     );
-  }, [active, category, debouncedQuery, setSearchParams]);
+  }, [active, category, debouncedQuery, view, setSearchParams]);
 
   // --- Session persistence (survives /locations/:id and back) ---
 
@@ -313,12 +387,16 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
       zoom: camera?.zoom ?? null,
       selectedPin,
       sheet,
+      view,
+      listRadius,
+      listSort,
+      // Device/manual coordinates are deliberately NOT persisted (privacy).
     });
-  }, [query, category, bbox, camera, selectedPin, sheet]);
+  }, [query, category, bbox, camera, selectedPin, sheet, view, listRadius, listSort]);
 
   // --- Geolocation with a useful permission-denied fallback ---
 
-  const locateMe = () => {
+  const locateMe = (fly = true) => {
     if (!navigator.geolocation) {
       setGeoState("denied");
       return;
@@ -340,8 +418,11 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
             setGeoState("idle");
             const { latitude: lat, longitude: lon } = pos.coords;
             setUserOrigin({ lat, lon });
+            setManualOrigin(null); // the exact location supersedes a manual pick
             adapterRef.current?.setUserLocation(lon, lat);
-            adapterRef.current?.flyTo([lon, lat], 15.5, isMobile ? [0, -110] : panelFlyOffset());
+            if (fly) {
+              adapterRef.current?.flyTo([lon, lat], 15.5, isMobile ? [0, -110] : panelFlyOffset());
+            }
           },
           () => setGeoState("denied"),
           { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
@@ -349,7 +430,47 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
       });
   };
 
+  /** "On map" from an ad card: switch view, fly to the branch and open its
+   *  panel — even before the viewport refetch delivers the real pin. */
+  const showAdOnMap = (ad: ApiNearbyAd) => {
+    setPinnedFromList({
+      id: ad.location.id,
+      name: ad.location.name,
+      lon: ad.location.lon,
+      lat: ad.location.lat,
+      category: ad.category,
+      business_name: ad.business_name,
+      // Honest lower bound; the viewport refetch replaces it with the live count.
+      active_ads_count: 1,
+    });
+    setPickOrigin(false);
+    setView("map");
+    const adapter = adapterRef.current;
+    if (adapter) {
+      adapter.flyTo(
+        [ad.location.lon, ad.location.lat],
+        DETAIL_ZOOM,
+        isMobile ? MOBILE_FLY_OFFSET : panelFlyOffset(),
+      );
+      adapter.setSelected(ad.location.id);
+    }
+    setSelectedPin(ad.location.id);
+    setSheet("detail");
+  };
+
+  /** Confirm the map-picked origin ("search around here") for the list. */
+  const confirmPickOrigin = () => {
+    const cz = adapterRef.current?.getCenterZoom();
+    if (cz) setManualOrigin({ lat: cz.center[1], lon: cz.center[0] });
+    setPickOrigin(false);
+    setView("list");
+  };
+
   const totalAds = pins?.reduce((sum, p) => sum + p.active_ads_count, 0) ?? 0;
+  /** Search-mode ad total: the collapsed pill must describe the SEARCH result
+   *  set while a query is active, not the invisible viewport pins. */
+  const searchAdsTotal =
+    searchData?.locations.reduce((sum, p) => sum + p.active_ads_count, 0) ?? 0;
   const hasFilters = query.trim() !== "" || category !== "";
   const activeCategory = categories?.find((c) => c.slug === category);
   const categoryName = (c: { name_ru: string; name_uz: string }) =>
@@ -362,15 +483,20 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   /** Frame the map on the current (relevance-ordered) result set, so the
    *  list and the map tell the same story in search mode. */
   const fitResults = () => {
-    if (results.length === 0) return;
-    const b = results.reduce<LatLngBounds>(
+    if (resultsWithPin.length === 0) return;
+    const b = resultsWithPin.reduce<LatLngBounds>(
       (acc, p) => ({
         west: Math.min(acc.west, p.lon),
         east: Math.max(acc.east, p.lon),
         south: Math.min(acc.south, p.lat),
         north: Math.max(acc.north, p.lat),
       }),
-      { west: results[0].lon, east: results[0].lon, south: results[0].lat, north: results[0].lat },
+      {
+        west: resultsWithPin[0].lon,
+        east: resultsWithPin[0].lon,
+        south: resultsWithPin[0].lat,
+        north: resultsWithPin[0].lat,
+      },
     );
     const panelWidthPx = panelWidth();
     adapterRef.current?.fitBounds(
@@ -388,12 +514,12 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   // distance from the map center, so priority follows where the visitor looks.
   const rankCenter = searchActive ? null : camera?.center ?? null;
   const markers = useMemo(() => {
-    let ordered = results;
+    let ordered = resultsWithPin;
     if (rankCenter) {
       const [cLon, cLat] = rankCenter;
       const kx = Math.cos((cLat * Math.PI) / 180); // equirectangular is plenty at city scale
       const dist = (p: ApiLocationPin) => ((p.lon - cLon) * kx) ** 2 + (p.lat - cLat) ** 2;
-      ordered = [...results].sort((a, b) => dist(a) - dist(b));
+      ordered = [...resultsWithPin].sort((a, b) => dist(a) - dist(b));
     }
     return ordered.map((p) => ({
       id: p.id,
@@ -402,7 +528,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
       activeAdsCount: p.active_ads_count,
       label: p.business_name,
     }));
-  }, [results, rankCenter]);
+  }, [resultsWithPin, rankCenter]);
 
   // Must run after init AND whenever the visible result set or its order
   // changes (viewport pan, search, category). Without it the map is just tiles.
@@ -423,7 +549,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
       : sheet;
 
   return (
-    <div className="map-page">
+    <div className="map-page" data-view={pickOrigin ? "map" : view}>
       <div className="map-container" ref={containerRef} role="region" aria-label={t.appTitle} />
 
       {/* Stays mounted so it can fade out once the map is ready. */}
@@ -455,24 +581,53 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         </div>
       </header>
 
-      {/* Floating toolbar over the map (Joymee-style): list toggle + search,
-          category chips underneath. */}
+      {/* Floating toolbar over the map (Joymee-style): view switch + list
+          toggle + search, category chips underneath. In list view the same
+          toolbar drives the feed (shared search/category state). */}
       <div className="map-toolbar">
         <div className="toolbar-row">
-          <button
-            type="button"
-            className={`list-toggle${panelState !== "collapsed" ? " active" : ""}`}
-            aria-expanded={panelState !== "collapsed"}
-            aria-label={panelState === "collapsed" ? t.openList : t.collapseList}
-            onClick={() => setSheet((s) => (s === "collapsed" ? "list" : "collapsed"))}
-          >
-            <IconList />
-            <span>{t.listToggle}</span>
-            {/* Keyed by value: a changed count re-mounts and "pops". */}
-            <span className="list-toggle-count" key={searchActive ? results.length : pins?.length ?? 0}>
-              {searchActive ? results.length : pins?.length ?? 0}
-            </span>
-          </button>
+          <div className="view-toggle" role="group" aria-label={t.viewToggleLabel}>
+            <button
+              type="button"
+              className={view === "map" && !pickOrigin ? "vt-btn active" : "vt-btn"}
+              aria-pressed={view === "map" && !pickOrigin}
+              onClick={() => {
+                setPickOrigin(false);
+                setView("map");
+              }}
+            >
+              <IconPin size={16} />
+              {t.viewMap}
+            </button>
+            <button
+              type="button"
+              className={view === "list" ? "vt-btn active" : "vt-btn"}
+              aria-pressed={view === "list"}
+              onClick={() => {
+                setPickOrigin(false);
+                setView("list");
+              }}
+            >
+              <IconList size={16} />
+              {t.viewAds}
+            </button>
+          </div>
+          {view === "map" && (
+            <button
+              type="button"
+              className={`list-toggle${panelState !== "collapsed" ? " active" : ""}`}
+              aria-expanded={panelState !== "collapsed"}
+              aria-label={panelState === "collapsed" ? t.openList : t.collapseList}
+              onClick={() => setSheet((s) => (s === "collapsed" ? "list" : "collapsed"))}
+            >
+              <IconList />
+              <span>{t.listToggle}</span>
+              {/* Keyed by value: a changed count re-mounts and "pops". */}
+              <span className="list-toggle-count" key={searchActive ? results.length : pins?.length ?? 0}>
+                {searchActive ? results.length : pins?.length ?? 0}
+              </span>
+            </button>
+          )}
           <div className="controls">
             <span
               className={`search-wrap${
@@ -570,40 +725,45 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         resultCount={(searchActive ? searchLoading : isLoading) ? undefined : results.length}
       />
 
-      <ResultsPanel
-        active={active}
-        state={panelState}
-        onStateChange={setSheet}
-        results={results}
-        campaigns={searchActive ? searchData?.campaigns ?? [] : []}
-        searchMode={searchActive}
-        loading={searchActive ? searchLoading : isLoading}
-        error={searchActive ? searchError : isError}
-        onRetry={searchActive ? refetchSearch : refetch}
-        selectedPin={selectedPin}
-        colocGroup={colocGroup}
-        onSelect={(id) => selectPin(id)}
-        onClearSelection={clearSelection}
-        hasFilters={hasFilters}
-        onClearFilters={clearFilters}
-        onFitResults={searchActive ? fitResults : undefined}
-        locationsCount={pins?.length ?? 0}
-        adsCount={totalAds}
-      />
+      {view === "map" && (
+        <ResultsPanel
+          active={active}
+          state={panelState}
+          onStateChange={setSheet}
+          results={resultsWithPin}
+          campaigns={searchActive ? searchData?.campaigns ?? [] : []}
+          searchMode={searchActive}
+          loading={searchActive ? searchLoading : isLoading}
+          error={searchActive ? searchError : isError}
+          onRetry={searchActive ? refetchSearch : refetch}
+          selectedPin={selectedPin}
+          colocGroup={colocGroup}
+          onSelect={(id) => selectPin(id)}
+          onClearSelection={clearSelection}
+          hasFilters={hasFilters}
+          onClearFilters={clearFilters}
+          onFitResults={searchActive ? fitResults : undefined}
+          locationsCount={searchActive ? results.length : pins?.length ?? 0}
+          adsCount={searchActive ? searchAdsTotal : totalAds}
+          distanceFromUser={searchActive && !!userOrigin}
+        />
+      )}
 
-      <button
-        type="button"
-        className={geoState === "locating" ? "geo-button busy" : "geo-button"}
-        onClick={locateMe}
-        disabled={geoState === "locating"}
-        aria-label={geoState === "locating" ? t.geoLocating : t.myLocation}
-        title={t.myLocation}
-      >
-        <IconDirections />
-        <span>{t.nearMe}</span>
-      </button>
+      {view === "map" && (
+        <button
+          type="button"
+          className={geoState === "locating" ? "geo-button busy" : "geo-button"}
+          onClick={() => locateMe()}
+          disabled={geoState === "locating"}
+          aria-label={geoState === "locating" ? t.geoLocating : t.myLocation}
+          title={t.myLocation}
+        >
+          <IconDirections />
+          <span>{t.nearMe}</span>
+        </button>
+      )}
 
-      {geoState === "denied" && (
+      {geoState === "denied" && view === "map" && (
         <div className="geo-hint" role="alert">
           <div className="geo-hint-text">
             <strong>{t.geoDeniedTitle}</strong>
@@ -615,7 +775,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         </div>
       )}
 
-      {!isLoading && !isError && !searchActive && pins?.length === 0 && (
+      {!isLoading && !isError && !searchActive && view === "map" && pins?.length === 0 && (
         <div className="map-empty" role="status">
           <strong>{t.emptyTitle}</strong>
           <span className="muted">{t.emptyHint}</span>
@@ -627,7 +787,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         </div>
       )}
 
-      {zoomedOut && !isError && (
+      {zoomedOut && !isError && view === "map" && (
         <div className="map-banner" role="status">
           <div className="map-banner-text">
             <strong>{t.zoomOutTitle}</strong>
@@ -639,7 +799,64 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
         </div>
       )}
 
-      <footer className="map-footer">
+      {/* Pick-origin mode ("search around here" for the list): center
+          crosshair + confirm bar over the live map. */}
+      {pickOrigin && (
+        <>
+          <div className="pick-crosshair" aria-hidden="true">
+            <IconPin size={34} />
+          </div>
+          <div className="pick-origin-bar" role="dialog" aria-label={t.pickOriginTitle}>
+            <div className="pick-origin-text">
+              <strong>{t.pickOriginTitle}</strong>
+              <span className="muted">{t.pickOriginHint}</span>
+            </div>
+            <div className="row">
+              <button className="btn primary small" onClick={confirmPickOrigin}>
+                {t.searchHere}
+              </button>
+              <button
+                className="btn small"
+                onClick={() => {
+                  setPickOrigin(false);
+                  setView("list");
+                }}
+              >
+                {t.cancel}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* The ads feed replaces the map visually; the map itself stays mounted
+          underneath for an instant switch back (and keeps its camera). */}
+      {view === "list" && !pickOrigin && (
+        <NearbyAdsList
+          query={nearbyAds}
+          originLabel={originLabel}
+          originKind={originKind}
+          geoState={geoState}
+          categories={categories ?? []}
+          locale={locale}
+          searchActive={searchActive}
+          sort={searchActive ? listSort : null}
+          onSortChange={setListSort}
+          radius={listRadius}
+          onRadiusChange={setListRadius}
+          onUseMyLocation={() => locateMe(false)}
+          onPickOnMap={() => {
+            setView("map");
+            setPickOrigin(true);
+          }}
+          onShowOnMap={showAdOnMap}
+          hasFilters={hasFilters}
+          onClearFilters={clearFilters}
+        />
+      )}
+
+      {view === "map" && (
+        <footer className="map-footer">
         {/* Counts live in the results panel / collapsed pill — the footer
             carries status and the pin legend only; the zoomed-out state is
             the .map-banner's job (no duplicated hint here). */}
@@ -661,7 +878,8 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
             <span className="dot dot-idle" /> {t.legendNoAds}
           </span>
         </span>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

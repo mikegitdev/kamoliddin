@@ -5,9 +5,16 @@ Ordering: relevance first, then distance. No paid ranking boost in MVP.
 All public responses expose ONLY currently-eligible content; expired/blocked
 campaigns are invisible everywhere, including direct URLs (spec §7.1, §14).
 """
+import base64
+import binascii
+import hashlib
+import json
 import uuid
 
+from django.contrib.gis.db.models.functions import Distance as GisDistanceFunc
+from django.contrib.gis.geos import Point as GisPoint
 from django.contrib.gis.geos import Polygon
+from django.contrib.gis.measure import D
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -32,6 +39,29 @@ from . import serializers
 MAX_BBOX_AREA = 1.0  # deg^2; roughly a ~100km square around Tashkent
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 100
+
+# Nearby ads feed guards: bounded spatial scan + bounded page (spec §12).
+NEARBY_MIN_RADIUS_M = 300
+NEARBY_MAX_RADIUS_M = 20_000
+NEARBY_DEFAULT_RADIUS_M = 5_000
+NEARBY_DEFAULT_LIMIT = 20
+NEARBY_MAX_LIMIT = 50
+
+
+def _campaign_relevance(q: str):
+    """Tiered relevance for the nearby feed's text search: headline prefix (3)
+    beats headline substring (2), beats body text (1). Relevance is a
+    campaign-level attribute, so it never changes WHICH branch is nearest —
+    only the order cards appear in (spec §10, acceptance #12)."""
+    from django.db.models import Case, Value, When
+
+    return Case(
+        When(campaign__headline__istartswith=q, then=Value(3)),
+        When(campaign__headline__icontains=q, then=Value(2)),
+        When(campaign__body__icontains=q, then=Value(1)),
+        default=Value(0),
+        output_field=IntegerField(),
+    )
 
 
 def _active_ads_count(now):
@@ -335,6 +365,195 @@ class PublicSearchView(APIView):
                     for c in campaigns
                 ],
             }
+        )
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Public"],
+        summary="Nearby ads feed (distance-sorted list view)",
+        description="Currently eligible campaigns within radius_m of lat/lon, "
+                    "one card per campaign at its nearest CURRENTLY eligible "
+                    "branch. Ordered by distance; relevance first when q is "
+                    "given (sort=relevance). Cursor-paginated.",
+        parameters=[
+            OpenApiParameter("lat", OpenApiTypes.NUMBER, required=True,
+                             description="Origin latitude"),
+            OpenApiParameter("lon", OpenApiTypes.NUMBER, required=True,
+                             description="Origin longitude"),
+            OpenApiParameter("radius_m", OpenApiTypes.INT,
+                             description=f"{NEARBY_MIN_RADIUS_M}..{NEARBY_MAX_RADIUS_M}, "
+                                         f"default {NEARBY_DEFAULT_RADIUS_M}"),
+            OpenApiParameter("category", OpenApiTypes.STR),
+            OpenApiParameter("q", OpenApiTypes.STR, description="At least 2 characters"),
+            OpenApiParameter("sort", OpenApiTypes.STR, enum=["distance", "relevance"],
+                             description="Default: relevance when q is given, else distance"),
+            OpenApiParameter("limit", OpenApiTypes.INT,
+                             description=f"1..{NEARBY_MAX_LIMIT}, default {NEARBY_DEFAULT_LIMIT}"),
+            OpenApiParameter("cursor", OpenApiTypes.STR,
+                             description="Opaque cursor from a previous page"),
+        ],
+        responses=serializers.PublicNearbyAdsResultSerializer,
+    )
+)
+class PublicNearbyAdsView(APIView):
+    """Distance-ordered ad cards for the public list view (spec §10).
+
+    One card per campaign at its nearest eligible branch: a Postgres
+    DISTINCT ON subquery picks that branch BEFORE pagination, so ordering
+    and slicing can never "sort a limited set" and miss closer ads.
+    Eligibility is re-evaluated on every request — a cursor only carries a
+    keyset position, never stale visibility."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        params = request.query_params
+
+        try:
+            lat = float(params.get("lat"))
+            lon = float(params.get("lon"))
+        except (TypeError, ValueError):
+            raise ValidationError({"lat": "Required: lat=…, lon=… (numbers)"})
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValidationError({"lat": "lat/lon out of range"})
+        try:
+            radius_m = int(params.get("radius_m", NEARBY_DEFAULT_RADIUS_M))
+        except (TypeError, ValueError):
+            raise ValidationError({"radius_m": "Expected an integer (meters)"})
+        if not (NEARBY_MIN_RADIUS_M <= radius_m <= NEARBY_MAX_RADIUS_M):
+            raise ValidationError(
+                {"radius_m": f"Expected {NEARBY_MIN_RADIUS_M}..{NEARBY_MAX_RADIUS_M} meters"}
+            )
+
+        q = (params.get("q") or "").strip()
+        category = params.get("category")
+        sort = params.get("sort") or ("relevance" if len(q) >= 2 else "distance")
+        if sort not in ("distance", "relevance"):
+            raise ValidationError({"sort": "Expected 'distance' or 'relevance'"})
+        try:
+            limit = int(params.get("limit", NEARBY_DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = NEARBY_DEFAULT_LIMIT
+        limit = max(1, min(limit, NEARBY_MAX_LIMIT))
+
+        # A 1-char query mirrors the search endpoint: too short to match.
+        if 0 < len(q) < 2:
+            return Response({"results": [], "next_cursor": None, "has_more": False})
+
+        # Opaque cursor: keyset position + a hash of the exact filters it was
+        # issued for. Mixing cursors between origins/filters is a client bug —
+        # reject it instead of returning a silently-wrong page.
+        fingerprint = hashlib.sha1(
+            json.dumps([lat, lon, radius_m, category, q, sort, limit]).encode()
+        ).hexdigest()[:12]
+        cursor = params.get("cursor")
+        position = None
+        if cursor:
+            try:
+                payload = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+                position = {
+                    "d": float(payload["d"]),
+                    "c": uuid.UUID(str(payload["c"])),
+                    "r": int(payload["r"]) if sort == "relevance" else None,
+                }
+            except (ValueError, KeyError, TypeError, binascii.Error):
+                raise ValidationError({"cursor": "Malformed cursor"})
+            if payload.get("h") != fingerprint:
+                raise ValidationError({"cursor": "Cursor does not match the current filters"})
+
+        now = timezone.now()
+        origin = GisPoint(lon, lat, srid=4326)
+        distance_fn = GisDistanceFunc("location__point", origin)
+        base = (
+            Placement.objects.filter(eligible_now_q(now))
+            .filter(location__point__distance_lte=(origin, D(m=radius_m)))
+            .annotate(distance=distance_fn)
+        )
+        if q:
+            base = base.filter(
+                Q(campaign__headline__icontains=q) | Q(campaign__body__icontains=q)
+            )
+        if category:
+            base = base.filter(campaign__business__category__slug=category)
+
+        # Nearest eligible placement per campaign. relevance depends only on
+        # campaign fields, so the inner order stays (campaign, distance).
+        nearest = (
+            base.order_by("campaign_id", "distance", "id")
+            .distinct("campaign_id")
+            .values("id")
+        )
+        page = (
+            Placement.objects.filter(id__in=Subquery(nearest))
+            .annotate(distance=distance_fn)
+            .select_related(
+                "campaign",
+                "campaign__business",
+                "campaign__business__category",
+                "location",
+                "location__business",
+            )
+        )
+        if sort == "relevance":
+            page = page.annotate(relevance=_campaign_relevance(q))
+
+        order: tuple[str, ...]
+        if sort == "relevance":
+            order = ("-relevance", "distance", "campaign_id")
+            if position:
+                page = page.filter(
+                    Q(relevance__lt=position["r"])
+                    | Q(relevance=position["r"], distance__gt=position["d"])
+                    | Q(
+                        relevance=position["r"],
+                        distance=position["d"],
+                        campaign_id__gt=position["c"],
+                    )
+                )
+        else:
+            order = ("distance", "campaign_id")
+            if position:
+                page = page.filter(
+                    Q(distance__gt=position["d"])
+                    | Q(distance=position["d"], campaign_id__gt=position["c"])
+                )
+        rows = list(page.order_by(*order)[: limit + 1])
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        # Eligible branch counts (city-wide) for every campaign on the page:
+        # one extra query, not one per card.
+        branch_counts = {}
+        if rows:
+            branch_counts = dict(
+                Placement.objects.filter(
+                    eligible_now_q(now), campaign_id__in=[p.campaign_id for p in rows]
+                )
+                .values("campaign_id")
+                .annotate(n=Count("id"))
+                .values_list("campaign_id", "n")
+            )
+
+        data = serializers.PublicNearbyAdSerializer(
+            rows, many=True, context={"branch_counts": branch_counts}
+        ).data
+
+        next_cursor = None
+        if has_more and rows:
+            last = rows[-1]
+            payload = {
+                "h": fingerprint,
+                "d": last.distance.m,
+                "c": str(last.campaign_id),
+            }
+            if sort == "relevance":
+                payload["r"] = int(getattr(last, "relevance", 0))
+            next_cursor = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+
+        return Response(
+            {"results": data, "next_cursor": next_cursor, "has_more": has_more}
         )
 
 

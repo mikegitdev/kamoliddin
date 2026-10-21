@@ -8,6 +8,11 @@ import type { ApiLocationPin } from "@/entities/types";
 
 export type SheetState = "collapsed" | "list" | "detail";
 
+/** Which discovery surface is showing. Shared state (search/category) lives
+ *  here too, but the distance origin does NOT: device coordinates never go
+ *  into storage (privacy — see the discovery plan). */
+export type ViewMode = "map" | "list";
+
 export interface MapSnapshot {
   query: string;
   category: string;
@@ -17,6 +22,10 @@ export interface MapSnapshot {
   /** Open pin + sheet, so Back from an ad/location page lands on the same card. */
   selectedPin?: string | null;
   sheet?: SheetState;
+  view?: ViewMode;
+  /** List-view preferences (radius/sort); the origin itself is session-only. */
+  listRadius?: number;
+  listSort?: "distance" | "relevance";
 }
 
 const STORAGE_KEY = "map-home-snapshot";

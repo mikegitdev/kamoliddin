@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
   ApiBusiness,
@@ -92,6 +92,77 @@ export function usePublicSearch(filters: SearchFilters | null) {
     enabled: !!filters && filters.q.trim().length >= 2,
     // Typing refines the query per keystroke: keep results instead of blanking.
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+/* ---------- Nearby ads feed (public list view, spec §10) ---------- */
+
+export interface ApiNearbyAdBranch {
+  id: string;
+  name: string;
+  address: string;
+  lon: number;
+  lat: number;
+}
+
+/** One card of the list: a CAMPAIGN pinned to its nearest currently eligible
+ *  branch. `branches_count` = eligible branches city-wide. */
+export interface ApiNearbyAd {
+  id: string;
+  headline: string;
+  body: string;
+  banner_url: string;
+  business_name: string;
+  category: string;
+  location: ApiNearbyAdBranch;
+  distance_m: number;
+  branches_count: number;
+}
+
+export interface ApiNearbyAdsPage {
+  results: ApiNearbyAd[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface NearbyAdsFilters {
+  lat: number;
+  lon: number;
+  radius_m: number;
+  category?: string;
+  /** Free-text match; below 2 chars the feed returns nothing (mirrors search). */
+  q?: string;
+  /** "relevance" only has an effect together with q. */
+  sort: "distance" | "relevance";
+}
+
+export const NEARBY_ADS_PAGE = 20;
+
+export const NEARBY_RADIUS_OPTIONS = [1000, 3000, 5000, 10000] as const;
+
+/** Distance-ordered, cursor-paginated ad feed. Unlike the search hook, the
+ *  origin is NOT rounded to ~1 km: a few hundred meters decide card order. */
+export function useNearbyAds(filters: NearbyAdsFilters | null) {
+  return useInfiniteQuery({
+    queryKey: ["nearby-ads", filters],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        lat: String(filters!.lat),
+        lon: String(filters!.lon),
+        radius_m: String(filters!.radius_m),
+        sort: filters!.sort,
+        limit: String(NEARBY_ADS_PAGE),
+      });
+      if (filters!.category) params.set("category", filters!.category);
+      const q = filters!.q?.trim();
+      if (q) params.set("q", q);
+      if (pageParam) params.set("cursor", pageParam);
+      return api<ApiNearbyAdsPage>(`/api/v1/public/ads?${params.toString()}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor,
+    enabled: filters !== null,
     staleTime: 30_000,
   });
 }

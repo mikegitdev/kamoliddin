@@ -10,6 +10,7 @@ urlpatterns = [
          name="public-campaign-detail"),
     path("categories", views.CategoryListView.as_view(), name="public-categories"),
     path("search", views.PublicSearchView.as_view(), name="public-search"),
+    path("ads", views.PublicNearbyAdsView.as_view(), name="public-nearby-ads"),
     path("pricing", views.PublicPricingView.as_view(), name="public-pricing"),
     path("reports", views.PublicReportView.as_view(), name="public-report"),
 ]

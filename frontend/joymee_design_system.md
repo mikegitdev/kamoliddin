@@ -100,6 +100,13 @@ Semantic colors (`--success`, `--danger`, `--warn`, `--accent` and their
   chip row floating over the map.
 - **Map mobile:** two header rows (brand + utilities, then full-width search),
   a scrolling chip row, and the results as a full-width bottom sheet.
+- **Ads list (`?view=list`):** the same header/toolbar drives a distance-ordered
+  ad feed (Map ↔ Объявления segmented switch, brand = selected). Centered
+  ≤780px column of horizontal cards — banner contained left (never cropped),
+  category chip + brand distance badge (black on yellow, tabular numerals),
+  headline → business → excerpt → branch + "also at N branches", actions
+  (open ad / show on map). Radius chips and sort sit under the head; the map
+  stays mounted underneath for an instant switch back.
 - **Cabinet:** header with a bottom rule, then the section nav as a segmented
   track.
 

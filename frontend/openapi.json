@@ -1693,6 +1693,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/WebhookAck'
           description: ''
+  /api/v1/public/ads:
+    get:
+      operationId: api_v1_public_ads_retrieve
+      description: Currently eligible campaigns within radius_m of lat/lon, one card
+        per campaign at its nearest CURRENTLY eligible branch. Ordered by distance;
+        relevance first when q is given (sort=relevance). Cursor-paginated.
+      summary: Nearby ads feed (distance-sorted list view)
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: cursor
+        schema:
+          type: string
+        description: Opaque cursor from a previous page
+      - in: query
+        name: lat
+        schema:
+          type: number
+        description: Origin latitude
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 1..50, default 20
+      - in: query
+        name: lon
+        schema:
+          type: number
+        description: Origin longitude
+        required: true
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: At least 2 characters
+      - in: query
+        name: radius_m
+        schema:
+          type: integer
+        description: 300..20000, default 5000
+      - in: query
+        name: sort
+        schema:
+          type: string
+          enum:
+          - distance
+          - relevance
+        description: 'Default: relevance when q is given, else distance'
+      tags:
+      - Public
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicNearbyAdsResult'
+          description: ''
   /api/v1/public/campaigns/{id}:
     get:
       operationId: api_v1_public_campaigns_retrieve
@@ -3832,6 +3895,103 @@ components:
       - phone
       - telegram
       - whatsapp
+    PublicNearbyAd:
+      type: object
+      description: |-
+        One card of the nearby ads feed. The feed's unit is the CAMPAIGN, not
+        the placement: a campaign advertised at several branches appears once,
+        pinned to its nearest CURRENTLY eligible branch (distance is measured to
+        that branch only — an ineligible nearer branch never shortens it).
+        `branches_count` counts all currently eligible branches city-wide.
+        Sourced from a Placement row; context carries a per-campaign eligible
+        branch count so the page stays N+1-free.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        headline:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        banner_url:
+          type: string
+          readOnly: true
+        business_name:
+          type: string
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+        location:
+          allOf:
+          - $ref: '#/components/schemas/PublicNearbyAdLocation'
+          readOnly: true
+        distance_m:
+          type: integer
+          readOnly: true
+        branches_count:
+          type: integer
+          readOnly: true
+      required:
+      - banner_url
+      - body
+      - branches_count
+      - business_name
+      - category
+      - distance_m
+      - headline
+      - id
+      - location
+    PublicNearbyAdLocation:
+      type: object
+      description: Nearest eligible branch of a nearby-ads card (see PublicNearbyAdSerializer).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        address:
+          type: string
+          readOnly: true
+        lon:
+          type: number
+          format: double
+          readOnly: true
+        lat:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - address
+      - id
+      - lat
+      - lon
+      - name
+    PublicNearbyAdsResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicNearbyAd'
+          readOnly: true
+        next_cursor:
+          type: string
+          readOnly: true
+          nullable: true
+        has_more:
+          type: boolean
+          readOnly: true
+      required:
+      - has_more
+      - next_cursor
+      - results
     PublicPricing:
       type: object
       properties:

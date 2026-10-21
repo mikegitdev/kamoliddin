@@ -129,6 +129,61 @@ class PublicSearchResultSerializer(serializers.Serializer):
     campaigns = PublicSearchCampaignSerializer(many=True, read_only=True)
 
 
+class PublicNearbyAdLocationSerializer(serializers.Serializer):
+    """Nearest eligible branch of a nearby-ads card (see PublicNearbyAdSerializer)."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    address = serializers.CharField(read_only=True)
+    lon = serializers.SerializerMethodField()
+    lat = serializers.SerializerMethodField()
+
+    def get_lon(self, obj) -> float:
+        return obj.point.x
+
+    def get_lat(self, obj) -> float:
+        return obj.point.y
+
+
+class PublicNearbyAdSerializer(serializers.Serializer):
+    """One card of the nearby ads feed. The feed's unit is the CAMPAIGN, not
+    the placement: a campaign advertised at several branches appears once,
+    pinned to its nearest CURRENTLY eligible branch (distance is measured to
+    that branch only — an ineligible nearer branch never shortens it).
+    `branches_count` counts all currently eligible branches city-wide.
+    Sourced from a Placement row; context carries a per-campaign eligible
+    branch count so the page stays N+1-free."""
+
+    id = serializers.UUIDField(read_only=True, source="campaign.id")
+    headline = serializers.CharField(read_only=True, source="campaign.headline")
+    body = serializers.CharField(read_only=True, source="campaign.body")
+    banner_url = serializers.SerializerMethodField()
+    business_name = serializers.CharField(read_only=True, source="campaign.business.name")
+    category = serializers.SerializerMethodField()
+    location = PublicNearbyAdLocationSerializer(read_only=True)
+    distance_m = serializers.SerializerMethodField()
+    branches_count = serializers.SerializerMethodField()
+
+    def get_banner_url(self, obj) -> str:
+        return f"/media/{obj.campaign.banner_key}" if obj.campaign.banner_key else ""
+
+    def get_category(self, obj) -> str:
+        return obj.campaign.business.category.slug
+
+    def get_distance_m(self, obj) -> int:
+        return round(obj.distance.m)
+
+    def get_branches_count(self, obj) -> int:
+        counts = self.context.get("branch_counts", {})
+        return counts.get(obj.campaign_id, 1)
+
+
+class PublicNearbyAdsResultSerializer(serializers.Serializer):
+    results = PublicNearbyAdSerializer(many=True, read_only=True)
+    next_cursor = serializers.CharField(read_only=True, allow_null=True, allow_blank=True)
+    has_more = serializers.BooleanField(read_only=True)
+
+
 class PublicTariffSerializer(serializers.Serializer):
     currency = serializers.CharField(read_only=True)
     amount_per_24h = serializers.IntegerField(read_only=True, help_text="Minor units (tiyin)")
