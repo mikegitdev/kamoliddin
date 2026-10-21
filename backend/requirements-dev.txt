@@ -1,0 +1,4 @@
+# Test dependencies for the dev image target (Dockerfile `--target dev`).
+# Kept in sync with [dependency-groups] dev in pyproject.toml.
+pytest~=8.3.0
+pytest-django~=4.11.0

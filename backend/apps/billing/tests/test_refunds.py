@@ -27,7 +27,10 @@ def _paid_order_with_shifted_placement(owner, tariff, business, campaign, locati
     while the campaign is still under review, approval afterwards shifts the
     interval to start now, preserving the charged duration (spec §6 [C])."""
     submit_for_review(campaign=campaign)  # stays under review during payment
-    start = timezone.now() - timedelta(hours=2)  # start already passed
+    # Must stay within QUOTE_START_GRACE (15 min) — create_quote rejects starts
+    # further in the past. 10 min back still models "interval already started
+    # when payment settles / approval lands late".
+    start = timezone.now() - timedelta(minutes=10)  # start already passed
     order = create_quote(
         user=owner, business_id=business.id, campaign_id=campaign.id,
         location_ids=[location.id],

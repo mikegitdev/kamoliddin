@@ -56,7 +56,7 @@ def test_approval_activates_paid_placements(owner, tariff, business, campaign, l
 def test_late_approval_preserves_charged_duration(owner, tariff, business, campaign, location,
                                                   staff):
     submit_for_review(campaign=campaign)
-    start = timezone.now() - timedelta(hours=2)
+    start = timezone.now() - timedelta(minutes=10)  # past start, within QUOTE_START_GRACE (15 min)
     end = start + timedelta(hours=24)
     order = create_quote(
         user=owner, business_id=business.id, campaign_id=campaign.id,

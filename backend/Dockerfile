@@ -1,5 +1,8 @@
 # Backend image: Django + GeoDjango (GDAL/GEOS/PROJ) + Gunicorn.
-FROM python:3.12-slim
+# Default build (no --target) = production image.
+# `--target dev` = base + test deps, used by dev.sh so the suite is runnable
+# inside the container even when the host lacks GDAL.
+FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,10 +19,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY pyproject.toml requirements.txt ./
+COPY pyproject.toml requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY . .
+
+# Dev target: test dependencies (kept in sync with pyproject dev group).
+FROM base AS dev
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# Default (no --target): production image, unchanged behavior.
+FROM base
 
 EXPOSE 8000
 

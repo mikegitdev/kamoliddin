@@ -78,7 +78,7 @@ else
   BACKEND_MODE=docker
   say "GeoDjango libs (GDAL/GEOS) missing locally — backend runs in Docker instead."
   say "Building localads-backend:dev image (cached after the first run)..."
-  ( cd backend && docker build -q -t localads-backend:dev . >/dev/null )
+  ( cd backend && docker build -q --target dev -t localads-backend:dev . >/dev/null )
 fi
 
 # docker-mode invocation: compose network, backend/ mounted for autoreload,

@@ -69,6 +69,14 @@ import type { ApiCampaign } from "@/entities/types";
 
 const PLACEHOLDER_BANNER = "banners/placeholder.jpg";
 
+/** Files whose extension the browser/OS can't map get `type: ""` (chat-app
+ *  downloads, .jfif, broken registry mappings) and were silently dropped.
+ *  Accept by type OR known extension; the editor's decode and the backend's
+ *  magic-byte check remain the real gatekeepers for actual content. */
+const BANNER_NAME_RE = /\.(jpe?g|png|webp)$/i;
+const looksLikeBanner = (file: File) =>
+  file.type.startsWith("image/") || BANNER_NAME_RE.test(file.name);
+
 // Schedule inputs are Tashkent wall time (shared/format), like every date shown.
 function defaultDates(): { start: string; end: string } {
   const now = new Date();
@@ -692,9 +700,11 @@ export function CampaignEditorPage() {
                 e.preventDefault();
                 setDragOver(false);
                 const file = e.dataTransfer.files?.[0];
-                if (file && file.type.startsWith("image/")) {
+                if (file && looksLikeBanner(file)) {
                   setRawFile(file);
                   setEditingBanner(true);
+                } else if (file) {
+                  toast.error(t.errInvalidImage);
                 }
               }}
             >
@@ -706,9 +716,11 @@ export function CampaignEditorPage() {
                 aria-describedby="ce-banner-hint"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file && file.type.startsWith("image/")) {
+                  if (file && looksLikeBanner(file)) {
                     setRawFile(file);
                     setEditingBanner(true);
+                  } else if (file) {
+                    toast.error(t.errInvalidImage);
                   }
                   e.target.value = "";
                 }}

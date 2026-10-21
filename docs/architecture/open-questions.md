@@ -12,7 +12,6 @@
 | 8 | DNS / VPS sizing / RPO-RTO | VPS sizing proposed (see "Provisional VPS sizing" below, unvalidated estimate); DNS and RPO/RTO not yet chosen | ops design |
 | 9 | Reconciliation sweep command | Not shipped; `ops_report` surfaces ambiguous states for manual resolution | engineering backlog |
 | 10 | ~~Renewal timed retries~~ | Moot — auto-renewal removed (ADR-0007) | product owner |
-
 ## Provisional VPS sizing (open question #8)
 
 Estimate derived from the spec §15 Compose stack (proxy + static frontend,
@@ -46,7 +45,6 @@ Constraints to resolve before choosing a provider:
 | 2GIS / tiles | Signed commercial offer with quota + data-use terms, or a licensed OSM tile host; configure `VITE_MAP_TILES_URL` (frontend) and update `docs/runbooks/deploy.md` |
 | SMS benchmark | Test batches through Eskiz (and Play Mobile once documented): latency per network, delivery success, price per message, sender registration lead time → `docs/architecture/sms-benchmark.md` |
 | Legal | Reviewed privacy notice, advertising content rules, refund policy for Uzbekistan → `docs/product/legal-review.md` |
-
 ## Assumptions made while scaffolding (to be reviewed)
 
 - Order carries a required `campaign` FK (checkout flow is campaign-scoped).
