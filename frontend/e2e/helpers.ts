@@ -4,7 +4,10 @@ import type { Browser, Page } from "@playwright/test";
 export const OWNER_PHONE = "+998901234567";
 export const STAFF_PHONE = "+998901110000";
 
-const SMOKE_CONTAINER = "localads-smoke";
+/** Backend container the suite shells into for the OTP-quota purge below:
+ *  the dev-stack backend that dev.sh runs. Override with
+ *  E2E_BACKEND_CONTAINER if your container is named differently. */
+const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER || "localads-backend-dev";
 
 /**
  * The dev stack runs the fake SMS adapter with OTP_DEV_ECHO (dev settings
@@ -17,7 +20,7 @@ const SMOKE_CONTAINER = "localads-smoke";
  */
 function purgeOtpQuota(phone: string) {
   // 1) Challenges: kill the 60s resend window + per-phone code quota.
-  execSync(`docker exec -i ${SMOKE_CONTAINER} python manage.py shell`, {
+  execSync(`docker exec -i ${BACKEND_CONTAINER} python manage.py shell`, {
     stdio: "pipe",
     input:
       "from apps.accounts.models import OTPChallenge\n" +
@@ -25,7 +28,7 @@ function purgeOtpQuota(phone: string) {
   });
   // 2) Scoped throttle counters (shared Redis, per-IP): back-to-back runs
   // would otherwise 429 on otp/verify from the same proxy IP.
-  execSync(`docker exec -i ${SMOKE_CONTAINER} python manage.py shell`, {
+  execSync(`docker exec -i ${BACKEND_CONTAINER} python manage.py shell`, {
     stdio: "pipe",
     input:
       "import os, redis\n" +
