@@ -630,6 +630,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/telegram/bind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telegram binding status
+         * @description Enrollment management for Telegram OTP delivery (authenticated).
+         */
+        get: operations["api_v1_auth_telegram_bind_retrieve"];
+        put?: never;
+        /**
+         * Get a Telegram enrollment link
+         * @description Returns a one-time t.me deep link; the binding completes when the user taps Start and the bot webhook resolves the signed token (ADR-0006).
+         */
+        post: operations["api_v1_auth_telegram_bind_create"];
+        /**
+         * Unlink Telegram
+         * @description Login codes go back to SMS only.
+         */
+        delete: operations["api_v1_auth_telegram_bind_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Telegram bot webhook
+         * @description Bot API update endpoint. Gated on the setWebhook secret_token header; handles /start enrollment and my_chat_member block events (ADR-0006).
+         */
+        post: operations["api_v1_auth_telegram_webhook_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses": {
         parameters: {
             query?: never;
@@ -1382,6 +1430,12 @@ export interface components {
             readonly name_ru: string;
             readonly name_uz: string;
         };
+        /**
+         * @description * `auto` - auto
+         *     * `sms` - sms
+         * @enum {string}
+         */
+        ChannelEnum: "auto" | "sms";
         CheckoutRequest: {
             /**
              * Format: uri
@@ -1483,6 +1537,14 @@ export interface components {
         };
         OTPRequest: {
             phone: string;
+            /**
+             * @description auto prefers the enrolled Telegram chat and falls back to SMS; sms always uses SMS
+             *
+             *     * `auto` - auto
+             *     * `sms` - sms
+             * @default auto
+             */
+            channel: components["schemas"]["ChannelEnum"];
         };
         OTPVerify: {
             phone: string;
@@ -2202,6 +2264,16 @@ export interface components {
          * @enum {string}
          */
         StatusChangeStatusEnum: "active" | "disabled";
+        /** @description One-time enrollment deep link (ADR-0006). */
+        TelegramLink: {
+            readonly detail: string;
+            readonly link: string;
+            readonly bot_username: string;
+        };
+        TelegramStatus: {
+            /** @description Whether login codes are delivered to Telegram */
+            readonly bound: boolean;
+        };
         WebhookAck: {
             detail: string;
             order_state?: string;
@@ -3229,6 +3301,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SessionUser"];
                 };
+            };
+        };
+    };
+    api_v1_auth_telegram_bind_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatus"];
+                };
+            };
+        };
+    };
+    api_v1_auth_telegram_bind_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLink"];
+                };
+            };
+        };
+    };
+    api_v1_auth_telegram_bind_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_v1_auth_telegram_webhook_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

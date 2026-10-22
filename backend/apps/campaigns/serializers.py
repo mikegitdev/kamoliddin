@@ -72,9 +72,12 @@ class CampaignSerializer(serializers.ModelSerializer):
         return {"start_at": start, "end_at": end}
 
     def validate_headline(self, value: str) -> str:
-        if not value.strip():
-            raise serializers.ValidationError("Headline cannot be empty")
-        return value.strip()
+        headline = value.strip()
+        if len(headline) < 3:
+            # Mirror the editor's rule (>2 trimmed chars) so API drafts cannot
+            # be thinner than UI drafts (open-questions.md #11).
+            raise serializers.ValidationError("Headline must be at least 3 characters")
+        return headline
 
     def validate(self, attrs):
         # Business reassignment is blocked (spec §14): placements are keyed to

@@ -20,4 +20,9 @@ rates["otp"] = env("OTP_THROTTLE_RATE", default="5/min")
 # SMS_PROVIDER=fake; prod settings never define this flag (spec §9).
 OTP_DEV_ECHO = env("OTP_DEV_ECHO", default=True)
 
+# Show the Telegram enrollment UI in dev even though the fake adapter never
+# reaches Telegram (no token): the bind link/deep-link UX can be exercised
+# locally; the webhook rejects calls while TELEGRAM_WEBHOOK_SECRET is unset.
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="localads_dev_bot")
+
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

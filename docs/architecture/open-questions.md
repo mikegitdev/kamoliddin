@@ -17,6 +17,7 @@
 | 13 | Clearing branch contacts / hours | Location PATCH omits empty contact/hours fields (`undefined`), so owners cannot clear them from the UI, while Business contacts clear via `""` — align BranchesPage to send empty strings | maintainer |
 | 14 | `Location.city` writability | Accepted by the API but never exposed in the UI — every branch is stored as "Tashkent". Intentional for the single-city MVP? | product owner |
 | 15 | `Business.logo_key` UI | API-optional field with an upload path (`purpose=logos`) but no cabinet input — ship an upload control or drop the field from the contract | product owner |
+| 16 | OTP delivery channel | Telegram channel shipped (ADR-0006): enrollment-bound chat delivery, SMS fallback + `channel=sms` escape hatch. Reduces the SMS benchmark gate (#3) to fallback-level criticality. Telegram Login Widget remains a possible future alternative (replaces OTP for Telegram users) | shipped; maintainer review |
 ## Provisional VPS sizing (open question #8)
 
 Estimate derived from the spec §15 Compose stack (proxy + static frontend,

@@ -42,13 +42,13 @@ export function LoginPage() {
     api("/api/v1/auth/csrf").catch(() => {});
   }, []);
 
-  const requestCode = async () => {
+  const requestCode = async (channel: "auto" | "sms" = "auto") => {
     if (busy) return;
     setBusy(true);
     setError(null);
     const normalized = normalizePhone(phone);
     try {
-      await requestOtp(normalized);
+      await requestOtp(normalized, channel);
       setPhone(normalized);
       setStage("code");
       setCountdown(RESEND_SECONDS);
@@ -165,14 +165,24 @@ export function LoginPage() {
               {countdown > 0 ? (
                 `${t.resend} — ${countdown} ${t.seconds}`
               ) : (
-                <button
-                  type="button"
-                  className="btn subtle small"
-                  onClick={requestCode}
-                  disabled={busy}
-                >
-                  {t.resend}
-                </button>
+                <span className="row">
+                  <button
+                    type="button"
+                    className="btn subtle small"
+                    onClick={() => requestCode("auto")}
+                    disabled={busy}
+                  >
+                    {t.resend}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn subtle small"
+                    onClick={() => requestCode("sms")}
+                    disabled={busy}
+                  >
+                    {t.resendSms}
+                  </button>
+                </span>
               )}
             </div>
             <div className="otp-countdown">

@@ -269,6 +269,15 @@ ESKIZ_PASSWORD = env("ESKIZ_PASSWORD", default="")
 ESKIZ_FROM = env("ESKIZ_FROM", default="4546")
 ESKIZ_BASE_URL = env("ESKIZ_BASE_URL", default="https://notify.eskiz.uz")
 
+# Telegram OTP delivery channel (ADR-0006): enrollment-bound chat delivery
+# with SMS fallback. Empty TELEGRAM_BOT_TOKEN selects the fake adapter
+# (dev/test); production sets token + username + webhook secret.
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", default="")
+TELEGRAM_API_BASE = env("TELEGRAM_API_BASE", default="https://api.telegram.org")
+TELEGRAM_BIND_TOKEN_TTL_SECONDS = 600
+
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[

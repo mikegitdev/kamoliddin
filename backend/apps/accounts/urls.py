@@ -9,11 +9,19 @@ from .views import (
     OTPVerifyView,
     PhoneChangeRequestView,
     PhoneChangeVerifyView,
+    TelegramBindView,
+    TelegramWebhookView,
 )
 
 urlpatterns = [
     path("otp/request", OTPRequestView.as_view(), name="auth-otp-request"),
     path("otp/verify", OTPVerifyView.as_view(), name="auth-otp-verify"),
+    path("telegram/bind", TelegramBindView.as_view(), name="auth-telegram-bind"),
+    path(
+        "telegram/webhook",
+        TelegramWebhookView.as_view(),
+        name="auth-telegram-webhook",
+    ),
     path("phone/change/request", PhoneChangeRequestView.as_view(),
          name="auth-phone-change-request"),
     path("phone/change/verify", PhoneChangeVerifyView.as_view(),

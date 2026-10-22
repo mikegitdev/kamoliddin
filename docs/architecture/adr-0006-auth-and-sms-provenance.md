@@ -37,6 +37,37 @@ takeover guard. Recorded via `PhoneChangeRecord`.
 - **PlayMobileSMSAdapter** raises `NotImplementedError`: no verified public
   documentation was found; behavior must not be fabricated.
 
+## Telegram delivery channel (added 2026-10-22)
+
+Login codes may also be delivered over Telegram — cheaper and more reliable
+in UZ than SMS — under an **enrollment model**, because the Bot API cannot
+message a phone number and cannot see the sender's phone:
+
+1. **Enrollment is the only phone→chat binding path.** The authenticated user
+   requests a link from the cabinet; the server issues a one-time HMAC-signed
+   start token (≤64 chars, 10-min TTL, keyed with `SECRET_KEY`). The user taps
+   `t.me/<bot>?start=<token>` → Start; the bot webhook resolves the token to
+   that user and binds `User.telegram_chat_id` (unique: one chat ↔ one
+   account). A forwarded link cannot steal a chat: the token is per-user and
+   binding succeeds only for an unbound user/chat pair.
+2. **Login codes prefer the enrolled chat** (channel `auto`, the default);
+   SMS remains available always: explicit `channel=sms` on the request forces
+   it, and any Telegram delivery failure falls back to SMS. A documented
+   HTTP 403 (bot blocked) also drops the binding; `my_chat_member=kicked`
+   unbinds the chat as well. Deletion clears the binding.
+3. **Phone-change challenges never use Telegram** — they prove ownership of a
+   *different* number, and the binding belongs to the requesting account.
+4. The webhook (`/api/v1/auth/telegram/webhook`) is gated on the `setWebhook`
+   `secret_token` header, exempt from session/throttle (server-to-server),
+   and always answers 200 so Telegram does not retry. Register it with
+   `manage.py set_telegram_webhook <public-base-url>`.
+
+Anti-enumeration is preserved: `otp/request` responses stay uniform regardless
+of delivery channel. The Telegram adapter implements only the official Bot API
+surface (`sendMessage`, `setWebhook` secret token, 403-on-block). Dev/test use
+`FakeTelegramAdapter` (no token configured). `TELEGRAM_*` settings are separate
+from the ops-alert bot (`OPS_TELEGRAM_BOT_TOKEN`, a different bot).
+
 ## Staff auth
 
 Staff use Django admin with phone + password (OTP is advertiser-only);

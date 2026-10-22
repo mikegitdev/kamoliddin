@@ -151,6 +151,26 @@ queue). Set
 to Telegram. For backup freshness, mount/copy the `~/.localads-last-backup`
 stamp into the container and set `OPS_LAST_BACKUP_FILE`.
 
+### Telegram OTP delivery (optional, ADR-0006)
+
+Separate bot from the ops-alert bot above. Set in `.env.prod`:
+
+```
+TELEGRAM_BOT_TOKEN=...      # @BotFather token
+TELEGRAM_BOT_USERNAME=...   # bot username without @
+TELEGRAM_WEBHOOK_SECRET=... # random string; Telegram echoes it on every update
+```
+
+Then register the webhook once (idempotent):
+
+```
+cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
+  exec -T web python manage.py set_telegram_webhook https://<public-host>
+```
+
+With no token set the feature is off and OTP is SMS-only. Prod settings fail
+fast if a token is set without the username/secret.
+
 Weekly media hygiene (ADR-0004):
 
 ```

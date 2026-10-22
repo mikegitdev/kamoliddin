@@ -167,6 +167,12 @@ Admin may issue placement grant with effective term and a reason, creating zero-
 
 **Provider contract [R]:** `send_otp(phone_e164, message, request_id) -> provider_message_id` and `get_delivery_status(provider_message_id)` where supported. Track latency, successful deliveries, failures, operational cost, sender registration lead time and per-network reliability. Fake provider available in local/test environments; production adapter chosen only after integration benchmark.
 
+**Addition (2026-10-22) [R]: Telegram delivery channel.** Login codes may be
+delivered to a Telegram chat **enrolled under an authenticated session** via a
+signed one-time deep link (ADR-0006); SMS stays available as forced fallback
+(`channel=sms`) and on any delivery failure. Phone-change codes remain SMS-only.
+No unauthenticated phone→chat delivery exists (would allow account takeover).
+
 ## 10. Map design and provider abstraction
 
 **[C]** Homepage fills majority of viewport with map, floating search/category controls, and responsive location details. Pins represent locations; display count of *currently active public* ads per location. Zoomed-out map clusters; at identical coordinates an overlap selector exposes independent businesses. Clicking location shows business identity/address/contact and active ad list. Result ordering is relevance first then distance. No paid ranking boost in MVP.

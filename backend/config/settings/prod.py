@@ -10,6 +10,13 @@ if PAYMENT_PROVIDER == "fake":  # noqa: F405
     raise RuntimeError("PAYMENT_PROVIDER=fake is dev/test only; set a real provider")
 if SMS_PROVIDER == "fake":  # noqa: F405
     raise RuntimeError("SMS_PROVIDER=fake is dev/test only; set a real provider")
+# Telegram OTP is optional, but half-configured means silent breakage: the
+# cabinet would hand out links whose webhook always 403s, or codes would go
+# to a bot whose username the UI cannot render.
+if TELEGRAM_BOT_TOKEN and not (TELEGRAM_BOT_USERNAME and TELEGRAM_WEBHOOK_SECRET):  # noqa: F405
+    raise RuntimeError(
+        "TELEGRAM_BOT_TOKEN requires TELEGRAM_BOT_USERNAME and TELEGRAM_WEBHOOK_SECRET"
+    )
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # nginx is the single hop in front of Django and appends the real peer to

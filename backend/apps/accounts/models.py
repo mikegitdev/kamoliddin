@@ -18,6 +18,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     # every concrete user model must declare the field itself.
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    # Enrolled Telegram chat for OTP delivery (ADR-0006): bound only via the
+    # signed deep-link flow, never by an unauthenticated phone -> chat request.
+    # Unique: one Telegram chat maps to at most one account.
+    telegram_chat_id = models.BigIntegerField(
+        null=True, blank=True, unique=True, editable=False,
+        help_text="Enrolled Bot API chat id that login codes are delivered to",
+    )
     deleted_at = models.DateTimeField(
         null=True, blank=True, editable=False,
         help_text="Soft-delete time; phone anonymized when set (spec §14: retain accounting)",

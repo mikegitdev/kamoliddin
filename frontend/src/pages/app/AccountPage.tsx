@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/shared/api/client";
 import { useSession } from "@/shared/api/queries";
 import { deleteAccount, requestPhoneChange, verifyPhoneChange } from "@/features/auth/account";
+import { telegramBindLink, telegramStatus, telegramUnbind } from "@/features/auth/telegram";
 import { formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { OtpInput } from "@/shared/otp-input";
@@ -36,6 +37,73 @@ export function AccountPage() {
   const [countdown, setCountdown] = useState(0);
 
   const [confirmText, setConfirmText] = useState("");
+
+  // --- Telegram enrollment (ADR-0006): codes prefer the linked chat ---
+  const [tgBound, setTgBound] = useState<boolean | null>(null);
+  const [tgPending, setTgPending] = useState(false); // link opened, waiting for Start
+  const [tgBusy, setTgBusy] = useState(false);
+  const [tgError, setTgError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    telegramStatus()
+      .then((s) => alive && setTgBound(s.bound))
+      .catch(() => alive && setTgBound(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Poll while the user is off completing Start in Telegram (max ~2 min).
+  useEffect(() => {
+    if (!tgPending || tgBound) return;
+    const poll = setInterval(() => {
+      telegramStatus()
+        .then((s) => {
+          if (s.bound) {
+            setTgBound(true);
+            setTgPending(false);
+            toast.success(t.telegramBoundToast);
+          }
+        })
+        .catch(() => {});
+    }, 4000);
+    const stop = setTimeout(() => setTgPending(false), 120_000);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tgPending, tgBound]);
+
+  const openTelegramBind = async () => {
+    if (tgBusy) return;
+    setTgBusy(true);
+    setTgError(null);
+    try {
+      const info = await telegramBindLink();
+      setTgPending(true);
+      window.open(info.link, "_blank", "noopener");
+    } catch (e) {
+      setTgError(e instanceof ApiError ? e.message : t.error);
+    } finally {
+      setTgBusy(false);
+    }
+  };
+
+  const removeTelegram = async () => {
+    if (tgBusy) return;
+    setTgBusy(true);
+    setTgError(null);
+    try {
+      await telegramUnbind();
+      setTgBound(false);
+    } catch (e) {
+      setTgError(e instanceof ApiError ? e.message : t.error);
+    } finally {
+      setTgBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -196,6 +264,46 @@ export function AccountPage() {
               </p>
             )}
           </form>
+        )}
+      </div>
+
+      <div className="form-section">
+        <h3 className="section-title">{t.telegramTitle}</h3>
+        {tgBound ? (
+          <>
+            <p className="muted">{t.telegramBound}</p>
+            <div className="form-actions">
+              <button
+                className="btn"
+                type="button"
+                onClick={removeTelegram}
+                disabled={tgBusy}
+              >
+                {t.telegramUnbind}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted">{t.telegramHint}</p>
+            <p className="muted-2">{t.telegramAfterBind}</p>
+            {tgPending && <p className="muted-2">{t.telegramPending}</p>}
+            <div className="form-actions">
+              <button
+                className="btn primary"
+                type="button"
+                onClick={openTelegramBind}
+                disabled={tgBusy}
+              >
+                {t.telegramBind}
+              </button>
+            </div>
+            {tgError && (
+              <p className="error mt-10" role="alert">
+                {tgError}
+              </p>
+            )}
+          </>
         )}
       </div>
 

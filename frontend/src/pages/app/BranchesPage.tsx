@@ -211,13 +211,15 @@ export function BranchesPage() {
 
   const save = useMutation({
     mutationFn: (): Promise<ApiOwnerLocation> => {
+      // Empty strings clear fields on PATCH; omitting them would keep stale
+      // values (open-questions.md #13). `hours: {}` clears the schedule.
       const base = {
         name: form.name,
         address: form.address,
-        phone: form.phone || undefined,
-        telegram: form.telegram || undefined,
-        whatsapp: form.whatsapp || undefined,
-        hours: Object.keys(form.hours).length > 0 ? form.hours : undefined,
+        phone: form.phone,
+        telegram: form.telegram,
+        whatsapp: form.whatsapp,
+        hours: form.hours,
       };
       return form.id
         ? updateLocation(form.id, { ...base, lon: form.point!.lng, lat: form.point!.lat })

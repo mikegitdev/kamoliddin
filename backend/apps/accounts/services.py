@@ -65,8 +65,41 @@ def _old_phone_block(phone: str) -> PhoneChangeRecord | None:
     ).first()
 
 
+def _otp_message(code: str) -> str:
+    return f"Your login code: {code}. Valid {settings.OTP_CODE_TTL_SECONDS // 60} minutes."
+
+
+def _deliver_via_telegram(phone: str, code: str, request_id: str) -> bool:
+    """Try delivering a login code to the account's enrolled Telegram chat.
+
+    Returns False when there is no binding or delivery failed — the caller
+    then falls back to SMS. HTTP 403 (bot blocked) also drops the binding so
+    future requests stop trying a dead chat (ADR-0006).
+    """
+    from . import telegram as tg
+
+    user = User.objects.filter(phone_e164=phone, deleted_at__isnull=True).first()
+    if user is None or user.telegram_chat_id is None:
+        return False
+    try:
+        tg.get_telegram_adapter().send_message(
+            chat_id=user.telegram_chat_id,
+            text=_otp_message(code),
+            request_id=request_id,
+        )
+    except tg.TelegramForbiddenError:
+        user.telegram_chat_id = None
+        user.save(update_fields=["telegram_chat_id"])
+        logger.warning("Telegram binding dropped (bot blocked) for user %s", user.pk)
+        return False
+    except Exception:
+        logger.exception("Telegram OTP delivery failed for user %s; falling back to SMS", user.pk)
+        return False
+    return True
+
+
 @transaction.atomic
-def _issue_challenge(phone: str, purpose: str) -> OTPChallenge:
+def _issue_challenge(phone: str, purpose: str, channel: str = "auto") -> OTPChallenge:
     """Create+send an OTP challenge, enforcing quota/resend throttling."""
     # Serialize quota checks for this phone+purpose across workers.
     lock_digest = _hash(f"otp-request:{phone}:{purpose}")[:16]
@@ -105,25 +138,36 @@ def _issue_challenge(phone: str, purpose: str) -> OTPChallenge:
     # be the fake adapter. Prod can never satisfy either gate.
     if settings.SMS_PROVIDER == "fake" and getattr(settings, "OTP_DEV_ECHO", False):
         challenge.dev_code = code  # type: ignore[attr-defined]
-    adapter = _sms_adapter()
-    adapter.send_otp(
-        phone_e164=phone,
-        message=f"Your login code: {code}. Valid {settings.OTP_CODE_TTL_SECONDS // 60} minutes.",
-        request_id=challenge.id,
+    # Login codes prefer the enrolled Telegram chat (free, reliable in UZ);
+    # SMS remains the forced fallback. Phone-change challenges prove
+    # ownership of a DIFFERENT number and never use Telegram (ADR-0006).
+    delivered = (
+        purpose == OTPChallenge.Purpose.LOGIN
+        and channel == "auto"
+        and _deliver_via_telegram(phone, code, str(challenge.id))
     )
+    if not delivered:
+        adapter = _sms_adapter()
+        adapter.send_otp(
+            phone_e164=phone,
+            message=_otp_message(code),
+            request_id=str(challenge.id),
+        )
     return challenge
 
 
-def request_otp(raw_phone: str) -> OTPChallenge:
+def request_otp(raw_phone: str, channel: str = "auto") -> OTPChallenge:
     """Create a login OTP challenge for a phone, enforcing throttling.
 
     IP-level throttling is applied by the DRF scoped anon throttle on the
-    view (5/min per IP); phone-level throttling and quotas live here."""
+    view (5/min per IP); phone-level throttling and quotas live here.
+    ``channel="sms"`` forces SMS delivery even for Telegram-bound accounts
+    (escape hatch when the user cannot access their Telegram)."""
     phone = normalize_phone(raw_phone)
     if _old_phone_block(phone):
         # Recently abandoned via phone change/deletion: no send, no new account.
         raise OTPError("Invalid or expired code.")
-    return _issue_challenge(phone, OTPChallenge.Purpose.LOGIN)
+    return _issue_challenge(phone, OTPChallenge.Purpose.LOGIN, channel=channel)
 
 
 def _consume_challenge(phone: str, code: str, purpose: str) -> OTPChallenge:
@@ -238,6 +282,59 @@ def complete_phone_change(user: User, raw_new_phone: str, code: str) -> User:
     return user
 
 
+# --- Telegram enrollment (ADR-0006) ---------------------------------------------
+
+# Webhook outcomes -> bot reply text (English, matching the OTP SMS wording).
+_TELEGRAM_REPLIES = {
+    "bound": "This Telegram is now linked. Login codes will arrive here instead of SMS.",
+    "already": "This Telegram is already linked to your account.",
+    "chat_taken": "This Telegram is linked to another account. Unlink it there first.",
+    "invalid": "This link has expired. Open Settings in the app and request a new one.",
+}
+
+
+def telegram_link_for(user: User) -> str | None:
+    """Fresh one-time enrollment deep link, or None when Telegram is disabled."""
+    from . import telegram as tg
+
+    if not tg.telegram_enabled():
+        return None
+    return tg.telegram_bind_link(user)
+
+
+def bind_telegram_chat(token: str, chat_id: int) -> str:
+    """Resolve a signed start-token and bind the chat (webhook side).
+
+    Returns the outcome key (see _TELEGRAM_REPLIES). Binding succeeds only
+    when the user has no binding and the chat is not bound to another
+    account — signed tokens are per-user and one-time in effect, so a
+    forwarded link cannot steal anyone's chat (ADR-0006).
+    """
+    from . import telegram as tg
+
+    user = tg.resolve_bind_token(token)
+    if user is None:
+        return "invalid"
+    if user.telegram_chat_id is not None:
+        return "already"
+    if User.objects.filter(telegram_chat_id=chat_id).exists():
+        return "chat_taken"
+    user.telegram_chat_id = chat_id
+    user.save(update_fields=["telegram_chat_id"])
+    return "bound"
+
+
+def unbind_telegram(user: User) -> None:
+    if user.telegram_chat_id is not None:
+        user.telegram_chat_id = None
+        user.save(update_fields=["telegram_chat_id"])
+
+
+def unbind_telegram_chat(chat_id: int) -> None:
+    """Drop a binding by chat id (bot blocked/kicked via my_chat_member)."""
+    User.objects.filter(telegram_chat_id=chat_id).update(telegram_chat_id=None)
+
+
 # --- Account deletion ----------------------------------------------------------
 
 
@@ -265,7 +362,10 @@ def delete_account(user: User) -> None:
         user.phone_e164 = _anonymized_phone()
         user.is_active = False
         user.deleted_at = now
-        user.save(update_fields=["phone_e164", "is_active", "deleted_at"])
+        user.telegram_chat_id = None  # stop delivering codes to the deleted user's chat
+        user.save(
+            update_fields=["phone_e164", "is_active", "deleted_at", "telegram_chat_id"]
+        )
         # Block the abandoned phone like a phone change (recycled-SIM takeover).
         PhoneChangeRecord.objects.create(
             user=user,
