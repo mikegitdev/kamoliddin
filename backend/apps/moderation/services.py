@@ -84,7 +84,7 @@ def reject_campaign(*, campaign: Campaign, reviewer, reason: str) -> CampaignRev
     return review
 
 
-def submit_for_review(*, campaign: Campaign) -> None:
+def submit_for_review(*, campaign: Campaign, actor=None) -> None:
     """draft/rejected -> submitted; bumps review_version when resubmitting edits."""
     if campaign.review_status not in (
         Campaign.ReviewStatus.DRAFT,
@@ -98,7 +98,7 @@ def submit_for_review(*, campaign: Campaign) -> None:
     campaign.review_status = Campaign.ReviewStatus.SUBMITTED
     campaign.save(update_fields=["review_status", "review_version", "updated_at"])
     ActivityEvent.objects.create(
-        actor=None,
+        actor=actor,
         action="campaign.submit",
         entity="campaign",
         entity_id=str(campaign.id),

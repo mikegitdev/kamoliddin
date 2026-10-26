@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
 import { useGrantOptions } from "@/shared/api/queries";
 import { formatDateTime, localInputToIso, tashkentInputMs } from "@/shared/format";
@@ -8,6 +9,7 @@ import { QueryError } from "@/shared/ui";
 
 export function GrantsTab({ onError }: { onError: (e: string | null) => void }) {
   const { t, locale } = useI18n();
+  const qc = useQueryClient();
   const { data: options, isLoading: isLoadingOptions, isError: optionsFailed, refetch: refetchOptions } = useGrantOptions(true);
   const lang = locale as "ru" | "uz";
   const [campaignId, setCampaignId] = useState("");
@@ -26,8 +28,13 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
   const campaignOptions = (options?.campaigns ?? []).filter((c) =>
     filterOptions(campaignFilter, `${c.headline} ${c.business_name}`),
   );
-  const locationOptions = (options?.locations ?? []).filter((l) =>
-    filterOptions(locationFilter, `${l.name} ${l.business_name}`),
+  // A grant must target a branch of the campaign's own business (the API
+  // rejects anything else), so only offer those once a campaign is picked.
+  const campaignBusiness = options?.campaigns.find((c) => c.id === campaignId)?.business_name;
+  const locationOptions = (options?.locations ?? []).filter(
+    (l) =>
+      (!campaignBusiness || l.business_name === campaignBusiness) &&
+      filterOptions(locationFilter, `${l.name} ${l.business_name}`),
   );
 
   const submit = async () => {
@@ -46,6 +53,7 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
         },
       });
       setOk(true);
+      qc.invalidateQueries({ queryKey: ["staff"] }); // issued list, placements
       setCampaignId("");
       setLocationId("");
       setStart("");
@@ -62,70 +70,80 @@ export function GrantsTab({ onError }: { onError: (e: string | null) => void }) 
 
   return (
     <>
-      <section className="card max-w-620">
+      <section className="card max-w-620 form">
         <h2>{t.issueGrant}</h2>
         <p className="muted-2">{t.grantHint}</p>
         {ok && <p className="callout ok"><IconCheck size={16} /> {t.grantIssued}</p>}
-        <label htmlFor="grant-campaign">{t.campaign}</label>
-        <input
-          id="grant-campaign-filter"
-          placeholder={`${t.search}…`}
-          value={campaignFilter}
-          onChange={(e) => setCampaignFilter(e.target.value)}
-          aria-label={`${t.campaign} — ${t.search}`}
-        />
-        <select
-          id="grant-campaign"
-          value={campaignId}
-          onChange={(e) => setCampaignId(e.target.value)}
-        >
-          <option value="">—</option>
-          {campaignOptions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.headline} · {c.business_name}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="grant-location">{t.branch}</label>
-        <input
-          id="grant-location-filter"
-          placeholder={`${t.search}…`}
-          value={locationFilter}
-          onChange={(e) => setLocationFilter(e.target.value)}
-          aria-label={`${t.branch} — ${t.search}`}
-        />
-        <select
-          id="grant-location"
-          value={locationId}
-          onChange={(e) => setLocationId(e.target.value)}
-        >
-          <option value="">—</option>
-          {locationOptions.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name} · {l.business_name}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="grant-start">{t.startDate}</label>
-        <input
-          id="grant-start"
-          type="datetime-local"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-        />
-        <label htmlFor="grant-end">{t.endDate}</label>
-        <input
-          id="grant-end"
-          type="datetime-local"
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-        />
-        <label htmlFor="grant-reason">{t.reason}</label>
-        <input
-          id="grant-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
+        <div className="field">
+          <label htmlFor="grant-campaign">{t.campaign}</label>
+          <input
+            id="grant-campaign-filter"
+            placeholder={`${t.search}…`}
+            value={campaignFilter}
+            onChange={(e) => setCampaignFilter(e.target.value)}
+            aria-label={`${t.campaign} — ${t.search}`}
+          />
+          <select
+            id="grant-campaign"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+          >
+            <option value="">—</option>
+            {campaignOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.headline} · {c.business_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="grant-location">{t.branch}</label>
+          <input
+            id="grant-location-filter"
+            placeholder={`${t.search}…`}
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            aria-label={`${t.branch} — ${t.search}`}
+          />
+          <select
+            id="grant-location"
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+          >
+            <option value="">—</option>
+            {locationOptions.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name} · {l.business_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="grant-start">{t.startDate}</label>
+          <input
+            id="grant-start"
+            type="datetime-local"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="grant-end">{t.endDate}</label>
+          <input
+            id="grant-end"
+            type="datetime-local"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="grant-reason">{t.reason}</label>
+          <input
+            id="grant-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
         <button
           className="btn primary mt-12"
           disabled={busy || !valid}

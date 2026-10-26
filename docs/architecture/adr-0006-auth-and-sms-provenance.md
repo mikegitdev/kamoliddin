@@ -14,9 +14,14 @@
    keyed column; the phone is anyway stored in cleartext on `User`. Accepted
    risk: the challenges table is a phone-number enumeration surface at rest;
    mitigate at rest with full-disk/backup encryption (deploy runbook).
-3. **IP-level throttling** is the DRF scoped anon throttle on the views
-   (5/min/IP); phone-level quota (20/day) and resend throttling live in the
-   service. The dead `ip=` parameter was removed.
+3. **IP-level throttling** is the DRF scoped throttle on the views, with
+   separate buckets: `otp_request` (5/min/IP, caps SMS spend) and
+   `otp_verify` (20/min/IP). Amended 2026-10-23: one shared 5/min bucket
+   allowed ~2 logins/min per IP, so a typo + resend locked users out, and
+   carrier NAT puts many subscribers behind one IP. Verify brute force stays
+   bounded per challenge by `OTP_MAX_ATTEMPTS` (5) and the 5-minute TTL.
+   Phone-level quota (20/day) and resend throttling live in the service.
+   The dead `ip=` parameter was removed.
 
 ## Phone reclaim block
 

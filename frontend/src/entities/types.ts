@@ -54,6 +54,31 @@ export interface ApiCampaignDetail extends ApiActiveAd {
   locations: ApiAdLocation[];
 }
 
+/** Why an ad is (not) publicly visible right now ("live" = it is). */
+export type AdVisibility =
+  | "live"
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "rejected"
+  | "suspended"
+  | "business_disabled"
+  | "location_disabled"
+  | "blocked"
+  | "pending"
+  | "scheduled"
+  | "ended"
+  | "no_placements";
+
+/** Staff-only ad page payload for any campaign state
+ *  (GET /admin/campaigns/{id}/preview). Dates are null without placements. */
+export interface ApiCampaignPreview extends Omit<ApiCampaignDetail, "starts_at" | "ends_at"> {
+  starts_at: string | null;
+  ends_at: string | null;
+  review_status: string;
+  visibility: AdVisibility;
+}
+
 export interface ApiLocationDetail {
   id: string;
   name: string;

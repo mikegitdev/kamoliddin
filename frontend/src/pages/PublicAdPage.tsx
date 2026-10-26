@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/shared/api/client";
@@ -5,9 +6,11 @@ import { useCategories, useLocationDetail } from "@/shared/api/queries";
 import { MiniMap } from "@/shared/mini-map";
 import { IconArrowRight, IconClock, IconFlag, IconLock, IconPin } from "@/shared/icons";
 import { reportDialog } from "@/shared/dialog";
-import type { ApiCampaignDetail } from "@/entities/types";
-import { plural, useI18n } from "@/shared/i18n";
-import { formatDate } from "@/shared/format";
+import type { AdVisibility, ApiCampaignDetail, ApiCampaignPreview } from "@/entities/types";
+import type { Dict } from "@/shared/i18n/ru";
+import { plural, useI18n, type Locale } from "@/shared/i18n";
+import { formatDate, formatCountdown } from "@/shared/format";
+import { useNow } from "@/shared/hooks";
 import {
   AdCard,
   BackLink,
@@ -40,12 +43,23 @@ export function PublicAdPage() {
     searchParams.get("loc") ??
     undefined;
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data: live, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["public-ad", id],
     queryFn: () => api<ApiCampaignDetail>(`/api/v1/public/campaigns/${id}`),
     retry: false,
     enabled: !!id,
   });
+  const unavailable = isError && error instanceof ApiError && error.status === 404;
+  // Not live (scheduled, in review, suspended, ended…): staff still get the
+  // page from the staff-only preview, flagged as not public. Everyone else
+  // gets 401/403 there and sees the "not shown right now" message.
+  const { data: preview, isLoading: previewLoading } = useQuery({
+    queryKey: ["ad-preview", id],
+    queryFn: () => api<ApiCampaignPreview>(`/api/v1/admin/campaigns/${id}/preview`),
+    retry: false,
+    enabled: !!id && unavailable,
+  });
+  const data: ApiCampaignDetail | ApiCampaignPreview | undefined = unavailable ? preview : (live ?? preview);
   // Featured branch detail: category name, live pin count and the branch's
   // other offers. Same cache entry as the location page.
   const featuredId =
@@ -53,7 +67,22 @@ export function PublicAdPage() {
   const { data: featuredDetail } = useLocationDetail(featuredId);
   const { data: categories } = useCategories();
 
-  if (isLoading) {
+  // Live expiry countdown: ticks every second once under 24h remain so the
+  // clock visibly counts down; every 30s before that (chip shows days+hours).
+  const endsMs = data?.ends_at ? new Date(data.ends_at).getTime() : null;
+  const now = useNow(endsMs !== null && endsMs - Date.now() > 86_400_000 ? 30_000 : 1_000);
+  // Offer ended while the page was open: refetch once so the public endpoint
+  // 404s and the page falls through to the "not shown right now" state (spec §14).
+  const expired = live && endsMs !== null && endsMs - now <= 0;
+  const expiryFetched = useRef(false);
+  useEffect(() => {
+    if (expired && !expiryFetched.current) {
+      expiryFetched.current = true;
+      void refetch();
+    }
+  }, [expired, refetch]);
+
+  if (isLoading || (unavailable && previewLoading)) {
     return (
       <div className="page">
         <nav>
@@ -69,17 +98,23 @@ export function PublicAdPage() {
   }
 
   if (!data) {
-    const unavailable = isError && error instanceof ApiError && error.status === 404;
     return (
       <div className="page">
-        <div className={unavailable ? "callout" : "callout danger"} role={unavailable ? "status" : "alert"}>
-          <span>{unavailable ? (<><IconLock size={14} /> {t.adUnavailable}</>) : t.loadError}</span>
-          {!unavailable && (
+        {unavailable ? (
+          <div className="callout" role="status">
+            <strong>
+              <IconLock size={14} /> {t.adUnavailable}
+            </strong>
+            <span>{t.adUnavailableHint}</span>
+          </div>
+        ) : (
+          <div className="callout danger" role="alert">
+            <span>{t.loadError}</span>
             <button className="btn small" onClick={() => refetch()}>
               {t.retry}
             </button>
-          )}
-        </div>
+          </div>
+        )}
         <p className="mt-14">
           <Link className="btn" to="/">
             {t.toHomepage}
@@ -94,7 +129,7 @@ export function PublicAdPage() {
   const featured = locations.find((l) => l.id === fromLocationId) ?? locations[0];
   const others = locations.filter((l) => l.id !== featured?.id);
   const featuredDirections = featured ? directionsUrl(featured.lon, featured.lat) : undefined;
-  const daysLeft = data.ends_at ? daysUntil(data.ends_at) : null;
+  const msLeft = endsMs !== null ? endsMs - now : null;
   const categoryName = categories?.find((c) => c.slug === featuredDetail?.category);
   const moreOffers = (featuredDetail?.active_ads ?? []).filter((ad) => ad.id !== data.id);
   const categoryLabel = categoryName ? (locale === "uz" ? categoryName.name_uz : categoryName.name_ru) : "";
@@ -131,6 +166,20 @@ export function PublicAdPage() {
         </div>
       </nav>
 
+      {preview && preview.visibility !== "live" && (
+        <div className="callout mb-14" role="status">
+          <strong>
+            <IconLock size={14} /> {t.adPreviewTitle}
+          </strong>
+          <span>
+            {visibilityText(preview, t, locale)}
+          </span>
+          <Link className="btn small" to={`/staff?tab=placements&campaign=${preview.id}`}>
+            {t.viewPlacements}
+          </Link>
+        </div>
+      )}
+
       <div className="ad-layout">
         <article className="ad-main">
           <div className="ad-banner ad-hero">
@@ -151,12 +200,10 @@ export function PublicAdPage() {
           {/* 2. Offer. Ad disclosure: visitors must always see this is paid placement. */}
           <div className="ad-meta">
             <span className="chip gray">{t.adLabel}</span>
-            {daysLeft !== null && daysLeft > 0 && (
+            {msLeft !== null && msLeft > 0 && (
               <span className="chip ad-countdown">
                 <IconClock size={13} />
-                {daysLeft === 1
-                  ? t.endsToday
-                  : `${t.endsIn} ${daysLeft} ${plural(locale, "days", daysLeft)}`}
+                {t.endsIn} {formatCountdown(msLeft, locale)}
               </span>
             )}
             {data.ends_at && (
@@ -258,7 +305,26 @@ export function PublicAdPage() {
   );
 }
 
-/** Whole days until `iso`, rounded up: 1 = ends within the next 24h. */
-function daysUntil(iso: string): number {
-  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+const VISIBILITY_TEXT: Record<Exclude<AdVisibility, "live">, keyof Dict> = {
+  draft: "visDraft",
+  submitted: "visSubmitted",
+  under_review: "visUnderReview",
+  rejected: "visRejected",
+  suspended: "visSuspended",
+  business_disabled: "visBusinessDisabled",
+  location_disabled: "visLocationDisabled",
+  blocked: "visBlocked",
+  pending: "visPending",
+  scheduled: "visScheduled",
+  ended: "visEnded",
+  no_placements: "visNoPlacements",
+};
+
+/** Staff-facing reason the ad is not public, with the date when it explains it. */
+function visibilityText(p: ApiCampaignPreview, t: Dict, locale: Locale): string {
+  if (p.visibility === "live") return "";
+  const text = t[VISIBILITY_TEXT[p.visibility]];
+  if (p.visibility === "scheduled" && p.starts_at) return `${text} ${formatDate(p.starts_at, locale)}`;
+  if (p.visibility === "ended" && p.ends_at) return `${text} — ${formatDate(p.ends_at, locale)}`;
+  return text;
 }

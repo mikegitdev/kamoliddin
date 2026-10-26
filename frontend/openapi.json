@@ -339,6 +339,44 @@
                 }
             }
         },
+        "/api/v1/admin/campaigns/{id}/preview": {
+            "get": {
+                "operationId": "api_v1_admin_campaigns_preview_retrieve",
+                "description": "GET /admin/campaigns/{id}/preview — how the ad page would look, for any\ncampaign state (staff \"Open\" must not dead-end on non-live ads).",
+                "summary": "Ad page preview for staff, with public visibility status",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AdminCampaignPreview"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1/admin/campaigns/{id}/review": {
             "post": {
                 "operationId": "api_v1_admin_campaigns_review_create",
@@ -3467,6 +3505,75 @@
                     "id",
                     "owner_phone",
                     "updated_at"
+                ]
+            },
+            "AdminCampaignPreview": {
+                "type": "object",
+                "description": "Public ad payload for staff, regardless of eligibility, plus why the ad\nis (not) publicly visible right now.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "headline": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "body": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "banner_url": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "business_name": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "starts_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "ends_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    },
+                    "locations": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PublicAdLocation"
+                        },
+                        "readOnly": true
+                    },
+                    "review_status": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "visibility": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/VisibilityEnum"
+                            }
+                        ],
+                        "readOnly": true,
+                        "description": "'live' = publicly visible now; otherwise the main reason it is not\n\n* `live` - live\n* `draft` - draft\n* `submitted` - submitted\n* `under_review` - under_review\n* `rejected` - rejected\n* `suspended` - suspended\n* `business_disabled` - business_disabled\n* `location_disabled` - location_disabled\n* `blocked` - blocked\n* `pending` - pending\n* `scheduled` - scheduled\n* `ended` - ended\n* `no_placements` - no_placements"
+                    }
+                },
+                "required": [
+                    "banner_url",
+                    "body",
+                    "business_name",
+                    "ends_at",
+                    "headline",
+                    "id",
+                    "locations",
+                    "review_status",
+                    "starts_at",
+                    "visibility"
                 ]
             },
             "AdminLocation": {
@@ -6713,6 +6820,25 @@
                 "required": [
                     "bound"
                 ]
+            },
+            "VisibilityEnum": {
+                "enum": [
+                    "live",
+                    "draft",
+                    "submitted",
+                    "under_review",
+                    "rejected",
+                    "suspended",
+                    "business_disabled",
+                    "location_disabled",
+                    "blocked",
+                    "pending",
+                    "scheduled",
+                    "ended",
+                    "no_placements"
+                ],
+                "type": "string",
+                "description": "* `live` - live\n* `draft` - draft\n* `submitted` - submitted\n* `under_review` - under_review\n* `rejected` - rejected\n* `suspended` - suspended\n* `business_disabled` - business_disabled\n* `location_disabled` - location_disabled\n* `blocked` - blocked\n* `pending` - pending\n* `scheduled` - scheduled\n* `ended` - ended\n* `no_placements` - no_placements"
             },
             "WebhookAck": {
                 "type": "object",

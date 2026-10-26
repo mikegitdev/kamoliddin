@@ -46,3 +46,6 @@ codedb.snapshot
 # Playwright output
 frontend/test-results/
 frontend/playwright-report/
+
+# Local agent scratchpads (session notes, audits)
+.scratch/

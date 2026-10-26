@@ -50,7 +50,8 @@ export function QueueTab({
       });
       setRejecting(null);
       setReason("");
-      qc.invalidateQueries({ queryKey: ["staff", "review-queue"] });
+      // Approval activates placements and moves counters: refresh every staff view.
+      qc.invalidateQueries({ queryKey: ["staff"] });
     } catch (e) {
       onError(e instanceof ApiError ? e.message : t.error);
     } finally {
@@ -104,6 +105,7 @@ export function QueueTab({
                     ))}
                   </div>
                   <input
+                    className="report-note"
                     placeholder={t.reason}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}

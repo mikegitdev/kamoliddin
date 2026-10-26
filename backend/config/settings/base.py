@@ -183,7 +183,11 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "300/min",  # map browsing fires a request per pan/search
         "user": "120/min",
-        "otp": "5/min",  # scoped rate for OTP request/verify (spec §9)
+        # OTP scopes (spec §9, ADR-0006). Separate buckets: a shared one let a
+        # typo + resend lock a user out mid-login. Verify brute force is
+        # bounded per challenge by OTP_MAX_ATTEMPTS, so its IP rate is looser.
+        "otp_request": "5/min",
+        "otp_verify": "20/min",
         "report": "10/min",  # public complaint submissions
     },
     # Throttles key on the client IP. 0 = REMOTE_ADDR only: a client-sent

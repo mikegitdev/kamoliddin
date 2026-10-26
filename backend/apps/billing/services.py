@@ -239,6 +239,7 @@ def request_refund(*, user, order_id: str, reason: str) -> Refund:
         state=Refund.State.REFUND_REQUESTED,
     )
     ActivityEvent.objects.create(
+        actor=user,
         action="refund.requested",
         entity="order",
         entity_id=str(order.id),

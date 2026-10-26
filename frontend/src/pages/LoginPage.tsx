@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
@@ -30,6 +30,10 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  // `busy` is render state: the auto-verify timer's closure sees a stale
+  // false and would fire a second POST behind a manual submit. Every OTP
+  // call spends the shared 5/min/IP bucket, so guard synchronously.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -43,7 +47,8 @@ export function LoginPage() {
   }, []);
 
   const requestCode = async (channel: "auto" | "sms" = "auto") => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     const normalized = normalizePhone(phone);
@@ -55,12 +60,14 @@ export function LoginPage() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.error);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
   const verify = async () => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -71,6 +78,7 @@ export function LoginPage() {
       navigate("/app");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.error);
+      inFlight.current = false;
       setBusy(false);
     }
   };

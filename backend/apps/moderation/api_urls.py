@@ -3,6 +3,7 @@ from django.urls import path
 from .api import (
     AdLimitView,
     AdminCampaignListView,
+    AdminCampaignPreviewView,
     AdminOrderListView,
     AdminOverviewView,
     CampaignReviewView,
@@ -38,6 +39,8 @@ urlpatterns = [
     path("admin/review-queue", ReviewQueueView.as_view(), name="admin-review-queue"),
     path("admin/campaigns", AdminCampaignListView.as_view(),
          name="admin-campaigns"),
+    path("admin/campaigns/<uuid:id>/preview", AdminCampaignPreviewView.as_view(),
+         name="admin-campaign-preview"),
     path("admin/campaigns/<uuid:id>/review", CampaignReviewView.as_view(),
          name="admin-campaign-review"),
     path("admin/campaigns/<uuid:id>/suspend", CampaignSuspendView.as_view(),

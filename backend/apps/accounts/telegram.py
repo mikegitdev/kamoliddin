@@ -134,8 +134,9 @@ def webhook_secret() -> str:
 
 # --- Enrollment tokens ------------------------------------------------------------
 #
-# Compact, HMAC-signed, <=64 chars so they fit the /start payload:
-# b64url(uuid16 + uint32-exp) "." b64url(hmac-sha256[:8])
+# Compact, HMAC-signed, 38 chars so they fit the /start payload, which allows
+# only [A-Za-z0-9_-] (Bot API deep linking) — no separator characters:
+# b64url(uuid16 + uint32-exp + hmac-sha256[:8]), split by fixed byte lengths.
 
 
 def _b64(data: bytes) -> str:
@@ -156,7 +157,7 @@ def make_bind_token(user) -> str:
     payload = user.pk.bytes + int(
         time.time() + settings.TELEGRAM_BIND_TOKEN_TTL_SECONDS
     ).to_bytes(4, "big")
-    return f"{_b64(payload)}.{_b64(_sig(payload))}"
+    return _b64(payload + _sig(payload))
 
 
 def resolve_bind_token(token: str):
@@ -165,16 +166,13 @@ def resolve_bind_token(token: str):
     Constant-time signature comparison; expiry enforced against wall clock."""
     from .models import User
 
-    parts = token.strip().split(".")
-    if len(parts) != 2:
-        return None
     try:
-        payload = _unb64(parts[0])
-        sig = _unb64(parts[1])
+        raw = _unb64(token.strip())
     except (ValueError, binascii.Error):
         return None
-    if len(payload) != _TOKEN_PAYLOAD_BYTES or len(sig) != _TOKEN_SIG_BYTES:
+    if len(raw) != _TOKEN_PAYLOAD_BYTES + _TOKEN_SIG_BYTES:
         return None
+    payload, sig = raw[:_TOKEN_PAYLOAD_BYTES], raw[_TOKEN_PAYLOAD_BYTES:]
     expected = _sig(payload)
     if not hmac.compare_digest(sig, expected):
         return None

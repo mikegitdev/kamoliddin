@@ -158,8 +158,11 @@ Separate bot from the ops-alert bot above. Set in `.env.prod`:
 ```
 TELEGRAM_BOT_TOKEN=...      # @BotFather token
 TELEGRAM_BOT_USERNAME=...   # bot username without @
-TELEGRAM_WEBHOOK_SECRET=... # random string; Telegram echoes it on every update
+TELEGRAM_WEBHOOK_SECRET=... # openssl rand -hex 32; Telegram echoes it on every update
 ```
+
+The secret may only contain `A-Z a-z 0-9 _ -` (Bot API `setWebhook`); a
+base64 secret (`+ / =`) is rejected by Telegram, and prod settings refuse it.
 
 Then register the webhook once (idempotent):
 

@@ -32,6 +32,35 @@ export function AdminOverviewTab() {
     [a.disabled_locations, t.attnDisabledBranches, "businesses", { view: "branches", status: "disabled" }, false],
   ];
   const open = attention.filter(([n]) => n > 0);
+  // Summary counters open the section (and filter) they count.
+  const stats: {
+    icon: React.ReactNode;
+    value: React.ReactNode;
+    label: string;
+    tab: string;
+    params?: Record<string, string>;
+    money?: boolean;
+  }[] = [
+    { icon: <IconClock size={22} />, value: data.queue_depth, label: t.pendingReview, tab: "queue" },
+    { icon: <IconFlag size={22} />, value: data.open_reports, label: t.openReports, tab: "reports" },
+    { icon: <IconMoney size={22} />, value: data.refunds_requested, label: t.refundsPending, tab: "refunds" },
+    {
+      icon: <IconEye size={22} />,
+      value: data.active_placements,
+      label: t.activePlacements,
+      tab: "placements",
+      params: { state: "active" },
+    },
+    {
+      icon: <IconMoney size={22} />,
+      value: formatMinor(data.revenue.month, "UZS", lang),
+      label: t.thisMonth,
+      tab: "orders",
+      params: { state: "paid" },
+      money: true,
+    },
+    { icon: <IconUsers size={22} />, value: data.owners, label: t.ownersCount, tab: "businesses" },
+  ];
   return (
     <section>
       <h3 className="mb-10">{t.attnTitle}</h3>
@@ -58,38 +87,18 @@ export function AdminOverviewTab() {
         </div>
       )}
       <div className="cards">
-        <div className="stat-card">
-          <span className="icon"><IconClock size={22} /></span>
-          <span className="num">{data.queue_depth}</span>
-          <span className="muted-2">{t.pendingReview}</span>
-        </div>
-        <div className="stat-card">
-          <span className="icon"><IconFlag size={22} /></span>
-          <span className="num">{data.open_reports}</span>
-          <span className="muted-2">{t.openReports}</span>
-        </div>
-        <div className="stat-card">
-          <span className="icon"><IconMoney size={22} /></span>
-          <span className="num">{data.refunds_requested}</span>
-          <span className="muted-2">{t.refundsPending}</span>
-        </div>
-        <div className="stat-card">
-          <span className="icon"><IconEye size={22} /></span>
-          <span className="num">{data.active_placements}</span>
-          <span className="muted-2">{t.activePlacements}</span>
-        </div>
-        <div className="stat-card">
-          <span className="icon"><IconMoney size={22} /></span>
-          <span className="num num-lg">
-            {formatMinor(data.revenue.month, "UZS", lang)}
-          </span>
-          <span className="muted-2">{t.thisMonth}</span>
-        </div>
-        <div className="stat-card">
-          <span className="icon"><IconUsers size={22} /></span>
-          <span className="num">{data.owners}</span>
-          <span className="muted-2">{t.ownersCount}</span>
-        </div>
+        {stats.map(({ icon, value, label, tab, params, money }) => (
+          <button
+            key={label}
+            type="button"
+            className="stat-card staff-attn"
+            onClick={() => link.go(tab, params)}
+          >
+            <span className="icon">{icon}</span>
+            <span className={money ? "num num-lg" : "num"}>{value}</span>
+            <span className="muted-2">{label}</span>
+          </button>
+        ))}
       </div>
       <p className="muted-2 mt-10">
         {t.totalSpent}: {formatMinor(data.revenue.total, "UZS", lang)}

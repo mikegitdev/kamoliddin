@@ -147,10 +147,37 @@ export function formatRelative(iso: string | null | undefined, locale: Locale = 
 }
 
 /** Meters -> "850 м" / "2,4 км" (search result cards). */
+/** Compact remaining time for live countdowns: "3 д 14 ч" / "3 kun 14 soat",
+ *  switching to a ticking "HH:MM:SS" clock in the final 24h. Clamps at 0. */
+export function formatCountdown(msLeft: number, locale: Locale): string {
+  const totalSec = Math.max(0, Math.floor(msLeft / 1000));
+  const days = Math.floor(totalSec / 86_400);
+  if (days > 0) {
+    const hours = Math.floor((totalSec % 86_400) / 3_600);
+    return locale === "uz" ? `${days} kun ${hours} soat` : `${days} д ${hours} ч`;
+  }
+  const hours = Math.floor(totalSec / 3_600);
+  const minutes = Math.floor((totalSec % 3_600) / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(totalSec % 60)}`;
+}
+
 export function formatDistanceM(meters: number, locale: Locale = "ru"): string {
   const nf = new Intl.NumberFormat(NUMBER_LOCALE[locale], { maximumFractionDigits: 1 });
   if (meters < 1000) return `${nf.format(Math.max(1, Math.round(meters)))} м`;
   return `${nf.format(meters / 1000)} км`;
+}
+
+/** Compact travel duration from minutes: "7 мин", "1 ч 20 мин"
+ *  (uz keeps full words: "7 daqiqa", "1 soat 20 daqiqa"). */
+export function formatTravelMin(minutes: number, locale: Locale = "ru"): string {
+  const total = Math.max(1, Math.round(minutes));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (locale === "uz") {
+    return h === 0 ? `${m} daqiqa` : m === 0 ? `${h} soat` : `${h} soat ${m} daqiqa`;
+  }
+  return h === 0 ? `${m} мин` : m === 0 ? `${h} ч` : `${h} ч ${m} мин`;
 }
 
 /** Bytes -> "1,2 МБ" / "1.2 MB" — locale-aware unit labels, one implementation

@@ -80,11 +80,20 @@ export function AccountPage() {
     if (tgBusy) return;
     setTgBusy(true);
     setTgError(null);
+    // Open the tab inside the tap: mobile Safari blocks window.open() after
+    // an await, which would leave "Link Telegram" silently doing nothing.
+    const tab = window.open("", "_blank");
     try {
       const info = await telegramBindLink();
       setTgPending(true);
-      window.open(info.link, "_blank", "noopener");
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = info.link;
+      } else {
+        window.location.href = info.link; // popup blocked: hand off in place
+      }
     } catch (e) {
+      tab?.close();
       setTgError(e instanceof ApiError ? e.message : t.error);
     } finally {
       setTgBusy(false);

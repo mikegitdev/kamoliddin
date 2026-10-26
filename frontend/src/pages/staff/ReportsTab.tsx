@@ -40,7 +40,7 @@ export function ReportsTab({
       });
       setProcessing(null);
       setNote("");
-      qc.invalidateQueries({ queryKey: ["staff", "reports"] });
+      qc.invalidateQueries({ queryKey: ["staff"] }); // list + nav badge counters
     } catch (e) {
       onError(e instanceof ApiError ? e.message : t.error);
     } finally {
@@ -81,6 +81,7 @@ export function ReportsTab({
                 (processing === r.id ? (
                   <div className="stack">
                     <input
+                      className="report-note"
                       placeholder={t.note}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}

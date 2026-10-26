@@ -134,3 +134,26 @@ def test_grant_options_include_recent_grants(staff, campaign, location):
     assert Placement.objects.filter(
         campaign=campaign, source_type=Placement.SourceType.GRANT
     ).exists()
+
+
+def test_campaign_preview_staff_only_and_explains_non_live(
+    owner, staff, campaign, location, interval
+):
+    """Staff "Open" on a not-yet-live ad: the public page 404s, the staff
+    preview returns the ad with the reason it is not public."""
+    from apps.placements.models import Placement
+
+    campaign.review_status = "approved"
+    campaign.save(update_fields=["review_status"])
+    start, end = interval  # starts in 1h -> not live yet
+    Placement.objects.create(campaign=campaign, location=location, start_at=start,
+                             end_at=end, state="scheduled", source_type="grant",
+                             charge_days=1)
+    url = reverse("admin-campaign-preview", kwargs={"id": campaign.id})
+
+    assert _auth(owner).get(url).status_code == 403
+    assert APIClient().get(f"/api/v1/public/campaigns/{campaign.id}").status_code == 404
+    response = _auth(staff).get(url)
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "scheduled"
+    assert response.json()["headline"] == campaign.headline

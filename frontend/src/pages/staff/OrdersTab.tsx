@@ -69,7 +69,7 @@ export function OrdersTab({ locale }: { locale: string }) {
               <th>{t.campaign}</th>
               <th>{t.total}</th>
               <th>{t.status}</th>
-              <th>{t.secSchedule}</th>
+              <th>{t.payDate}</th>
               <th />
             </tr>
           </thead>

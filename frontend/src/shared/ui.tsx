@@ -116,17 +116,18 @@ export function AttemptChip({ status }: { status: string }) {
   );
 }
 
+// Keys are the backend Refund.State values (RefundStateEnum).
 const REFUND_CLASS: Record<string, string> = {
-  requested: "chip orange",
+  refund_requested: "chip orange",
   admin_review: "chip blue",
   refunded: "chip green",
-  rejected: "chip red",
+  refund_failed: "chip red",
 };
 const REFUND_LABEL: Record<string, keyof Dict> = {
-  requested: "stRefundRequested",
+  refund_requested: "stRefundRequested",
   admin_review: "stRefundAdminReview",
   refunded: "stRefundRefunded",
-  rejected: "stRefundRejected",
+  refund_failed: "stRefundRejected",
 };
 
 export function RefundStateChip({ state }: { state: string }) {

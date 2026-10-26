@@ -5,6 +5,7 @@ primary moderation UI; these endpoints serve the same operations over REST.
 - POST /admin/campaigns/{id}/suspend   takedown (approved -> suspended)
 - POST /admin/campaigns/{id}/unsuspend restore
 - GET  /admin/campaigns               searchable oversight list
+- GET  /admin/campaigns/{id}/preview  ad page payload + visibility, any state
 - GET  /admin/reports                 complaints queue; POST .../{id}/process
 - POST /admin/grants                  issue zero-charge placement grant
 - GET  /admin/refunds                 refund queue
@@ -15,6 +16,8 @@ primary moderation UI; these endpoints serve the same operations over REST.
 
 Users, businesses, branches, placements and logs live in control_api.py.
 """
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -28,6 +31,8 @@ from apps.billing.models import Order, OrderItem, Refund
 from apps.billing.services import RefundError, process_refund
 from apps.businesses.models import Business
 from apps.campaigns.models import Campaign
+from apps.discovery.serializers import PublicCampaignDetailSerializer
+from apps.discovery.views import PublicCampaignDetailView
 from apps.locations.models import Location
 from apps.moderation.models import ActivityEvent, PlatformSetting, Report
 from apps.moderation.services import (
@@ -45,6 +50,15 @@ from apps.placements.services import issue_free_grant, max_active_ads
 class IsAdminUser(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+
+
+def filter_by_id(qs, field: str, raw: str):
+    """Apply an `?business=`-style UUID filter; a malformed id matches nothing
+    instead of surfacing a database cast error as a 500."""
+    try:
+        return qs.filter(**{field: uuid.UUID(raw)})
+    except ValueError:
+        return qs.none()
 
 
 class CampaignStatusResultSerializer(serializers.Serializer):
@@ -454,8 +468,93 @@ class AdminCampaignListView(ListAPIView):
         if status_param:
             qs = qs.filter(review_status=status_param)
         if business := self.request.query_params.get("business", "").strip():
-            qs = qs.filter(business_id=business)
+            qs = filter_by_id(qs, "business_id", business)
         return qs
+
+
+class AdminCampaignPreviewSerializer(PublicCampaignDetailSerializer):
+    """Public ad payload for staff, regardless of eligibility, plus why the ad
+    is (not) publicly visible right now."""
+
+    review_status = serializers.CharField(read_only=True)
+    visibility = serializers.ChoiceField(
+        read_only=True,
+        choices=["live", "draft", "submitted", "under_review", "rejected", "suspended",
+                 "business_disabled", "location_disabled", "blocked", "pending",
+                 "scheduled", "ended", "no_placements"],
+        help_text="'live' = publicly visible now; otherwise the main reason it is not",
+    )
+
+
+def _campaign_visibility(campaign, placements, now) -> tuple[str, "Placement | None"]:
+    """Main reason the ad is (not) public right now and the placement whose
+    dates/branch best explain it. Mirrors eligible_now_q's checks in order."""
+    eligible = [p for p in placements if p.state in ("scheduled", "active")
+                and p.start_at <= now < p.end_at
+                and p.location.status == Location.Status.ACTIVE]
+    if campaign.review_status != Campaign.ReviewStatus.APPROVED:
+        return campaign.review_status, eligible[0] if eligible else None
+    if campaign.business.status != Business.Status.ACTIVE:
+        return "business_disabled", None
+    if eligible:
+        return "live", eligible[0]
+    current = [p for p in placements if p.start_at <= now < p.end_at]
+    if any(p.state in ("scheduled", "active") for p in current):
+        return "location_disabled", current[0]
+    if any(p.state == "blocked" for p in current):
+        return "blocked", next(p for p in current if p.state == "blocked")
+    if any(p.state == "pending" for p in current):
+        return "pending", next(p for p in current if p.state == "pending")
+    upcoming = [p for p in placements if p.start_at > now
+                and p.state in ("pending", "scheduled", "active")]
+    if upcoming:
+        return "scheduled", upcoming[0]
+    if not placements:
+        return "no_placements", None
+    return "ended", max(placements, key=lambda p: p.end_at)
+
+
+class AdminCampaignPreviewView(APIView):
+    """GET /admin/campaigns/{id}/preview — how the ad page would look, for any
+    campaign state (staff "Open" must not dead-end on non-live ads)."""
+
+    permission_classes = [IsAdminUser]
+
+    @extend_schema(tags=["Admin"], summary="Ad page preview for staff, with public "
+                   "visibility status", responses=AdminCampaignPreviewSerializer)
+    def get(self, request, id):
+        campaign = Campaign.objects.select_related("business").filter(pk=id).first()
+        if campaign is None:
+            return Response(
+                {"error": {"code": "not_found", "message": "Campaign not found",
+                           "fields": {}}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        placements = list(
+            Placement.objects.filter(campaign=campaign)
+            .select_related("location", "location__business")
+            .order_by("start_at")
+        )
+        now = timezone.now()
+        visibility, focus = _campaign_visibility(campaign, placements, now)
+        locations = []
+        seen = set()
+        for p in ([focus] if focus else []) + placements:
+            if p.location_id not in seen:
+                seen.add(p.location_id)
+                locations.append(p.location)
+        return Response(AdminCampaignPreviewSerializer({
+            "id": campaign.id,
+            "headline": campaign.headline,
+            "body": campaign.body,
+            "banner_url": f"/media/{campaign.banner_key}" if campaign.banner_key else "",
+            "business_name": campaign.business.name,
+            "starts_at": focus.start_at if focus else None,
+            "ends_at": focus.end_at if focus else None,
+            "locations": locations[:PublicCampaignDetailView.MAX_LOCATIONS],
+            "review_status": campaign.review_status,
+            "visibility": visibility,
+        }).data)
 
 
 class CampaignSuspendSerializer(serializers.Serializer):
@@ -548,7 +647,7 @@ class AdminOrderListView(ListAPIView):
         if state := params.get("state", "").strip():
             qs = qs.filter(state=state)
         if business := params.get("business", "").strip():
-            qs = qs.filter(business_id=business)
+            qs = filter_by_id(qs, "business_id", business)
         if q := params.get("q", "").strip():
             qs = qs.filter(Q(business__name__icontains=q)
                            | Q(campaign__headline__icontains=q)

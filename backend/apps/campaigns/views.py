@@ -110,7 +110,7 @@ class CampaignSubmitView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            submit_for_review(campaign=campaign)
+            submit_for_review(campaign=campaign, actor=request.user)
         except ModerationError as exc:
             return Response(
                 {"error": {"code": "invalid_transition", "message": str(exc), "fields": {}}},

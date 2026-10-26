@@ -100,7 +100,9 @@ def _bind(owner, monkeypatch, tg: RecordingTelegram, chat_id: int = 4242) -> str
     link = response.data["link"]
     assert link.startswith("https://t.me/test_bot?start=")
     token = link.rsplit("=", 1)[1]
-    assert len(token) <= 64  # Bot API /start payload limit
+    # Bot API deep linking: <=64 chars of [A-Za-z0-9_-] only — anything else
+    # (e.g. '.') is dropped by Telegram clients and enrollment never completes.
+    assert re.fullmatch(r"[A-Za-z0-9_-]{1,64}", token)
     _wire(monkeypatch, tg, None)
     assert _webhook(_start_update(token, chat_id)).status_code == 200
     owner.refresh_from_db()

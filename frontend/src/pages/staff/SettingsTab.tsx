@@ -36,22 +36,25 @@ export function SettingsTab({ onError }: { onError: (e: string | null) => void }
   };
 
   return (
-    <section className="card max-w-560">
+    <section className="card max-w-560 form">
       <h2>{t.settings}</h2>
       {/* Without the live value the input would show a made-up default. */}
       {isError && !data && <QueryError onRetry={() => refetch()} />}
       {ok && <p className="callout ok"><IconCheck size={16} /> {t.saved}</p>}
-      <label htmlFor="ad-limit">{t.adLimit}</label>
-      <input
-        id="ad-limit"
-        type="number"
-        min={1}
-        max={50}
-        value={current}
-        onChange={(e) => setValue(Number(e.target.value))}
-      />
-      <p className="muted-2">{t.adLimitHint}</p>
-      <button className="btn primary mt-8" disabled={busy} onClick={save}>
+      <div className="field">
+        <label htmlFor="ad-limit">{t.adLimit}</label>
+        <input
+          id="ad-limit"
+          type="number"
+          min={1}
+          max={50}
+          value={current}
+          onChange={(e) => setValue(Number(e.target.value))}
+        />
+        <p className="muted-2">{t.adLimitHint}</p>
+      </div>
+      {/* The API accepts 1..50; an emptied field reads as 0. */}
+      <button className="btn primary mt-8" disabled={busy || !(current >= 1 && current <= 50)} onClick={save}>
         {busy ? "…" : t.save}
       </button>
     </section>

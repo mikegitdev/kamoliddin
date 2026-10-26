@@ -1,3 +1,5 @@
+import re
+
 from .base import *  # noqa: F401,F403
 
 DEBUG = False
@@ -16,6 +18,13 @@ if SMS_PROVIDER == "fake":  # noqa: F405
 if TELEGRAM_BOT_TOKEN and not (TELEGRAM_BOT_USERNAME and TELEGRAM_WEBHOOK_SECRET):  # noqa: F405
     raise RuntimeError(
         "TELEGRAM_BOT_TOKEN requires TELEGRAM_BOT_USERNAME and TELEGRAM_WEBHOOK_SECRET"
+    )
+# setWebhook rejects any other secret_token charset (Bot API), so a base64
+# secret would leave the webhook unregistered and enrollment dead.
+if TELEGRAM_WEBHOOK_SECRET and not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", TELEGRAM_WEBHOOK_SECRET):  # noqa: F405
+    raise RuntimeError(
+        "TELEGRAM_WEBHOOK_SECRET may only contain A-Z a-z 0-9 _ - (1-256 chars); "
+        "generate one with: openssl rand -hex 32"
     )
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

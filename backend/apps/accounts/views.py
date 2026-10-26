@@ -64,7 +64,7 @@ def _accepted_response(detail: str, challenge) -> Response:
 )
 class OTPRequestView(APIView):
     permission_classes = [AllowAny]
-    throttle_scope = "otp"
+    throttle_scope = "otp_request"
 
     def post(self, request):
         serializer = OTPRequestSerializer(data=request.data)
@@ -90,7 +90,7 @@ class OTPRequestView(APIView):
 )
 class OTPVerifyView(APIView):
     permission_classes = [AllowAny]
-    throttle_scope = "otp"
+    throttle_scope = "otp_verify"
 
     def post(self, request):
         serializer = OTPVerifySerializer(data=request.data)
@@ -273,7 +273,7 @@ class TelegramWebhookView(APIView):
     )
 )
 class PhoneChangeRequestView(APIView):
-    throttle_scope = "otp"
+    throttle_scope = "otp_request"
 
     def post(self, request):
         serializer = PhoneChangeRequestSerializer(data=request.data)
@@ -299,7 +299,7 @@ class PhoneChangeRequestView(APIView):
                        responses={200: SessionUserSerializer}),
 )
 class PhoneChangeVerifyView(APIView):
-    throttle_scope = "otp"
+    throttle_scope = "otp_verify"
 
     def post(self, request):
         serializer = PhoneChangeVerifySerializer(data=request.data)

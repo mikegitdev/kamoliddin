@@ -467,6 +467,9 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   };
 
   const totalAds = pins?.reduce((sum, p) => sum + p.active_ads_count, 0) ?? 0;
+  /** Distance/duration origin for the results panel: exact user location when
+   *  granted, else the live map center (client-side estimates, display only). */
+  const panelOrigin = userOrigin ?? (camera ? { lat: camera.center[1], lon: camera.center[0] } : null);
   /** Search-mode ad total: the collapsed pill must describe the SEARCH result
    *  set while a query is active, not the invisible viewport pins. */
   const searchAdsTotal =
@@ -754,7 +757,8 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
           onFitResults={searchActive ? fitResults : undefined}
           locationsCount={searchActive ? results.length : pins?.length ?? 0}
           adsCount={searchActive ? searchAdsTotal : totalAds}
-          distanceFromUser={searchActive && !!userOrigin}
+          distanceFromUser={!!userOrigin}
+          origin={panelOrigin}
           categoryLabel={categoryLabel}
         />
       )}

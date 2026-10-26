@@ -35,8 +35,9 @@ from rest_framework.views import APIView
 
 from apps.billing.models import Order
 from apps.businesses.models import Business
+from apps.campaigns.models import Campaign
 from apps.locations.models import Location
-from apps.moderation.api import IsAdminUser
+from apps.moderation.api import IsAdminUser, filter_by_id
 from apps.moderation.models import ActivityEvent
 from apps.moderation.services import (
     ModerationError,
@@ -179,10 +180,18 @@ class AdminUserDetailView(APIView):
             "campaign"
         ).order_by("-created_at")[:20]
         business_ids = [str(b.id) for b in businesses]
+        # Campaign moderation and order/refund events are keyed by their own
+        # ids, so collect those too — otherwise an owner's history looks empty.
+        campaign_ids = [str(pk) for pk in Campaign.objects.filter(
+            business__owner=user).values_list("pk", flat=True)]
+        order_ids = [str(pk) for pk in Order.objects.filter(
+            business__owner=user).values_list("pk", flat=True)]
         activity = ActivityEvent.objects.filter(
             Q(actor=user)
             | Q(entity="user", entity_id=str(user.id))
             | Q(entity="business", entity_id__in=business_ids)
+            | Q(entity="campaign", entity_id__in=campaign_ids)
+            | Q(entity="order", entity_id__in=order_ids)
         ).select_related("actor").order_by("-created_at")[:50]
         return Response(AdminUserDetailSerializer({
             "user": user, "businesses": businesses, "orders": orders,
@@ -262,7 +271,7 @@ class AdminBusinessListView(ListAPIView):
         if flt := _param(self.request, "status"):
             qs = qs.filter(status=flt)
         if owner := _param(self.request, "owner"):
-            qs = qs.filter(owner_id=owner)
+            qs = filter_by_id(qs, "owner_id", owner)
         return qs
 
 
@@ -331,7 +340,7 @@ class AdminLocationListView(ListAPIView):
         if flt := _param(self.request, "status"):
             qs = qs.filter(status=flt)
         if business := _param(self.request, "business"):
-            qs = qs.filter(business_id=business)
+            qs = filter_by_id(qs, "business_id", business)
         return qs
 
 
@@ -410,7 +419,7 @@ class AdminPlacementListView(ListAPIView):
                            ("location", "location_id"),
                            ("campaign", "campaign_id")):
             if value := _param(self.request, key):
-                qs = qs.filter(**{field: value})
+                qs = filter_by_id(qs, field, value)
         return qs
 
 
@@ -560,7 +569,7 @@ class AdminPaymentListView(ListAPIView):
         if provider := _param(self.request, "provider"):
             qs = qs.filter(provider=provider)
         if order := _param(self.request, "order"):
-            qs = qs.filter(order_id=order)
+            qs = filter_by_id(qs, "order_id", order)
         if q := _param(self.request, "q"):
             qs = qs.filter(Q(provider_payment_id__icontains=q)
                            | Q(order__business__name__icontains=q))

@@ -1597,9 +1597,12 @@ img.rc-thumb {
 }
 
 /* ---------- User location dot (maplibre marker element) ---------- */
+/* Blue dot with a white person glyph ("you are here"). Sized up from the old
+   16px bare dot so the glyph stays legible; the white ring + halo keep the
+   classic geolocation affordance. */
 .user-dot {
-  width: 16px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: #2563eb;
   border: 3px solid #fff;
@@ -1607,6 +1610,17 @@ img.rc-thumb {
     0 0 0 6px rgb(37 99 235 / 0.22),
     var(--shadow-md);
   cursor: default;
+  display: grid;
+  place-items: center;
+}
+.user-dot svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Empty state sits right of the desktop sidebar. */
@@ -1677,6 +1691,19 @@ img.rc-thumb {
   font-weight: 800;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+/* Icon and value share the first row (value centred on the icon); the label
+   spans the full width below, so labels line up across cards whatever the
+   value's size (count vs money vs date). */
+.stat-card:has(> .icon) {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 10px;
+}
+.stat-card:has(> .icon) > :not(.icon, .num) {
+  grid-column: 1 / -1;
 }
 /* Gray chips share the card's fill color and vanished into it. */
 .stat-card .chip.gray {
@@ -1686,6 +1713,17 @@ img.rc-thumb {
 @media (max-width: 480px) {
   .stat-card .num {
     font-size: 1.3rem;
+  }
+  .stat-card:has(> .icon) {
+    column-gap: 8px;
+  }
+  .stat-card .icon {
+    width: 32px;
+    height: 32px;
+  }
+  .stat-card .icon svg {
+    width: 18px;
+    height: 18px;
   }
 }
 .list {
@@ -2575,8 +2613,16 @@ img.rc-thumb {
   padding: 14px 16px;
   margin: 10px 0 6px;
 }
+.setup-next > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
 .setup-next strong {
   font-size: 1rem;
+}
+.setup-head h2 {
+  margin: 0;
 }
 .check-item {
   display: flex;
@@ -2597,9 +2643,14 @@ img.rc-thumb {
 }
 .check-label {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   min-width: 0;
+}
+.check-label .chip {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
 }
 .check-item.done .check-num {
   background: var(--success-soft);
@@ -3372,6 +3423,8 @@ img.rc-thumb {
 .chip.ad-countdown {
   background: var(--ink);
   color: var(--on-ink);
+  /* Ticking digits stay fixed-width so the chip doesn't jitter. */
+  font-variant-numeric: tabular-nums;
 }
 .ad-title {
   font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.3rem);
@@ -4590,6 +4643,11 @@ section > label,
   color: var(--danger);
 }
 /* ---------- Staff control room ---------- */
+/* Sections differ in height: reserve the scrollbar so the centered layout
+   doesn't shift sideways when switching between long and short ones. */
+html:has(.staff-page) {
+  scrollbar-gutter: stable;
+}
 .staff-page {
   max-width: 1320px;
 }

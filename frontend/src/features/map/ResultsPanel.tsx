@@ -5,7 +5,8 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { plural, useI18n } from "@/shared/i18n";
-import { formatDistanceM } from "@/shared/format";
+import { formatDistanceM, formatTravelMin } from "@/shared/format";
+import { distanceM, travelMinutes, type LatLng } from "@/shared/geo";
 import { useLocationDetail, type ApiSearchAd } from "@/shared/api/queries";
 import type { ApiLocationPin } from "@/entities/types";
 import type { SheetState } from "./mapSession";
@@ -15,12 +16,28 @@ import { PINS_LIMIT } from "@/shared/api/queries";
 
 /* ---------- Result card: a real <button>, keyboard-reachable ---------- */
 
+/** Display distance for a pin: the server value when the search origin gave
+ *  us one, otherwise a client-side haversine from the panel origin. */
+function pinDistanceM(
+  pin: { lat: number; lon: number; distance_m?: number },
+  origin: LatLng | null | undefined,
+): number | null {
+  return pin.distance_m ?? (origin ? distanceM(origin, pin) : null);
+}
+
+/** Card duration: walking time while it is plausible (≤ 90 min), else driving. */
+function cardDurationM(meters: number): { min: number; mode: "walk" | "car" } {
+  const walk = travelMinutes(meters, "walk");
+  return walk <= 90 ? { min: walk, mode: "walk" } : { min: travelMinutes(meters, "car"), mode: "car" };
+}
+
 function ResultCard({
   pin,
   index,
   selected,
   onSelect,
   categoryLabel,
+  origin,
 }: {
   pin: ApiLocationPin;
   /** Position in the list; drives the staggered entrance (capped in CSS). */
@@ -29,10 +46,14 @@ function ResultCard({
   onSelect: (id: string) => void;
   /** Localized category name for pin.category ("" when unknown). */
   categoryLabel?: (slug: string) => string;
+  /** Distance origin: user location when granted, else the map center. */
+  origin?: LatLng | null;
 }) {
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const hasAds = pin.active_ads_count > 0;
   const category = categoryLabel?.(pin.category);
+  const dist = pinDistanceM(pin, origin);
+  const eta = dist != null ? cardDurationM(dist) : null;
   return (
     <li style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
       <button
@@ -62,7 +83,13 @@ function ResultCard({
           <span className="muted-2">
             {pin.name}
             {category && <> · {category}</>}
-            {pin.distance_m != null && <> · {formatDistanceM(pin.distance_m, locale)}</>}
+            {dist != null && <> · {formatDistanceM(dist, locale)}</>}
+            {eta && (
+              <>
+                {" · ≈"}
+                {formatTravelMin(eta.min, locale)} {eta.mode === "walk" ? t.travelWalk : t.travelCar}
+              </>
+            )}
           </span>
         </span>
         {hasAds && (
@@ -85,6 +112,8 @@ function LocationDetailView({
   onBack,
   onDismiss,
   backBtnRef,
+  origin,
+  originFromUser,
 }: {
   pin: ApiLocationPin | undefined;
   colocGroup: ApiLocationPin[];
@@ -92,11 +121,17 @@ function LocationDetailView({
   onBack: () => void;
   onDismiss: () => void;
   backBtnRef: React.RefObject<HTMLButtonElement | null>;
+  /** Distance origin: user location when granted, else the map center. */
+  origin?: LatLng | null;
+  /** True when `origin` is the visitor's own location (label wording). */
+  originFromUser?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { data: loc, isError, refetch } = useLocationDetail(pin?.id);
   const ads = loc?.active_ads ?? [];
   const dir = loc ? directionsUrl(loc.lon, loc.lat) : undefined;
+  // Straight-line distance to the point, estimated into walk/car times (≈).
+  const dist = loc ? pinDistanceM(loc, origin) : null;
 
   return (
     <div className="panel-view detail" role="dialog" aria-label={pin?.business_name ?? t.details}>
@@ -173,6 +208,16 @@ function LocationDetailView({
               <p className="muted-2">{t.noAdsHere}</p>
             )}
             <p className="sheet-address muted">{loc.address}</p>
+            {dist != null && origin && (
+              <p className="sheet-address muted-2">
+                {formatDistanceM(dist, locale)}{" "}
+                {originFromUser ? t.awayFromYou : t.awayFromMap}
+                {" · ≈"}
+                {formatTravelMin(travelMinutes(dist, "car"), locale)} {t.travelCar}
+                {" · ≈"}
+                {formatTravelMin(travelMinutes(dist, "walk"), locale)} {t.travelWalk}
+              </p>
+            )}
             <ContactActions
               directionsUrl={dir}
               phone={loc.phone}
@@ -223,9 +268,13 @@ export interface ResultsPanelProps {
   /** Viewport counts for the collapsed pill / header (search-aware). */
   locationsCount: number;
   adsCount: number;
-  /** True when search distances are measured from the user's location
-   *  (not the map center) — explains the "8,6 km" on result cards. */
+  /** True when distances are measured from the user's location (not the map
+   *  center) — explains the "8,6 km · ≈15 мин" on result cards and the detail
+   *  sheet's travel row. */
   distanceFromUser?: boolean;
+  /** Origin for client-side distances/durations (user location or map center).
+   *  Search-mode pins keep their server-provided distance_m when present. */
+  origin?: LatLng | null;
   /** Localized category name for a pin's category slug ("" when unknown). */
   categoryLabel?: (slug: string) => string;
 }
@@ -251,6 +300,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
     locationsCount,
     adsCount,
     distanceFromUser = false,
+    origin = null,
     categoryLabel,
   } = props;
   const { t, locale } = useI18n();
@@ -347,6 +397,8 @@ export function ResultsPanel(props: ResultsPanelProps) {
           onBack={() => onStateChange("list")}
           onDismiss={onClearSelection}
           backBtnRef={backRef}
+          origin={origin}
+          originFromUser={distanceFromUser}
         />
       ) : (
         <div className="panel-view list-view">
@@ -380,12 +432,14 @@ export function ResultsPanel(props: ResultsPanelProps) {
           </div>
 
           {/* Scope note: viewport browsing vs city-wide search (plus the
-              distance origin) — keeps the list from looking arbitrary. */}
+              distance origin — explains the distance/duration on cards). */}
           {!loading && (
             <p className="panel-scope">
               {searchMode
                 ? `${t.scopeCity} · ${distanceFromUser ? t.distanceFromYou : t.distanceFromMap}`
-                : t.scopeArea}
+                : origin
+                  ? `${t.scopeArea} · ${distanceFromUser ? t.distanceFromYou : t.distanceFromMap}`
+                  : t.scopeArea}
             </p>
           )}
 
@@ -426,6 +480,7 @@ export function ResultsPanel(props: ResultsPanelProps) {
                       selected={pin.id === selectedPin}
                       onSelect={onSelect}
                       categoryLabel={categoryLabel}
+                      origin={origin}
                     />
                   ))}
                 </ul>

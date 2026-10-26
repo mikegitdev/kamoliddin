@@ -192,7 +192,9 @@ function UserDetail({
       </p>
 
       <div className="row-between">
-        <h4>{t.businessesTab}</h4>
+        <h4>
+          {t.businessesTab} ({data.businesses.length})
+        </h4>
         {data.businesses.length > 0 && (
           <button className="btn small" onClick={() => link.go("businesses", { owner: u.id })}>
             {t.openEntity}

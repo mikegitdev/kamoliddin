@@ -89,6 +89,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/campaigns/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ad page preview for staff, with public visibility status
+         * @description GET /admin/campaigns/{id}/preview — how the ad page would look, for any
+         *     campaign state (staff "Open" must not dead-end on non-live ads).
+         */
+        get: operations["api_v1_admin_campaigns_preview_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/campaigns/{id}/review": {
         parameters: {
             query?: never;
@@ -1214,6 +1235,42 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        /**
+         * @description Public ad payload for staff, regardless of eligibility, plus why the ad
+         *     is (not) publicly visible right now.
+         */
+        AdminCampaignPreview: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly headline: string;
+            readonly body: string;
+            readonly banner_url: string;
+            readonly business_name: string;
+            /** Format: date-time */
+            readonly starts_at: string;
+            /** Format: date-time */
+            readonly ends_at: string;
+            readonly locations: components["schemas"]["PublicAdLocation"][];
+            readonly review_status: string;
+            /**
+             * @description 'live' = publicly visible now; otherwise the main reason it is not
+             *
+             *     * `live` - live
+             *     * `draft` - draft
+             *     * `submitted` - submitted
+             *     * `under_review` - under_review
+             *     * `rejected` - rejected
+             *     * `suspended` - suspended
+             *     * `business_disabled` - business_disabled
+             *     * `location_disabled` - location_disabled
+             *     * `blocked` - blocked
+             *     * `pending` - pending
+             *     * `scheduled` - scheduled
+             *     * `ended` - ended
+             *     * `no_placements` - no_placements
+             */
+            readonly visibility: components["schemas"]["VisibilityEnum"];
+        };
         AdminLocation: {
             /** Format: uuid */
             readonly id: string;
@@ -2274,6 +2331,23 @@ export interface components {
             /** @description Whether login codes are delivered to Telegram */
             readonly bound: boolean;
         };
+        /**
+         * @description * `live` - live
+         *     * `draft` - draft
+         *     * `submitted` - submitted
+         *     * `under_review` - under_review
+         *     * `rejected` - rejected
+         *     * `suspended` - suspended
+         *     * `business_disabled` - business_disabled
+         *     * `location_disabled` - location_disabled
+         *     * `blocked` - blocked
+         *     * `pending` - pending
+         *     * `scheduled` - scheduled
+         *     * `ended` - ended
+         *     * `no_placements` - no_placements
+         * @enum {string}
+         */
+        VisibilityEnum: "live" | "draft" | "submitted" | "under_review" | "rejected" | "suspended" | "business_disabled" | "location_disabled" | "blocked" | "pending" | "scheduled" | "ended" | "no_placements";
         WebhookAck: {
             detail: string;
             order_state?: string;
@@ -2508,6 +2582,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedAdminCampaignList"];
+                };
+            };
+        };
+    };
+    api_v1_admin_campaigns_preview_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCampaignPreview"];
                 };
             };
         };

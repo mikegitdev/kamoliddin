@@ -77,7 +77,7 @@ export function CampaignsTab({ locale }: { locale: string }) {
               <th>{t.campaign}</th>
               <th>{t.businessesTab}</th>
               <th>{t.status}</th>
-              <th>{t.secSchedule}</th>
+              <th>{t.updatedAt}</th>
               <th />
             </tr>
           </thead>

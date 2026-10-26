@@ -276,6 +276,12 @@ export class MapLibreAdapter implements MapAdapter {
       const el = document.createElement("div");
       el.className = "user-dot";
       el.setAttribute("role", "img");
+      // Person glyph inside the blue dot (same geometry as IconUser; stroke
+      // color/width come from .user-dot svg in index.css).
+      el.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+        '<circle cx="12" cy="7" r="4"/>' +
+        '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/></svg>';
       this.userMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
       return;
     }

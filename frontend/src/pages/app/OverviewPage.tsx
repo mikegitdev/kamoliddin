@@ -199,7 +199,7 @@ function SetupChecklist({
                 <span className="check-num">{step.done ? <IconCheck size={14} /> : i + 1}</span>
                 <span className="check-label">
                   {step.label}
-                  {step === next && <span className="muted-2"> · {t.nextStep}</span>}
+                  {step === next && <span className="chip">{t.nextStep}</span>}
                 </span>
               </div>
             ))}

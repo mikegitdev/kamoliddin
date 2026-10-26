@@ -58,9 +58,24 @@ export function StaffPage() {
   const [error, setError] = useState<string | null>(null);
   const { data: overview } = useAdminOverview(!!user?.is_staff);
   // Phones: the nav is a horizontal strip — keep the active section visible.
+  // Scroll the strip itself only: scrollIntoView would also move the window
+  // (and the sticky desktop sidebar with it).
   useEffect(() => {
-    document.querySelector(".staff-nav .active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const nav = document.querySelector<HTMLElement>(".staff-nav");
+    const active = nav?.querySelector<HTMLElement>(".active");
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const left = active.offsetLeft - nav.offsetLeft;
+    if (left < nav.scrollLeft) nav.scrollLeft = left;
+    else if (left + active.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollLeft = left + active.offsetWidth - nav.clientWidth;
   }, [tab, user]);
+  // A new section starts at its top. Without this, switching from a long,
+  // scrolled table to a shorter section lets the browser clamp the scroll
+  // position and the whole layout jumps.
+  useEffect(() => {
+    const main = document.querySelector(".staff-main");
+    if (main && main.getBoundingClientRect().top < 0) window.scrollTo({ top: 0 });
+  }, [tab]);
 
   const logout = async () => {
     try {

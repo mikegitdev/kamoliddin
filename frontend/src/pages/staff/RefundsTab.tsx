@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/shared/api/client";
 import { useRefunds } from "@/shared/api/queries";
 import { formatDateTime, formatMinor } from "@/shared/format";
+import { confirmDialog, reasonDialog } from "@/shared/dialog";
 import { useI18n } from "@/shared/i18n";
 import { RefundStateChip, QueryError } from "@/shared/ui";
 import { IconCheck, IconReject } from "@/shared/icons";
@@ -21,21 +22,38 @@ export function RefundsTab({
   const [busy, setBusy] = useState<string | null>(null);
   const pager = useShowMore(refunds, 25);
 
+  const post = (id: string, json: Record<string, string>) =>
+    api(`/api/v1/admin/refunds/${id}/process`, { method: "POST", json });
+
   const process = async (id: string, decision: "approve" | "reject") => {
+    if (
+      decision === "reject" &&
+      !(await confirmDialog({ t, body: t.refundRejectConfirm, confirmLabel: t.reject,
+                              cancelLabel: t.cancel, danger: true }))
+    ) return;
     setBusy(id);
     onError(null);
     try {
-      await api(`/api/v1/admin/refunds/${id}/process`, {
-        method: "POST",
-        json: { decision, provider_ref: "manual-transfer" },
-      });
-      qc.invalidateQueries({ queryKey: ["staff", "refunds"] });
+      try {
+        await post(id, { decision });
+      } catch (e) {
+        // No verified provider adapter: the backend needs the reference of the
+        // refund staff executed in the provider console — never invent one.
+        if (!(e instanceof ApiError && e.code === "provider_ref_required")) throw e;
+        const ref = await reasonDialog({ t, body: t.refundProviderRefPrompt,
+                                         confirmLabel: t.approve, cancelLabel: t.cancel });
+        if (!ref) return;
+        await post(id, { decision, provider_ref: ref });
+      }
+      qc.invalidateQueries({ queryKey: ["staff"] });
     } catch (e) {
       onError(e instanceof ApiError ? e.message : t.error);
     } finally {
       setBusy(null);
     }
   };
+
+  const pending = (state: string) => state === "refund_requested" || state === "admin_review";
 
   return (
     <section>
@@ -56,7 +74,7 @@ export function RefundsTab({
               <th>{t.total}</th>
               <th>{t.reason}</th>
               <th>{t.status}</th>
-              <th />
+              <th>{t.payDate}</th>
             </tr>
           </thead>
           <tbody>
@@ -70,7 +88,7 @@ export function RefundsTab({
                   <RefundStateChip state={r.state} />
                 </td>
                 <td>
-                  {r.state === "requested" && (
+                  {pending(r.state) && (
                     <div className="row">
                       <button
                         className="btn primary small"
@@ -88,8 +106,8 @@ export function RefundsTab({
                       </button>
                     </div>
                   )}
-                  {r.state !== "requested" &&
-                    formatDateTime(r.completed_at, locale as "ru" | "uz")}
+                  {!pending(r.state) &&
+                    formatDateTime(r.completed_at ?? r.created_at, locale as "ru" | "uz")}
                 </td>
               </tr>
             ))}

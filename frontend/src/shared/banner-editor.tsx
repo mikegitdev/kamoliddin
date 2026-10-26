@@ -103,7 +103,17 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
   // Reset crop/adjustments when a new image arrives.
   useEffect(() => {
     if (!src) return;
-    setRect(maxFitRect(aspect === "169" ? 16 / 9 : 3, src.w, src.h));
+    const fit = maxFitRect(aspect === "169" ? 16 / 9 : 3, src.w, src.h);
+    const fitTooSmall =
+      Math.round(fit.w * src.w) < MIN_DIMS.w || Math.round(fit.h * src.h) < MIN_DIMS.h;
+    if (fitTooSmall && src.w >= MIN_DIMS.w && src.h >= MIN_DIMS.h) {
+      // The locked aspect can't reach the minimum on this image, but the
+      // whole image can — start unlocked on the full frame instead.
+      setAspect("free");
+      setRect({ x: 0, y: 0, w: 1, h: 1 });
+    } else {
+      setRect(fit);
+    }
     setBrightness(100);
     setContrast(100);
     setOutW("orig");
@@ -300,9 +310,9 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
   };
 
   const tooBig = estBytes !== null && estBytes > MAX_BYTES;
-  // The crop is always ⊆ the source image, so a too-small crop covers the
-  // too-small-original case as well ("use original" is gated by it too).
   const tooSmall = !!outDims && (outDims.w < MIN_DIMS.w || outDims.h < MIN_DIMS.h);
+  // "Use original" uploads the uncropped file, so gate it on the source size.
+  const origTooSmall = !!src && (src.w < MIN_DIMS.w || src.h < MIN_DIMS.h);
   const handles: Handle[] =
     ratio === null
       ? ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
@@ -465,9 +475,21 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
               </span>
             )}
           </p>
-          {tooSmall && (
+          {/* Source below the minimum: no crop can fix it, so don't suggest one. */}
+          {origTooSmall && src ? (
             <p className="field-error" role="alert">
-              {t.beTooSmall}
+              {t.beOrigTooSmall} ({src.w} × {src.h} px)
+            </p>
+          ) : (
+            tooSmall && (
+              <p className="field-error" role="alert">
+                {t.beTooSmall}
+              </p>
+            )
+          )}
+          {tooBig && (
+            <p className="field-error" role="alert">
+              {t.beTooBig}
             </p>
           )}
 
@@ -496,7 +518,7 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
         <button
           type="button"
           className="btn small"
-          disabled={file.size > MAX_BYTES || tooSmall || applying}
+          disabled={file.size > MAX_BYTES || origTooSmall || applying}
           onClick={() => onApply(file)}
         >
           {t.beUseOriginal}
