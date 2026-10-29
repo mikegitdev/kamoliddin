@@ -31,14 +31,26 @@ takeover guard. Recorded via `PhoneChangeRecord`.
 
 ## SMS adapter provenance (repo rule 4 evidence)
 
+- **DevSMSSMSAdapter** is implemented against devsms.uz's *published* API v1
+  agent reference (https://devsms.uz/docs/api/agents.md) — `POST /api/v1/sms`
+  with the `otp` object (universal OTP: operator-pre-approved templates, only
+  `service_name` is moderated), the `Idempotency-Key` header, and
+  `GET /api/v1/sms/{id}` for status; Bearer key auth
+  (`DEVSMS_API_TOKEN`, gated on presence). Selected as the production SMS
+  provider by the product owner (2026-10-29): Telegram stays the preferred
+  login channel; DevSMS carries first-login, forced-SMS (`channel=sms`) and
+  phone-change codes. Unknown provider outcome (`502
+  provider_outcome_unknown`) is charged-and-maybe-delivered: the challenge
+  stands (no resend under a new key) and the incident is logged. The challenge
+  UUID doubles as the Idempotency-Key, so same-key retries (e.g. after a
+  timeout) never double-send or double-charge.
 - **EskizSMSAdapter** is implemented against Eskiz's *published* API
   documentation (official Postman collection `documenter.getpostman.com/
   view/663428`, SDKs) — endpoints `/api/auth/login`, `/api/message/sms/send`
   (form: `mobile_phone` as 998XXXXXXXXX, `message`, `from`),
   `/api/message/sms/status_by_id/{id}`; Bearer token auth. It is
   credential-gated (`ESKIZ_EMAIL`/`ESKIZ_PASSWORD`), NOT the default, and
-  production selection still requires the Eskiz vs Play Mobile benchmark
-  (spec §9, §19 [E]).
+  remains the benchmark alternative (spec §9, §19 [E]).
 - **PlayMobileSMSAdapter** raises `NotImplementedError`: no verified public
   documentation was found; behavior must not be fabricated.
 

@@ -53,7 +53,7 @@ class RecordingSMS:
     def __init__(self):
         self.sent: list[str] = []
 
-    def send_otp(self, *, phone_e164, message, request_id):
+    def send_otp(self, *, phone_e164, message, request_id, code="", purpose="login"):
         self.sent.append(message)
 
     def get_delivery_status(self, provider_message_id):

@@ -273,6 +273,14 @@ ESKIZ_PASSWORD = env("ESKIZ_PASSWORD", default="")
 ESKIZ_FROM = env("ESKIZ_FROM", default="4546")
 ESKIZ_BASE_URL = env("ESKIZ_BASE_URL", default="https://notify.eskiz.uz")
 
+# DevSMS gateway (devsms.uz) — API v1 universal OTP (ADR-0006). Production
+# SMS provider since 2026-10-29 (product-owner decision). Empty token:
+# selecting SMS_PROVIDER=devsms without credentials fails fast in the adapter.
+# service_name: 2-50 chars, letters/digits/space/dot/dash (provider-moderated).
+DEVSMS_API_TOKEN = env("DEVSMS_API_TOKEN", default="")
+DEVSMS_BASE_URL = env("DEVSMS_BASE_URL", default="https://devsms.uz/api/v1")
+DEVSMS_SERVICE_NAME = env("DEVSMS_SERVICE_NAME", default="LocalAds")
+
 # Telegram OTP delivery channel (ADR-0006): enrollment-bound chat delivery
 # with SMS fallback. Empty TELEGRAM_BOT_TOKEN selects the fake adapter
 # (dev/test); production sets token + username + webhook secret.

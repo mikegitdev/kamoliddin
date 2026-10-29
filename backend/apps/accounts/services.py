@@ -152,6 +152,8 @@ def _issue_challenge(phone: str, purpose: str, channel: str = "auto") -> OTPChal
             phone_e164=phone,
             message=_otp_message(code),
             request_id=str(challenge.id),
+            code=code,
+            purpose=purpose,
         )
     return challenge
 

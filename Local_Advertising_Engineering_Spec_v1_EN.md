@@ -8,6 +8,13 @@
 **Product owner decisions:** Discovery Rounds 1–10, with latest decisions superseding earlier conflicts  
 **Document date:** 9 October 2026
 
+**Scope update:** [ADR-0007](docs/architecture/adr-0007-one-time-payment-no-auto-renewal.md)
+(accepted 20 October 2026) supersedes the original recurring-billing requirements.
+The current MVP uses one-time payments only: no auto-renewal, stored payment tokens,
+or merchant-initiated charges. The model/API inventory, release gates and roadmap
+below reflect that decision. Track launch evidence in the
+[launch checklist](docs/acceptance/launch-checklist.md).
+
 ## 1. Requirement status and scope control
 
 - **[C] Confirmed:** Explicitly selected by product owner. Do not silently change.
@@ -31,7 +38,7 @@
 | Database | PostgreSQL with PostGIS | [C] |
 | Geospatial ORM | GeoDjango, location point SRID 4326 | [R] |
 | Map | 2GIS if commercially acceptable; licensed OSM stack otherwise | [C]/[E] |
-| Payments | CLICK preferred; provider fallback mandatory if CLICK lacks recurring support | [C]/[E] |
+| Payments | CLICK preferred for one-time checkout; verified compliant fallback if unavailable | [C]/[E] |
 | SMS | Provider-neutral integration; benchmark Eskiz and Play Mobile | [C]/[E] |
 | Object storage | Self-hosted Garage, S3-compatible | [C] |
 | Hosting | One VPS, Docker Compose, external backups | [C] |
@@ -50,12 +57,12 @@
 | Actor | Abilities | Restrictions |
 |---|---|---|
 | Anonymous visitor | View map, search, categories, location details, active ads, contacts/directions | No account required; no paid admin APIs |
-| Advertiser owner | Phone OTP login; create/edit company, locations, campaigns; pay, renew, manage auto-renew | Access only owned business data; one owner per business in MVP |
+| Advertiser owner | Phone OTP login; create/edit company, locations, campaigns; pay and purchase another term explicitly | Access only owned business data; one owner per business in MVP |
 | Administrator | Moderation, risk review, location takedowns, refunds, tariffs, limits, free grants, audit views | Authenticated staff and logged privileged actions |
 
 **[C] Business onboarding:** Phone OTP -> business profile -> create map locations immediately. Admin reviews suspicious/reported location claims, rather than approving every new location. [R] Treat verified phone, claimed location and confirmed location ownership as separate flags; provide reports, collision detection, impersonation takedown, and action logs. A location can be created immediately but disabled from advertising when risk-flagged.
 
-**[C] Campaign moderation:** Every NEW campaign requires administrator approval. [R] Meaningful edits after approval require re-review; an unchanged eligible renewed campaign does not require repeated review.
+**[C] Campaign moderation:** Every NEW campaign requires administrator approval. [R] Meaningful edits after approval require re-review; an unchanged eligible campaign purchased for another term does not require repeated review.
 
 **[C] General business advertising:** No mandatory discount or measurable promotion; classification uses business category. [R] Optional internal ad-type tags (opening/event/sale/announcement) may be stored but should not create new essential user workflows.
 
@@ -68,10 +75,9 @@
 - Placement N:1 Location; many distinct campaigns can be simultaneously advertised at a location, subject to a configurable active limit.
 - Order 1:N OrderItem; each line purchases one placement for a defined charged term and immutable quoted price.
 - PaymentAttempt N:1 Order; one order may have multiple provider attempts and events; one fully paid order activates its purchased entitlements exactly once.
-- RenewalAgreement references the original campaign, frozen location set, paid duration, payer consent, payment method token reference and next renewal intent.
 - Grant creates zero-charge entitlements; a grant is NOT a successful financial payment.
 
-**Critical invariant:** Campaign != Placement != Order != Payment != RenewalAgreement. They have different lifecycles and audit requirements.
+**Critical invariant:** Campaign != Placement != Order != Payment. They have different lifecycles and audit requirements.
 
 ## 5. Detailed Django model inventory
 
@@ -91,8 +97,6 @@
 | PaymentAttempt | order_id, provider, provider_payment_id, idempotency_key, amount, status, response_digest | Provider-ref uniqueness; retries recorded |
 | PaymentEvent | provider, event_id, payment_attempt_id, validated_payload_digest, received_at | Deduplicate webhook identifiers |
 | Refund | order_id, amount, reason, state, operator_id, provider_ref, completed_at | Manual review and separate accounting |
-| RenewalAgreement | business_id, campaign_id, locations_snapshot, duration_seconds, charge_days, token_ref, consent_at, status, next_run_at | Explicit opt-in; no raw card PAN/CVV |
-| RenewalAttempt | agreement_id, renewal_period_key, order_id, state, attempted_at | Unique agreement + renewal period |
 | FreeGrant | business_id, campaign_id, location_id, start_at, end_at, reason, admin_id | Zero collected money; distinct source |
 | ActivityEvent | actor, action, entity, entity_id, metadata, created_at | Append-only administrative audit trail |
 | PlatformSetting | key, value_json, changed_by, changed_at | Default max active ads/location = 5 |
@@ -135,31 +139,23 @@ Order payment and campaign approval are **separate gates**. Placement eligible w
 
 Admin may issue placement grant with effective term and a reason, creating zero-paid financial amount and grant source. Moderation rules still apply. Admin must not manufacture a successful CLICK payment event. Free placements rank identically with paid placements in MVP.
 
-## 8. Automatic renewal — mandatory at launch
+## 8. One-time payments and explicit repeat purchases
 
-> **SUPERSEDED (2026-10-20, ADR-0007):** product owner decision — every campaign
-> order is a single one-time payment; there is no auto-renewal. This section and
-> every renewal/recurrence item elsewhere in this spec (RenewalAgreement,
-> RenewalAttempt, `/renewals` endpoints, `auto_renew` quote field, renewal
-> acceptance criteria, recurring provider gates) are retained for history only.
+**[C]** Per ADR-0007, each campaign order is a single one-time payment for the
+advertiser's selected interval. Automatic renewal, stored payment tokens and
+merchant-initiated charges are out of scope. The original mandatory-renewal
+requirement is superseded; its removal and forward-only migrations are recorded
+in ADR-0007.
 
-**[C]** Advertiser selects optional renewal explicitly, with default OFF. Renew the SAME already-approved content, same banner, location set and paid duration. No automatic content edits, no automatic volume discounts. If auto-charge fails, public placement ends on the paid term boundary, with no unpaid grace display.
+To advertise longer, the owner explicitly requests a new quote and checkout for
+another interval. Pricing and capacity checks still apply; unchanged approved
+content does not require another review. An unpaid or failed purchase never
+extends public visibility beyond an existing paid term.
 
-**[R] Implementation design:** RenewalAgreement holds consent metadata and provider token identifier (not card details), campaign content/version hash, fixed location snapshot, 24-hour billing duration, and agreed tariff policy. [O] Future renewal price can track current tariff or preserve original agreed price; recommended default: show and require consent for the price policy, notify on tariff changes, and prevent silent increases beyond consent.
-
-**[R] Renewal worker:**
-1. Identify agreements approaching boundary using DB locks / unique renewal-period key.
-2. Check agreement enabled, business/location eligibility, campaign approved content unchanged, capacity, valid consent and provider token.
-3. Create one renewal order with immutable quote and provider idempotency key.
-4. Attempt authorized recurring charge; verify authoritative provider status.
-5. On success, atomically reserve next term and record payment reference.
-6. On failure, set agreement alert state; retry only within allowed timing, never display beyond paid end.
-7. If eventually not paid by boundary, expire relevant placements; never backdate paid exposure.
-8. Cancellation disables future attempts without removing remaining already-paid advertising time.
-
-**[E] Must prove with CLICK or fallback:** Merchant-initiated charge authorization, recurring consent, token lifecycle, callbacks, amount rules, refunds and settlement. No provider guarantees are presumed. An initial CLICK checkout alone does NOT satisfy the requirement.
-
-**[R] Concurrency proof:** Simulate two workers processing same agreement simultaneously, duplicated callbacks, outage after provider acceptance, timeout before acknowledgment, and retries following server restart. Exactly one successful charge per renewal period must be recorded, or ambiguous provider state must enter reconciliation rather than repeat charge.
+**[E] Must prove with CLICK or a verified compliant fallback:** One-time checkout,
+authenticated callbacks, amount/currency rules, refunds and settlement. Duplicate
+callbacks must not create duplicate entitlements, and ambiguous provider state
+must enter reconciliation rather than trigger a blind repeat charge.
 
 ## 9. Phone OTP authentication and SMS adapter
 
@@ -213,8 +209,6 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 | POST | /orders/{id}/checkout | Owner | Create idempotent provider checkout |
 | POST | /payments/click/webhook | Provider | Authenticated and deduplicated webhook |
 | POST | /payments/{provider}/webhook | Provider | Alternate approved provider adapter |
-| GET,POST | /renewals | Owner | List/enable explicit recurrence |
-| POST | /renewals/{id}/cancel | Owner | Disable future charge attempts |
 | GET | /public/locations | Public | Filter bbox/category/query active pins |
 | GET | /public/locations/{id} | Public | Business location and active ads |
 | GET | /public/campaigns/{id} | Public | Active-only ad details |
@@ -227,7 +221,7 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 
 **[R] Example search:** `GET /api/v1/public/locations?bbox=69.15,41.20,69.40,41.40&category=restaurant&q=pizza&limit=200`; require bbox size and response count bounds and protect against large spatial scans. Actual pagination/cluster responses require load testing.
 
-**[R] Quote request:** `{business_id, campaign_id, location_ids, requested_start_at, requested_end_at, auto_renew}`. Response: `{quote_id, currency:"UZS", billable_days, unit_price_minor, line_items, total_minor, expires_at}`. Frontend must never supply authoritative price. Server rejects inconsistent location business ownership or conflicts with per-location cap.
+**[R] Quote request:** `{business_id, campaign_id, location_ids, requested_start_at, requested_end_at}`. Response: `{quote_id, currency:"UZS", billable_days, unit_price_minor, line_items, total_minor, expires_at}`. Frontend must never supply authoritative price. Server rejects inconsistent location business ownership or conflicts with per-location cap.
 
 **[R] Provider webhooks:** Must validate authenticity, timestamp/replay where available, amount, currency, merchant identity, order reference, and provider event identity before entering financial transaction service. Respond idempotently; recover through reconciliation when state ambiguous.
 
@@ -242,10 +236,10 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 | /app | Advertiser overview | Active, pending, rejected, expired counts |
 | /app/business | Business profile | Owner editing and validation |
 | /app/locations | Branch management | Map picker, coordinates and contact data |
-| /app/campaigns | My campaigns | Status filters, create/copy/renew |
-| /app/campaigns/new | Campaign editor | One banner, content, locations, dates, optional recurrence |
+| /app/campaigns | My campaigns | Status filters, create/copy/purchase another term |
+| /app/campaigns/new | Campaign editor | One banner, content, locations and dates |
 | /app/checkout/:id | Pricing and payment | Server quote, provider redirect/confirmation, non-success states |
-| /app/billing | Orders, payments, renewals | Receipts/status, cancellation, refund request |
+| /app/billing | Orders and payments | Receipts/status, cancellation, refund request |
 | /admin/ | Django Admin | Moderation, tariffs, grants, refunds, risk reports |
 
 **[R]** Build responsive map controls with accessible dialogs, keyboard navigation, mobile bottom sheet, loading skeletons and localized date/currency formatting. [C] Support Russian and Uzbek UI; use translation dictionaries, no hardcoded UI strings. SEO prerendering is NOT a launch blocker; publicly shared direct links must still work.
@@ -264,9 +258,9 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 | Paid campaign rejected | Allow correction; cancellation -> admin refund workflow |
 | Payment callback repeated | No duplicate entitlement/charge recorded |
 | Provider charged but response timed out | Query provider; do not blind retry |
-| Renewal charge fails | Hide ad exactly at paid-term end; no unpaid grace |
-| Renewal worker runs twice | One renewal period, one successful charged entitlement |
-| Auto-renew cancelled | No future charge; existing paid time remains |
+| Repeat purchase fails or remains unpaid | Existing paid term remains valid; no unpaid extension |
+| Checkout or callback repeated | No duplicate payment attempt or entitlement for the same idempotent operation |
+| Paid term ends without another purchase | Hide ad exactly at paid-term end; no automatic charge or unpaid grace |
 | Campaign content changed after approval | Re-review content version before public display |
 | Expired direct URL | No public ad content (e.g. 404/410) |
 | Free grant | Public eligibility equivalent, paid revenue still zero |
@@ -291,10 +285,10 @@ Prefix `/api/v1`; REST JSON; consistent `id`, `created_at`, `updated_at`, ISO 86
 local-ads/
   frontend/src/{app,pages,features,entities,shared,map-adapters}
   backend/{config,apps/{accounts,businesses,locations,campaigns,
-                       placements,billing,payments,renewals,discovery,moderation}}
+                       placements,billing,payments,discovery,moderation}}
   infra/{docker,nginx,scripts,backups}
   docs/{product,architecture,api,adr,runbooks,acceptance}
-  tests/e2e/
+  frontend/e2e/
   AGENTS.md
 ```
 
@@ -303,7 +297,7 @@ local-ads/
 **[R] Parallel batches:**
 - Batch A: auth/SMS adapter, categories/businesses/locations, map adapter, frontend design system; agreed contracts first.
 - Batch B: campaign editor, public map/search, admin moderation, Garage upload pipeline.
-- Batch C: payment provider integration and recurrence module (single-owner module), frontend checkout, monitoring and QA.
+- Batch C: one-time payment provider integration and reconciliation (single-owner module), frontend checkout, monitoring and QA.
 
 ## 17. Testing and release gates
 
@@ -322,18 +316,18 @@ local-ads/
 10. Each business-location pin displays correct count of active ads, not historical ads.
 11. Map clusters zoom out and exposes coincident locations separately.
 12. Search prioritizes relevance and then distance; nonmatching category excluded.
-13. Location ad cap 5 enforced under concurrent publishing and renewal attempts.
+13. Location ad cap 5 enforced under concurrent publishing and repeat-purchase attempts.
 14. Expired or blocked advertisement returns no public detail, direct URL included.
 15. Free grant displays normally, with exactly zero paid revenue.
-16. Auto-renew consent is explicit and can be cancelled without losing paid time.
-17. Successful auto-renew charges once per term and reserves exactly one new term.
-18. Failed renewal stops publication at paid-term end.
+16. Another campaign term requires an explicit new quote and one-time checkout; no automatic charges or stored payment tokens.
+17. A successful repeat purchase creates its intended entitlements once despite duplicate callbacks.
+18. An unpaid or failed repeat purchase does not extend publication beyond an existing paid term.
 19. Provider timeout enters reconciliation; never blind-charge again.
 20. Browser contact and external directions links work without visitor login.
 21. RU/UZ text and mobile UI meet basic accessibility and smoke tests.
 22. External DB and media backups restore to a clean container environment.
 23. Unauthorized admin APIs and cross-tenant financial references are rejected.
-24. Provider production recurring charge demonstration and merchant rights are documented.
+24. Provider production one-time checkout, callback, refund and settlement evidence and merchant rights are documented.
 
 **[R] Performance gates:** benchmark with representative Tashkent locations and ads. Define map initial render, bbox query latency, app response budget and error thresholds using measured load; do not invent scale guarantees without test data.
 
@@ -341,36 +335,35 @@ local-ads/
 
 | Week | Main deliverables | Exit gate |
 |---|---|---|
-| 1 | Monorepo, API conventions, Docker dev environment, initial schema, CLICK recurring and 2GIS/OTP POCs | Merchant recurring feasibility known; major vendor blockers documented |
+| 1 | Monorepo, API conventions, Docker dev environment, initial schema, CLICK one-time checkout and 2GIS/OTP POCs | Merchant checkout feasibility known; major vendor blockers documented |
 | 2 | OTP, user/business/location modules, GeoDjango query, admin bootstrap | Auth, ownership and map coordinates tested |
 | 3 | Campaign editor, Garage image flow, location assignment, category UI | Complete draft workflow works |
 | 4 | Tariffs, immutable quotes, CLICK checkout, order/attempt/event states, moderation | Paid pending campaign never public; idempotency green |
-| 5 | Renewal agreements, scheduler/worker, cancellation, retry/reconciliation, manual refund queue | Renewal concurrency and failure tests green |
+| 5 | Placement scheduler/worker, repeat purchases, payment reconciliation, manual refund queue | Payment concurrency, reconciliation and expiry tests green |
 | 6 | Public map, 2GIS markers and clustering, search, location cards, fallback adapter interface | Anonymous visitor journey and map tests green |
 | 7 | RU/UZ, responsive UX, security hardening, E2E, free grants and reporting | All functional acceptance tests green |
 | 8 | Restore drill, load test, production settings, runbooks, release, pilot advertising | Real payment proof, rollback rehearsal and acceptance signoff |
 
-**Planning warning:** eight weeks for mostly one person with AI agents is an aggressive target, not a guaranteed delivery date. Vendor merchant approval, legal policy and recurring token capability are hard gates. Work should be parallelized only after schema/API decisions are stable. If provider fails, switch to pre-agreed compliant provider while preserving PaymentGateway contract; do not delete the mandatory renewal requirement.
+**Planning warning:** eight weeks for mostly one person with AI agents is an aggressive target, not a guaranteed delivery date. Merchant approval for one-time payments, map licensing and legal policy are hard gates. Work should be parallelized only after schema/API decisions are stable. If a provider fails, switch to a verified compliant provider while preserving the PaymentGateway contract and ADR-0007's one-time-payment scope.
 
 ## 19. External verification and remaining open items
 
 | Item | Status | Completion evidence |
 |---|---|---|
-| CLICK production merchant-initiated recurring charges | [E] Critical | Merchant confirmation + sandbox/prod charge/retry/refund test |
-| Fallback recurring-capable compliant provider | [E] Conditional | Written terms + verified API capability |
+| CLICK production one-time checkout | [E] Critical | Merchant confirmation + sandbox/prod checkout, authenticated callback, duplicate-callback, reconciliation, refund and settlement evidence |
+| Fallback compliant one-time payment provider | [E] Conditional | Written terms + verified checkout/callback/refund/settlement capability |
 | 2GIS business usage and map tiles economics | [E] Critical | Commercial offer, quota and permitted data-use terms |
 | OSM fallback tiles/geocoding licenses | [E] Conditional | Approved provider or self-hosted plan and attribution |
 | Eskiz vs Play Mobile performance and prices | [E] Important | Test results, SMS quotes, sender registration |
 | Advertising/consumer/privacy/refund compliance in Uzbekistan | [E] Critical | Reviewed terms, privacy notice, advertising content rules |
 | Final daily rate | [O] | Admin-set price approved by product owner |
-| Renewal price change policy | [O] | Explicit consent/pricing notification rule |
 | 25h request: actual visibility 25h or billed 48h entitlement | [O] | Product acceptance of displayed term rule |
 | Partial term refund on administrative suspension | [O] | Written refund policy |
 | Provider names, DNS, VPS sizing, retention RPO/RTO | [O] | Operational design and stress test |
 
 ## 20. Definition of Done
 
-The release qualifies as MVP only if a phone-verified owner can register, create a business/location, purchase a multi-location campaign, pass moderation, appear on a responsive location-pin map, receive contact traffic, expire on time, opt in to automatic recurring charging, renew once without double charging, cancel future charges, and have invalid or unpaid renewal placements removed at the period boundary. Internal administrators must moderate, grant free placements and process refund requests, and off-server backup restoration must work. No payment-provider simulation is sufficient to claim production recurring billing is complete.
+The release qualifies as MVP only if a phone-verified owner can register, create a business/location, purchase a multi-location campaign through a verified one-time payment provider, pass moderation, appear on a responsive location-pin map, receive contact traffic and expire on time. Another term requires an explicit new quote and checkout; duplicate callbacks must not duplicate entitlements, and failed or unpaid purchases must not extend visibility. Internal administrators must moderate, grant free placements and process refund requests, and off-server database and media backup restoration must work. Licensed production maps, verified OTP delivery and legal sign-off remain launch gates. No payment-provider simulation is sufficient to claim production payments are complete.
 
 ## 21. External technical references
 

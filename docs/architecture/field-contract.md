@@ -57,10 +57,10 @@ Deletion: only an **empty** business (no branches, campaigns, orders) —
 | address      | NOT NULL, ≤300         | **req**                               | **req**            | Owner-typed text, independent of map provider (spec §10) |
 | city         | default `"Tashkent"`   | opt (defaults)                        | — **not exposed**  | Always stored as Tashkent today → OQ-14 |
 | lon / lat → point | point NOT NULL, GiST | **req on create** (both, valid ranges); on PATCH both-or-neither (omit = keep pin) | **req** (map pin) | Edit form prefills the pin, so the UI always sends both; see note below |
-| phone        | blank, default `""`    | opt; same normalization as Business   | opt                | **Cannot clear from UI** (empty → omitted) → OQ-13 |
-| telegram     | blank, default `""`    | opt; same as Business                 | opt                | Cannot clear from UI → OQ-13 |
-| whatsapp     | blank, default `""`    | opt; same as Business                 | opt                | Cannot clear from UI → OQ-13 |
-| hours        | JSON, blank, default `{}` | opt (JSON object, day → [open, close]) | opt (per-day time inputs) | Cannot clear all days from UI → OQ-13 |
+| phone        | blank, default `""`    | opt; same normalization as Business   | opt                | Clearable: UI sends `""` (OQ-13 resolved) |
+| telegram     | blank, default `""`    | opt; same as Business                 | opt                | Clearable via `""` |
+| whatsapp     | blank, default `""`    | opt; same as Business                 | opt                | Clearable via `""` |
+| hours        | JSON, blank, default `{}` | opt (JSON object, day → [open, close]) | opt (per-day time inputs) | Clearable: UI sends `{}` |
 | status       | default `active`       | RO                                    | —                  | Staff-controlled |
 | risk_flags   | JSON, default `[]`     | RO                                    | —                  | Staff/risk pipeline only |
 | created/updated | auto               | RO                                    | —                  | |
@@ -73,7 +73,7 @@ Deletion: only a branch with **no order items, placements, or grants**
 | Field          | DB                       | API write                             | UI form              | Notes |
 |----------------|--------------------------|---------------------------------------|----------------------|-------|
 | business       | FK NOT NULL              | **req on create**; immutable afterwards (PATCH with a different business is rejected) | auto (current business) | Moving a campaign is forbidden — re-review would be bypassed (spec §14) |
-| headline       | NOT NULL, ≤200           | **req**, non-empty after trim         | **req, > 2 chars trimmed** — stricter than API → OQ-11 | |
+| headline       | NOT NULL, ≤200           | **req, ≥ 3 chars trimmed**            | **req, ≥ 3 chars trimmed** | UI/API aligned (OQ-11 resolved) |
 | body           | blank, default `""`      | opt                                   | opt                  | |
 | banner_key     | NOT NULL, **no blank**   | **req**, non-empty string             | draft: opt — UI substitutes sentinel `banners/placeholder.jpg`; submit/quote: **req** (real upload) → OQ-12 | Exactly one banner (spec §4). Uploaded via `/media/upload` first, key then sent |
 | review_status  | default `draft`          | RO (changed only via `/submit` and moderation) | display only    | Approved ≠ live (spec §7) |
@@ -122,22 +122,22 @@ fields — only the pay-method choice and the redirect.
   `telegram` as a bare handle, `+998…` phone, or invite hash. All three are
   optional everywhere but **validated when non-empty** — garbage is rejected at
   the API, so the public call/message buttons always resolve.
-- **UI-required ⊆ API-required** holds everywhere except by *strictness*, not by
-  set: the only UI rules stricter than the API are the campaign headline
-  min-length (OQ-11) and the banner gating dance (OQ-12).
-- **Optional means "omittable", not "clearable"**: Business contacts clear via
-  `""`; Location contacts/hours currently **cannot be cleared from the UI at
-  all** because the form drops empty values instead of sending them (OQ-13).
+- **Campaign validation**: the UI and API both require at least 3 trimmed
+  headline characters (OQ-11 resolved). Banner-less draft handling remains a
+  layer mismatch (OQ-12).
+- **Omission preserves existing values on PATCH**: the Business and Location
+  forms send `""` to clear contacts; the Location form sends `{}` to clear
+  hours (OQ-13 resolved).
 
-## 6. Mismatches logged as open questions
+## 6. Mismatches and resolved items
 
 | OQ | Layer gap | Where |
 |----|-----------|-------|
-| 11 | Campaign headline: UI requires > 2 chars trimmed; API accepts any non-empty trim (1 char passes) | `CampaignEditorPage` vs `CampaignSerializer.validate_headline` |
+| 11 | Resolved: UI and API both require at least 3 trimmed headline characters | `CampaignEditorPage` and `CampaignSerializer.validate_headline` |
 | 12 | Banner-less drafts: model/API require a non-empty `banner_key`; UI papers over it with the sentinel `banners/placeholder.jpg` — a key that **does not exist in media storage** (broken image on such drafts) | `CampaignEditorPage.PLACEHOLDER_BANNER` |
-| 13 | Location contacts + hours cannot be cleared from the UI (empty → field omitted on PATCH); Business contacts can (empty string sent) | `BranchesPage` save payload vs `BusinessProfilePage` |
+| 13 | Resolved: Location contacts clear via `""` and hours via `{}` on PATCH; Business contacts also clear via `""` | `BranchesPage` save payload and `BusinessProfilePage` |
 | 14 | `Location.city` is writable in the API but not exposed in the UI — every branch is stored as "Tashkent" | `LocationSerializer` vs `BranchesPage` |
 | 15 | `Business.logo_key` is API-optional with an upload path (`purpose=logos`) but no cabinet UI | `BusinessProfilePage` |
 
 Each row is mirrored in `docs/architecture/open-questions.md` (#11–#15) for
-decision tracking; none of them is a silent contract.
+decision tracking, including resolved items; none of them is a silent contract.

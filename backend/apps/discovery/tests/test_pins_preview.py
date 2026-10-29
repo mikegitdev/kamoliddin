@@ -11,11 +11,8 @@ Invariants (spec §7.2, §14):
 from datetime import timedelta
 
 import pytest
-from django.contrib.gis.geos import Point
 from django.utils import timezone
 
-from apps.campaigns.models import Campaign
-from apps.locations.models import Location
 from apps.placements.models import Placement
 
 from .test_nearby_ads import _approve, _campaign, _loc, _place

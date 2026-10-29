@@ -5,10 +5,13 @@
 
 Adapters:
 - FakeSMSAdapter: deterministic dev/test logging adapter (default).
+- DevSMSSMSAdapter: devsms.uz API v1 universal OTP, implemented against the
+  provider's published agent reference (ADR-0006). Production SMS provider
+  by product-owner decision (2026-10-29).
 - EskizSMSAdapter: implemented against Eskiz's published API docs
   (notify.eskiz.uz — official Postman collection + SDKs; see ADR-0006).
-  Credential-gated via ESKIZ_EMAIL/ESKIZ_PASSWORD; NOT production-selected
-  until the Eskiz vs Play Mobile benchmark is recorded (spec §9, §19 [E]).
+  Credential-gated via ESKIZ_EMAIL/ESKIZ_PASSWORD; kept as the benchmark
+  alternative (spec §9, §19 [E]).
 - PlayMobileSMSAdapter: no verified public documentation — intentionally
   raises NotImplementedError (repo AGENTS.md rule 4: no fabricated provider
   behavior).
@@ -29,8 +32,22 @@ logger = logging.getLogger(__name__)
 class SMSAdapter(Protocol):
     slug: str
 
-    def send_otp(self, *, phone_e164: str, message: str, request_id: str) -> str:
-        """Send an OTP message; return the provider message id."""
+    def send_otp(
+        self,
+        *,
+        phone_e164: str,
+        message: str,
+        request_id: str,
+        code: str = "",
+        purpose: str = "login",
+    ) -> str:
+        """Send an OTP message; return the provider message id.
+
+        ``message`` is the human text; ``code`` (raw digits) and ``purpose``
+        (challenge purpose) are additionally passed for providers with
+        structured OTP templates (DevSMS universal OTP). Free-text adapters
+        may ignore them.
+        """
         ...
 
     def get_delivery_status(self, provider_message_id: str) -> str:
@@ -43,7 +60,15 @@ class FakeSMSAdapter:
 
     slug = "fake"
 
-    def send_otp(self, *, phone_e164: str, message: str, request_id: str) -> str:
+    def send_otp(
+        self,
+        *,
+        phone_e164: str,
+        message: str,
+        request_id: str,
+        code: str = "",
+        purpose: str = "login",
+    ) -> str:
         import sys
         # Dev-only fake adapter output; real adapters use the provider API.
         print(  # noqa: T201
@@ -55,6 +80,139 @@ class FakeSMSAdapter:
 
     def get_delivery_status(self, provider_message_id: str) -> str:
         return "delivered"
+
+
+class DevSMSError(RuntimeError):
+    """DevSMS v1 error envelope: stable ``error_code`` + human message."""
+
+    def __init__(self, error_code: str, message: str, meta: dict | None = None) -> None:
+        super().__init__(f"DevSMS error {error_code}: {message}")
+        self.error_code = error_code
+        self.meta = meta or {}
+
+
+class DevSMSSMSAdapter:
+    """devsms.uz gateway — API v1 universal OTP (ADR-0006).
+
+    Implemented against the provider's published agent reference
+    (https://devsms.uz/docs/api/agents.md):
+      POST /api/v1/sms     Bearer; JSON {phone, otp{template_type,
+                          service_name, code}}; Idempotency-Key header
+                          -> data.id
+      GET  /api/v1/sms/{id} -> data.status
+                          (pending|sent|delivered|failed|blocked)
+
+    Universal OTP needs no account-approved message template: the operator's
+    pre-approved texts are used and only ``service_name`` is moderated.
+
+    Idempotency: the request id (challenge UUID) is sent as Idempotency-Key,
+    so a same-key retry never delivers or charges twice (provider guarantee).
+
+    Unknown provider outcome (502 ``provider_outcome_unknown``): the account
+    is charged and the SMS may have been delivered. The challenge must STAND
+    — a fresh key would double-send and double-charge — so the sms id is
+    returned and the incident logged for ops reconciliation.
+    """
+
+    slug = "devsms"
+
+    # Challenge purposes -> universal-OTP template types (provider docs):
+    # 1 confirm an operation, 2 password reset, 3 sign up, 4 sign in.
+    _TEMPLATE_TYPES = {"login": 4, "phone_change": 1}
+    _RETRY_DELAY_SECONDS = 2.0
+
+    def __init__(self) -> None:
+        if not settings.DEVSMS_API_TOKEN:
+            raise RuntimeError(
+                "SMS_PROVIDER=devsms requires DEVSMS_API_TOKEN in the "
+                "environment (devsms.uz dashboard -> API keys; ADR-0006)."
+            )
+        self.base_url = settings.DEVSMS_BASE_URL.rstrip("/")
+        self.service_name = settings.DEVSMS_SERVICE_NAME
+
+    def _request(
+        self,
+        path: str,
+        *,
+        payload: dict | None = None,
+        idempotency_key: str = "",
+        _retry: bool = True,
+    ) -> dict:
+        url = f"{self.base_url}{path}"
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {settings.DEVSMS_API_TOKEN}",
+        }
+        body = None
+        if payload is not None:
+            body = json.dumps(payload).encode()
+            headers["Content-Type"] = "application/json"
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        req = urllib.request.Request(url, data=body, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:  # noqa: S310
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            try:
+                envelope = json.loads(exc.read().decode())
+            except Exception:
+                envelope = {}
+            raise DevSMSError(
+                str(envelope.get("error_code") or f"http_{exc.code}"),
+                str(envelope.get("message") or exc.reason),
+                dict(envelope.get("meta") or {}),
+            ) from exc
+        except (urllib.error.URLError, TimeoutError):
+            # Network error/timeout: the request may still have been delivered
+            # and charged — exactly one same-key retry is safe per the docs
+            # (never resend without the same Idempotency-Key).
+            if not _retry:
+                raise
+            time.sleep(self._RETRY_DELAY_SECONDS)
+            return self._request(
+                path, payload=payload, idempotency_key=idempotency_key, _retry=False
+            )
+
+    def send_otp(
+        self,
+        *,
+        phone_e164: str,
+        message: str,
+        request_id: str,
+        code: str = "",
+        purpose: str = "login",
+    ) -> str:
+        # `message` is kept for the provider-neutral contract; the universal
+        # OTP template renders its own text from code + service name.
+        if not code:
+            raise ValueError("DevSMS universal OTP requires the raw code")
+        payload = {
+            "phone": phone_e164.lstrip("+"),
+            "otp": {
+                "template_type": self._TEMPLATE_TYPES.get(purpose, 4),
+                "service_name": self.service_name,
+                "code": code,
+            },
+        }
+        try:
+            result = self._request("/sms", payload=payload, idempotency_key=request_id)
+        except DevSMSError as exc:
+            if exc.error_code == "provider_outcome_unknown":
+                sms_id = str(exc.meta.get("sms_id") or request_id)
+                logger.warning(
+                    "DevSMS outcome unknown for challenge %s (sms_id=%s): charged, "
+                    "delivery unconfirmed — challenge stands, no resend",
+                    request_id,
+                    sms_id,
+                )
+                return sms_id
+            raise
+        return str(result["data"]["id"])
+
+    def get_delivery_status(self, provider_message_id: str) -> str:
+        result = self._request(f"/sms/{provider_message_id}")
+        return str(result["data"]["status"])
 
 
 class EskizSMSAdapter:
@@ -111,7 +269,15 @@ class EskizSMSAdapter:
         EskizSMSAdapter._cached_at = now
         return token
 
-    def send_otp(self, *, phone_e164: str, message: str, request_id: str) -> str:
+    def send_otp(
+        self,
+        *,
+        phone_e164: str,
+        message: str,
+        request_id: str,
+        code: str = "",
+        purpose: str = "login",
+    ) -> str:
         payload = {
             "mobile_phone": phone_e164.lstrip("+"),
             "message": message,
@@ -150,6 +316,7 @@ class PlayMobileSMSAdapter:
 
 _ADAPTERS: dict[str, type] = {
     FakeSMSAdapter.slug: FakeSMSAdapter,
+    DevSMSSMSAdapter.slug: DevSMSSMSAdapter,
     EskizSMSAdapter.slug: EskizSMSAdapter,
     PlayMobileSMSAdapter.slug: PlayMobileSMSAdapter,
 }
