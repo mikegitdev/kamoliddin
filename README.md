@@ -13,16 +13,20 @@ MVP engineering baseline: [`Local_Advertising_Engineering_Spec_v1_EN.md`](./Loca
 | Jobs | Celery worker + Beat + Redis |
 | Storage | Garage (S3-compatible, single-node) |
 | Payments | CLICK-first via `PaymentGateway` contract; fake adapter for dev |
-| SMS | Provider-neutral adapter; fake adapter for dev (Eskiz / Play Mobile TBD) |
+| OTP delivery | Fake SMS for dev; enrolled Telegram delivery preferred with DevSMS (universal OTP) as the SMS path (ADR-0006); Eskiz adapter kept as alternative |
 
 ## Layout
 
 ```text
-frontend/   React + Vite + TS app (map-first homepage, advertiser cabinet, RU/UZ)
+frontend/   React + Vite + TS app (map-first homepage, advertiser cabinet,
+            staff console; RU/UZ). src layers: app/ pages/ features/ entities/
+            shared/ + map-adapters/ (MapLibre dev adapter, 2GIS interface)
 backend/    Django project: config/ + apps/{core,accounts,businesses,locations,
             campaigns,placements,billing,payments,discovery,moderation}
+            (+ renewals: retired app kept installed only for its migration
+            chain — ADR-0007)
 infra/      nginx config, deploy script skeletons
-docs/       architecture ADRs, runbooks
+docs/       architecture ADRs + field contract, runbooks, product, acceptance
 ```
 
 ## Quickstart (dev)
@@ -46,6 +50,10 @@ uv run python manage.py migrate
 uv run python manage.py seed --demo --reset  # rich demo dataset (~100 businesses across Tashkent, banners, all campaign states)
 uv run python manage.py createsuperuser  # staff phone + password, for /admin
 uv run python manage.py runserver        # http://localhost:8000 (needs local GDAL; alternatively run in Docker — see below)
+
+# Optional — background jobs (placement state refresh, payment reconciliation):
+uv run celery -A config worker -l info    # second terminal
+uv run celery -A config beat -l info      # third terminal
 
 # 3. Frontend
 cd ../frontend
@@ -98,6 +106,17 @@ docker run --rm --network local-ads_default -p 8000:8000 \
   localads-backend:dev python manage.py runserver 0.0.0.0:8000
 ```
 
+### Regenerating the API client (after any API change)
+
+The OpenAPI schema and the generated TypeScript client are committed artifacts —
+CI fails on drift. After changing serializers/views/endpoints:
+
+```bash
+cd backend  && uv run python manage.py spectacular --file ../frontend/openapi.json
+cd frontend && npm run gen:api   # -> src/shared/api/schema.d.ts
+# then commit both files together
+```
+
 ## Conventions
 
 - API prefix `/api/v1`, JSON, ISO-8601 UTC timestamps, `error.code/message/fields`,
@@ -125,13 +144,38 @@ approve/reject → placements cancelled) · **free grants**
 ad cap) run against real PostGIS.
 
 Still pending (external gates — cannot be built until verified):
-- CLICK production checkout: **[E] gate open** — `ClickGateway` raises
+- CLICK production checkout: **[E] gate open** — `ClickPaymentGateway` raises
   `NotImplementedError` until merchant capability is verified (spec §19). The
   `PaymentGateway` contract + fake provider are ready for the verified adapter.
 - 2GIS MapGL adapter: interface defined in `frontend/src/map-adapters`; MapLibre/OSM
   is the dev fallback. Production tiles require a licensed provider (spec §10).
-- Eskiz / Play Mobile SMS adapters: contract + fake adapter ready (spec §9).
+- SMS: DevSMS (devsms.uz) selected as the production SMS provider (product
+  owner, 2026-10-29); the adapter uses API v1 universal OTP with
+  `Idempotency-Key` (ADR-0006). Real-network delivery/price benchmark is
+  still worth recording before launch. Eskiz adapter kept as the alternative;
+  Play Mobile remains unimplemented pending verified documentation. Enrolled
+  Telegram OTP delivery is implemented; initial signup and phone changes
+  still need SMS.
 
-Not in scope for this scaffold (roadmap weeks 7–8):
-- Playwright E2E suite, load tests, restore drill, legal/privacy review —
-  these are launch gates, not scaffold features.
+## Verification and launch readiness
+
+- Playwright smoke specs exist in `frontend/e2e/` for the public map, advertiser
+  cabinet and staff console. Run `cd frontend && npm run e2e` against a disposable
+  seeded dev stack with the Docker backend on `:8000` (default container
+  `localads-backend-dev`, override via `E2E_BACKEND_CONTAINER`). The suite uses
+  fake SMS with `OTP_DEV_ECHO` and modifies demo data and OTP throttle state; it
+  is not production-provider evidence and is not currently run by CI.
+- Backend CI runs Ruff, financial-core mypy, migration checks and pytest against
+  real PostGIS. Frontend CI runs ESLint, TypeScript and build; API-contract CI
+  checks generated OpenAPI/TypeScript drift. Without local GDAL, use the dev
+  backend container for backend checks (`docker exec localads-backend-dev ...`).
+- Dev load measurements and a dev-data restore drill are recorded in
+  [the deploy runbook](docs/runbooks/deploy.md). Production-shaped load testing,
+  an off-server Postgres + Garage restore and rollback rehearsal remain open.
+- Legal/privacy review remains open; see
+  [the legal checklist](docs/product/legal-review.md).
+
+Use the [launch checklist](docs/acceptance/launch-checklist.md) for the next
+milestones and required evidence. Green automated checks alone do not close
+provider, legal or production-readiness gates. Billing scope is one-time payments
+only, per [ADR-0007](docs/architecture/adr-0007-one-time-payment-no-auto-renewal.md).
