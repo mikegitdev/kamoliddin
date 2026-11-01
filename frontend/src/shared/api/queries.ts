@@ -107,17 +107,22 @@ export interface ApiNearbyAdBranch {
 }
 
 /** One card of the list: a CAMPAIGN pinned to its nearest currently eligible
- *  branch. `branches_count` = eligible branches city-wide. */
+ *  branch. `branches_count` = eligible branches city-wide. `promotion` is the
+ *  paid visibility tier ("top" pins the card above organic, "raised" fills
+ *  the second block, null = organic) — drives the badge. */
 export interface ApiNearbyAd {
   id: string;
   headline: string;
   body: string;
   banner_url: string;
   business_name: string;
+  /** Staff-awarded trust badge on the business (blue check). */
+  business_verified: boolean;
   category: string;
   location: ApiNearbyAdBranch;
-  distance_m: number;
+  distance_m: number | null;
   branches_count: number;
+  promotion: "top" | "raised" | null;
 }
 
 export interface ApiNearbyAdsPage {
@@ -135,6 +140,21 @@ export interface NearbyAdsFilters {
   q?: string;
   /** "relevance" only has an effect together with q. */
   sort: "distance" | "relevance";
+}
+
+/** Featured strip (Joymee VIP-pool equivalent): campaigns whose TOP window
+ *  is live right now. distance_m is null when no origin was given. */
+export function useFeaturedAds(lat: number | undefined, lon: number | undefined) {
+  const enabled = typeof lat === "number" && typeof lon === "number";
+  return useQuery({
+    queryKey: ["featured-ads", lat, lon],
+    queryFn: () =>
+      api<ApiNearbyAdsPage>(
+        `/api/v1/public/featured?lat=${lat}&lon=${lon}`,
+      ),
+    enabled,
+    staleTime: 60_000,
+  });
 }
 
 export const NEARBY_ADS_PAGE = 20;
@@ -204,6 +224,11 @@ export interface ApiPlacement {
   actual_end_at: string | null;
   state: string;
   source_type: "paid" | "grant";
+  /** Paid visibility add-on riding this placement ("top"/"raised"/null). */
+  promotion_tier: "top" | "raised" | null;
+  /** Post-hoc promotion window (present only for separately purchased boosts). */
+  promotion_started_at: string | null;
+  promotion_ends_at: string | null;
   charge_days: number;
   created_at: string;
 }
@@ -299,6 +324,7 @@ export interface ApiReport {
   id: string;
   entity: string;
   entity_id: string;
+  category: "spam" | "offensive" | "prohibited" | "outdated" | "other";
   reason: string;
   state: string;
   resolution_note: string;
@@ -421,6 +447,7 @@ export interface ApiAdminBusiness {
   name: string;
   slug: string;
   status: string;
+  is_verified: boolean;
   category_ru: string;
   category_uz: string;
   owner_id: string;
@@ -577,10 +604,17 @@ export function useOrder(id: string | undefined) {
 }
 
 /** Current ad tariff (minor units per location per 24h) for the editor's
- *  live estimate. The quote endpoint remains the charged-amount source of
- *  truth — this is display-only. */
+ *  live estimate, plus the optional paid visibility add-ons (null = the tier
+ *  is not offered in this tariff period). The quote endpoint remains the
+ *  charged-amount source of truth — this is display-only. */
 export interface PublicPricing {
-  tariff: { currency: string; amount_per_24h: number; valid_from: string } | null;
+  tariff: {
+    currency: string;
+    amount_per_24h: number;
+    amount_top_per_24h: number | null;
+    amount_raised_per_24h: number | null;
+    valid_from: string;
+  } | null;
 }
 
 export function usePublicPricing() {

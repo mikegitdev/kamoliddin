@@ -372,7 +372,7 @@ class ReportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Report
-        fields = ("id", "entity", "entity_id", "reason", "state",
+        fields = ("id", "entity", "entity_id", "category", "reason", "state",
                   "resolution_note", "resolved_by_phone", "created_at", "resolved_at")
         read_only_fields = fields
 

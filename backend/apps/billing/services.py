@@ -21,6 +21,7 @@ from apps.locations.models import Location
 from apps.moderation.models import ActivityEvent
 from apps.payments.gateways import get_payment_gateway
 from apps.payments.models import PaymentAttempt
+from apps.placements.models import Placement, PromotionTier
 from apps.placements.services import (
     CapacityExhausted,
     assert_capacity,
@@ -28,7 +29,14 @@ from apps.placements.services import (
     reserve_order_capacity,
 )
 
-from .models import Order, Refund, quote_order_lines
+from .models import (
+    Order,
+    OrderItem,
+    Refund,
+    Tariff,
+    promotion_price_per_24h,
+    quote_order_lines,
+)
 
 QUOTE_TTL = timedelta(hours=1)
 # A quote may start at most this far in the past ("start now" picked a moment
@@ -63,6 +71,7 @@ def create_quote(
     location_ids,
     requested_start_at,
     requested_end_at,
+    promotion_tier: str | None = None,
 ) -> Order:
     business = _owned_business(user=user, business_id=business_id)
     campaign = Campaign.objects.filter(pk=campaign_id, business=business).first()
@@ -114,11 +123,23 @@ def create_quote(
         except CapacityExhausted as exc:
             raise ValidationError({"location_ids": str(exc)}, code="capacity_exhausted")
 
+    # The add-on must be priced in the CURRENT tariff period — refuse with a
+    # dedicated code so the editor can hide an unoffered tier instead of
+    # surfacing a generic quote failure.
+    if promotion_tier is not None:
+        tariff = Tariff.current()
+        if tariff is None or promotion_price_per_24h(tariff, promotion_tier) is None:
+            raise ValidationError(
+                {"promotion_tier": "This promotion tier is not offered by the current tariff"},
+                code="promotion_unavailable",
+            )
+
     items, total, tariff = quote_order_lines(
         campaign=campaign,
         locations=locations,
         start_at=requested_start_at,
         end_at=requested_end_at,
+        promotion_tier=promotion_tier,
     )
     order = Order.objects.create(
         business=business,
@@ -132,6 +153,87 @@ def create_quote(
     for item in items:
         item.order = order
         item.save()
+    return order
+
+
+# Post-hoc promotion window bounds (Joymee's tariff page equivalent): a
+# running placement can buy TOP/RAISED days at any time, one order at a time.
+PROMOTION_MIN_DAYS = 1
+PROMOTION_MAX_DAYS = 30
+
+
+@transaction.atomic
+def create_promotion_quote(
+    *,
+    user,
+    placement_id,
+    tier: str,
+    days: int,
+) -> Order:
+    """Quote a Joymee-style visibility boost for ONE already-running placement
+    (kind=promotion). No capacity is consumed and no new placement is created;
+    settlement applies tier + a [now, now+days) promotion window to the target.
+    The window is stamped at settlement time, not here — a paid promo must not
+    lose days to payment latency."""
+    if tier not in PromotionTier.values:
+        raise ValidationError({"tier": "Unknown promotion tier"})
+    if not (isinstance(days, int) and PROMOTION_MIN_DAYS <= days <= PROMOTION_MAX_DAYS):
+        raise ValidationError(
+            {"days": f"Days must be an integer in {PROMOTION_MIN_DAYS}..{PROMOTION_MAX_DAYS}"},
+            code="invalid_days",
+        )
+
+    placement = (
+        Placement.objects.select_related("campaign", "campaign__business", "location")
+        .filter(pk=placement_id)
+        .first()
+    )
+    if placement is None:
+        raise ValidationError({"placement_id": "Placement not found"}, code="not_found")
+    business = placement.campaign.business
+    if business.owner_id != user.id:
+        raise PermissionDenied("Not your placement")
+    if placement.state != Placement.State.ACTIVE:
+        raise ValidationError(
+            {"placement_id": "Only currently running placements can be promoted"},
+            code="placement_not_active",
+        )
+    now = timezone.now()
+    if placement.promotion_active(now):
+        raise ValidationError(
+            {"placement_id": "This placement already has an active promotion — "
+                             "wait for it to end or promote another placement"},
+            code="already_promoted",
+        )
+
+    tariff = Tariff.current()
+    rate = promotion_price_per_24h(tariff, tier) if tariff else None
+    if tariff is None or rate is None:
+        raise ValidationError(
+            {"tier": "This promotion tier is not offered by the current tariff"},
+            code="promotion_unavailable",
+        )
+
+    order = Order.objects.create(
+        business=business,
+        campaign=placement.campaign,
+        kind=Order.Kind.PROMOTION,
+        promoted_placement=placement,
+        amount_total=rate * days,
+        state=Order.State.DRAFT_QUOTE,
+        quote_expires_at=now + QUOTE_TTL,
+        interval_start_at=now,
+        interval_end_at=now + timedelta(days=days),
+    )
+    OrderItem.objects.create(
+        order=order,
+        location=placement.location,
+        unit_rate_snapshot=0,  # no display time is bought — promotion only
+        charge_days=days,
+        line_total=0,
+        promotion_tier=tier,
+        promotion_line_total=rate * days,
+    )
     return order
 
 

@@ -47,6 +47,10 @@ class Business(models.Model):
     whatsapp = models.CharField(max_length=120, blank=True, default="")
     site = models.URLField(blank=True, default="")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    # Staff-awarded trust badge (Joymee's blue check, minus the document
+    # pipeline): a moderation decision, never self-service. Reason kept in the
+    # ActivityEvent audit trail, not on the row.
+    is_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -14,6 +14,7 @@ from .serializers import (
     CheckoutResponseSerializer,
     OrderDetailSerializer,
     OrderSerializer,
+    PromotionQuoteRequestSerializer,
     QuoteRequestSerializer,
     QuoteSerializer,
     RefundRequestResultSerializer,
@@ -22,6 +23,7 @@ from .services import (
     CheckoutError,
     RefundError,
     create_checkout,
+    create_promotion_quote,
     create_quote,
     request_refund,
 )
@@ -91,10 +93,43 @@ class QuoteView(APIView):
                 location_ids=serializer.validated_data["location_ids"],
                 requested_start_at=serializer.validated_data["requested_start_at"],
                 requested_end_at=serializer.validated_data["requested_end_at"],
+                promotion_tier=serializer.validated_data.get("promotion_tier"),
             )
         except PermissionDenied:
             raise
         except ValueError as exc:  # e.g. no active tariff configured
+            raise ValidationError(str(exc), code="quote_unavailable")
+        return Response(QuoteSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Orders"],
+        summary="Quote a promotion for one running placement",
+        description="Joymee-style post-hoc boost: buy TOP/RAISED days for an "
+                    "already-active placement as a fresh one-time order. "
+                    "Server-priced from the current tariff; settlement stamps "
+                    "the promotion window at payment time.",
+        request=PromotionQuoteRequestSerializer,
+        responses={201: QuoteSerializer},
+    )
+)
+class PromotionQuoteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PromotionQuoteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            order = create_promotion_quote(
+                user=request.user,
+                placement_id=serializer.validated_data["placement_id"],
+                tier=serializer.validated_data["tier"],
+                days=serializer.validated_data["days"],
+            )
+        except PermissionDenied:
+            raise
+        except ValueError as exc:  # no active tariff configured
             raise ValidationError(str(exc), code="quote_unavailable")
         return Response(QuoteSerializer(order).data, status=status.HTTP_201_CREATED)
 

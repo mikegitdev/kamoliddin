@@ -12,6 +12,7 @@ import {
   HoursList,
   ShareButton,
   StickyContactActions,
+  VerifiedBadge,
   directionsUrl,
   shareHoursLine,
   shareText,
@@ -106,7 +107,10 @@ export function LocationDetailPage() {
               {location.business_name.trim().charAt(0).toUpperCase()}
             </span>
             <div className="min-w-0">
-              <h1>{location.business_name}</h1>
+              <h1 className="row row-center gap-6">
+                {location.business_name}
+                {location.business_verified && <VerifiedBadge title={t.verifiedTitle} />}
+              </h1>
               <span className="muted-2">
                 {categoryLabel ? `${categoryLabel} · ` : ""}
                 {location.name}

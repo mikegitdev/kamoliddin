@@ -95,6 +95,23 @@ export function OrderDetailPage() {
 
       <h2 className="mt-20">{t.secBranches}</h2>
       <div className="table-wrap">
+        {order.kind === "promotion" ? (
+          <div className="promo-order-summary">
+            <span className={`promo-badge ${order.items[0]?.promotion_tier ?? "top"}`}>
+              {order.items[0]?.promotion_tier === "raised" ? "UP" : "TOP"}
+            </span>
+            <span>
+              <strong>{t.promoOrderTitle}</strong>
+              <span className="muted-2">
+                {" · "}{order.items[0]?.location_name}{" · "}
+                {order.items[0]?.charge_days} × 24 {t.hoursShort}
+              </span>
+            </span>
+            <strong className="promo-order-total">
+              {formatMinor(order.amount_total, order.currency, lang)}
+            </strong>
+          </div>
+        ) : (
         <table className="table">
           <thead>
             <tr>
@@ -107,14 +124,24 @@ export function OrderDetailPage() {
           <tbody>
             {order.items.map((item) => (
               <tr key={item.location}>
-                <td data-label={t.branch}>{item.location_name}</td>
+                <td data-label={t.branch}>
+                  {item.location_name}
+                  {item.promotion_tier && (
+                    <span className={`promo-badge ${item.promotion_tier} inline`}>
+                      {item.promotion_tier === "top" ? "TOP" : "UP"}
+                    </span>
+                  )}
+                </td>
                 <td className="muted-2" data-label={t.perDay}>{formatMinor(item.unit_rate_snapshot, order.currency, lang)}</td>
                 <td className="muted-2" data-label={t.days}>{item.charge_days} × 24 {t.hoursShort}</td>
-                <td data-label={t.total}>{formatMinor(item.line_total, order.currency, lang)}</td>
+                <td data-label={t.total}>
+                  {formatMinor(item.line_total + item.promotion_line_total, order.currency, lang)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       <h2 className="mt-20">{t.paymentHistory}</h2>

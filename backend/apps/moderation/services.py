@@ -152,6 +152,26 @@ def set_business_status(*, business, staff, status: str, reason: str) -> None:
 
 
 @transaction.atomic
+def set_business_verified(*, business, staff, verified: bool, reason: str) -> None:
+    """Award/remove the staff trust badge (Joymee's blue check). Display-only
+    signal: it never changes eligibility — a disabled business stays hidden
+    regardless of the badge, and the badge survives disable/enable cycles."""
+    if business.is_verified == verified:
+        raise ModerationError(
+            f"Business is already {'verified' if verified else 'not verified'}"
+        )
+    business.is_verified = verified
+    business.save(update_fields=["is_verified", "updated_at"])
+    ActivityEvent.objects.create(
+        actor=staff,
+        action="business.verified" if verified else "business.unverified",
+        entity="business",
+        entity_id=str(business.id),
+        metadata={"reason": reason},
+    )
+
+
+@transaction.atomic
 def set_location_status(*, location, staff, status: str, reason: str) -> None:
     """Disable/enable one branch: the live eligibility filter
     (location__status=active) hides its placements. Sibling branches are

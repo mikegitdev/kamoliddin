@@ -28,10 +28,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.businesses.models import Business, BusinessCategory
-from apps.campaigns.models import Campaign
+from apps.campaigns.models import Campaign, CampaignEvent
 from apps.core.serializers import DetailSerializer
 from apps.locations.models import Location
-from apps.placements.models import Placement, eligible_now_q
+from apps.placements.models import Placement, PromotionTier, eligible_now_q, promotion_active_q
 
 from . import serializers
 
@@ -46,6 +46,10 @@ NEARBY_MAX_RADIUS_M = 20_000
 NEARBY_DEFAULT_RADIUS_M = 5_000
 NEARBY_DEFAULT_LIMIT = 20
 NEARBY_MAX_LIMIT = 50
+
+# Featured strip guards (Joymee VIP-pool equivalent): small, always-fresh.
+FEATURED_DEFAULT_LIMIT = 10
+FEATURED_MAX_LIMIT = 20
 
 
 def _campaign_relevance(q: str):
@@ -62,6 +66,40 @@ def _campaign_relevance(q: str):
         default=Value(0),
         output_field=IntegerField(),
     )
+
+
+def _campaign_promo_rank(now):
+    """Joymee-style promotion rank of a CAMPAIGN (2=TOP, 1=RAISED, 0=organic)
+    as a correlated subquery: the best tier across its currently eligible
+    placements, counting only tiers whose promotion window is live (checkout
+    add-ons ride the placement interval; post-hoc purchases carry their own
+    window). The feed unit is the campaign, so a promotion bought for any
+    eligible placement of that campaign lifts its single card — mirroring
+    Joymee where the subscription lives on the listing itself. Grants have no
+    tier and stay organic (spec §7.4: grants rank identically with paid)."""
+    from django.db.models import Case, Max, Value, When
+
+    tier_rank = Case(
+        When(
+            Q(promotion_tier=PromotionTier.TOP) & promotion_active_q(now),
+            then=Value(2),
+        ),
+        When(
+            Q(promotion_tier=PromotionTier.RAISED) & promotion_active_q(now),
+            then=Value(1),
+        ),
+        default=Value(0),
+        output_field=IntegerField(),
+    )
+    best = (
+        Placement.objects.filter(campaign=OuterRef("campaign_id"))
+        .filter(eligible_now_q(now))
+        .annotate(rank=tier_rank)
+        .values("campaign")
+        .annotate(best=Max("rank"))
+        .values("best")[:1]
+    )
+    return Coalesce(Subquery(best, output_field=IntegerField()), 0)
 
 
 def _active_ads_count(now):
@@ -82,14 +120,30 @@ def _active_ads_count(now):
 def _preview_field(now, field: str):
     """Deterministic per-location ad preview: the campaign field of the FIRST
     eligible placement, ordered exactly like the location detail sheet
-    (start_at, pk) — the preview is always the first ad a visitor sees when
-    the pin opens. Same live eligibility predicate as the count (spec §7.2).
-    Both preview subqueries share this ordering, so headline and banner are
-    guaranteed to come from the same campaign."""
+    (promoted first, then start_at, pk) — the preview is always the first ad
+    a visitor sees when the pin opens. Same live eligibility predicate as the
+    count (spec §7.2). Both preview subqueries share this ordering, so
+    headline and banner are guaranteed to come from the same campaign."""
+    from django.db.models import Case, Value, When
+    from django.db.models import IntegerField as IntegerField_
+
+    promo_first = Case(
+        When(
+            Q(promotion_tier=PromotionTier.TOP) & promotion_active_q(now),
+            then=Value(0),
+        ),
+        When(
+            Q(promotion_tier=PromotionTier.RAISED) & promotion_active_q(now),
+            then=Value(1),
+        ),
+        default=Value(2),
+        output_field=IntegerField_(),
+    )
     return Subquery(
         Placement.objects.filter(location=OuterRef("pk"))
         .filter(eligible_now_q(now))
-        .order_by("start_at", "pk")
+        .annotate(_promo_first=promo_first)
+        .order_by("_promo_first", "start_at", "pk")
         .values(field)[:1]
     )
 
@@ -213,11 +267,15 @@ class PublicLocationDetailView(RetrieveAPIView):
             Placement.objects.filter(location=location)
             .filter(eligible_now_q(now))
             .select_related("campaign", "campaign__business")
-            # Same ordering as the pins' preview subquery (start_at, pk): the
-            # thumbnail/headline on a map card always names the FIRST ad here,
-            # even when two placements share a start time.
             .order_by("start_at", "pk")[:20]
         )
+        # Joymee-style visibility: promoted ads lead the branch sheet (TOP >
+        # RAISED > organic), the previous (start_at, pk) order preserved within
+        # each tier — the same block ordering the nearby feed uses.
+        # Joymee-style visibility: promoted ads lead the branch sheet (TOP >
+        # RAISED > organic), previous (start_at, pk) order preserved within each
+        # tier — the same block ordering the nearby feed uses. Window semantics
+        # live on the model helper (post-hoc purchases expire on their own).
         location.active_ads = [
             {
                 "id": p.campaign_id,
@@ -227,8 +285,12 @@ class PublicLocationDetailView(RetrieveAPIView):
                 "business_name": p.campaign.business.name,
                 "starts_at": p.start_at,
                 "ends_at": p.end_at,
+                "promotion": p.promotion_tier if p.promotion_active(now) else None,
             }
-            for p in active_placements
+            for p in sorted(
+                active_placements,
+                key=lambda p: (-p.promotion_rank(now), p.start_at, p.pk),
+            )
         ]
         return location
 
@@ -267,6 +329,14 @@ class PublicCampaignDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         campaign = first.campaign
+        # Best paid tier across the eligible placements (Joymee badge on the
+        # ad page), counting only live promotion windows: TOP beats RAISED;
+        # None when fully organic.
+        ranks = [p.promotion_rank(now) for p in placements]
+        best = max(ranks) if ranks else 0
+        promotion = (
+            PromotionTier.TOP if best >= 2 else (PromotionTier.RAISED if best == 1 else None)
+        )
         # One campaign may run several placements at the same location; the
         # branch list is about where to find the offer, so dedupe by location.
         seen_location_ids = set()
@@ -284,8 +354,10 @@ class PublicCampaignDetailView(APIView):
             "body": campaign.body,
             "banner_url": f"/media/{campaign.banner_key}",
             "business_name": campaign.business.name,
+            "business_verified": campaign.business.is_verified,
             "starts_at": first.start_at,
             "ends_at": first.end_at,
+            "promotion": promotion,
             "locations": locations[: self.MAX_LOCATIONS],
         }
         return Response(serializers.PublicCampaignDetailSerializer(payload).data)
@@ -483,6 +555,11 @@ class PublicNearbyAdsView(APIView):
                     "d": float(payload["d"]),
                     "c": uuid.UUID(str(payload["c"])),
                     "r": int(payload["r"]) if sort == "relevance" else None,
+                    # Promotion rank of the cursor row; cursors issued before
+                    # the promotion feature existed carry no "p" and are
+                    # organic (0), which keeps them valid — organic ordering
+                    # is unchanged.
+                    "p": int(payload.get("p", 0)),
                 }
             except (ValueError, KeyError, TypeError, binascii.Error):
                 raise ValidationError({"cursor": "Malformed cursor"})
@@ -514,6 +591,7 @@ class PublicNearbyAdsView(APIView):
         page = (
             Placement.objects.filter(id__in=Subquery(nearest))
             .annotate(distance=distance_fn)
+            .annotate(promo_rank=_campaign_promo_rank(now))
             .select_related(
                 "campaign",
                 "campaign__business",
@@ -525,25 +603,42 @@ class PublicNearbyAdsView(APIView):
         if sort == "relevance":
             page = page.annotate(relevance=_campaign_relevance(q))
 
+        # Joymee ranking blocks: every TOP campaign card comes first, then
+        # RAISED, then organic — within each block the previous distance /
+        # relevance ordering is preserved. promo_rank leads both the ORDER BY
+        # and the keyset cursor, so paid placement never breaks pagination.
         order: tuple[str, ...]
         if sort == "relevance":
-            order = ("-relevance", "distance", "campaign_id")
+            order = ("-promo_rank", "-relevance", "distance", "campaign_id")
             if position:
                 page = page.filter(
-                    Q(relevance__lt=position["r"])
-                    | Q(relevance=position["r"], distance__gt=position["d"])
+                    Q(promo_rank__lt=position["p"])
                     | Q(
+                        promo_rank=position["p"], relevance__lt=position["r"]
+                    )
+                    | Q(
+                        promo_rank=position["p"],
+                        relevance=position["r"],
+                        distance__gt=position["d"],
+                    )
+                    | Q(
+                        promo_rank=position["p"],
                         relevance=position["r"],
                         distance=position["d"],
                         campaign_id__gt=position["c"],
                     )
                 )
         else:
-            order = ("distance", "campaign_id")
+            order = ("-promo_rank", "distance", "campaign_id")
             if position:
                 page = page.filter(
-                    Q(distance__gt=position["d"])
-                    | Q(distance=position["d"], campaign_id__gt=position["c"])
+                    Q(promo_rank__lt=position["p"])
+                    | Q(promo_rank=position["p"], distance__gt=position["d"])
+                    | Q(
+                        promo_rank=position["p"],
+                        distance=position["d"],
+                        campaign_id__gt=position["c"],
+                    )
                 )
         rows = list(page.order_by(*order)[: limit + 1])
         has_more = len(rows) > limit
@@ -573,6 +668,7 @@ class PublicNearbyAdsView(APIView):
                 "h": fingerprint,
                 "d": last.distance.m,
                 "c": str(last.campaign_id),
+                "p": int(last.promo_rank),
             }
             if sort == "relevance":
                 payload["r"] = int(getattr(last, "relevance", 0))
@@ -581,6 +677,97 @@ class PublicNearbyAdsView(APIView):
         return Response(
             {"results": data, "next_cursor": next_cursor, "has_more": has_more}
         )
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Public"],
+        summary="Featured strip: currently TOP-promoted campaigns",
+        description="Joymee's VIP pool equivalent — a rotating showcase of "
+                    "campaigns whose TOP promotion window is live right now. "
+                    "One card per campaign; ordered by most recent promotion. "
+                    "Optional lat/lon add a distance_m hint for the strip cards.",
+        parameters=[
+            OpenApiParameter("lat", OpenApiTypes.NUMBER),
+            OpenApiParameter("lon", OpenApiTypes.NUMBER),
+            OpenApiParameter("limit", OpenApiTypes.INT,
+                             description=f"1..{FEATURED_MAX_LIMIT}, "
+                                         f"default {FEATURED_DEFAULT_LIMIT}"),
+        ],
+        responses=serializers.PublicNearbyAdsResultSerializer,
+    )
+)
+class PublicFeaturedAdsView(APIView):
+    """GET /public/featured — the VIP-style carousel strip (spec §10 surface).
+
+    Same eligibility and window predicates as the feed's ranking: only a
+    LIVE TOP window lands a campaign here, so the strip never shows expired
+    promotions and never fabricates paid placement."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        params = request.query_params
+        try:
+            limit = int(params.get("limit", FEATURED_DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = FEATURED_DEFAULT_LIMIT
+        limit = max(1, min(limit, FEATURED_MAX_LIMIT))
+
+        now = timezone.now()
+        base = (
+            Placement.objects.filter(eligible_now_q(now))
+            .filter(promotion_tier=PromotionTier.TOP)
+            .filter(promotion_active_q(now))
+            .select_related(
+                "campaign", "campaign__business", "campaign__business__category",
+                "location", "location__business",
+            )
+        )
+        # One card per campaign: the most recently promoted placement of each.
+        rows = list(
+            base.order_by("campaign_id", "-promotion_started_at", "-updated_at", "pk")
+            .distinct("campaign_id")[:limit]
+        )
+        rows.sort(
+            key=lambda p: (-(p.promotion_started_at or p.updated_at).timestamp(), p.pk)
+        )
+
+        try:
+            lat = float(params.get("lat"))
+            lon = float(params.get("lon"))
+            origin = GisPoint(lon, lat, srid=4326)
+            # Re-fetch with the same geodetic annotation the feed uses, so
+            # strip distances are true meters and nearest-first ordered.
+            rows = list(
+                Placement.objects.filter(pk__in=[p.pk for p in rows])
+                .annotate(distance=GisDistanceFunc("location__point", origin))
+                .select_related(
+                    "campaign", "campaign__business", "campaign__business__category",
+                    "location", "location__business",
+                )
+                .order_by("distance")
+            )
+        except (TypeError, ValueError):
+            pass  # no origin: recency-ordered showcase, distance_m = null
+
+        # City-wide eligible branch counts, same as the feed page (N+1-free).
+        branch_counts = {}
+        if rows:
+            branch_counts = dict(
+                Placement.objects.filter(
+                    eligible_now_q(now), campaign_id__in=[p.campaign_id for p in rows]
+                )
+                .values("campaign_id")
+                .annotate(n=Count("id"))
+                .values_list("campaign_id", "n")
+            )
+
+        data = serializers.PublicNearbyAdSerializer(
+            rows, many=True, context={"branch_counts": branch_counts}
+        ).data
+        return Response({"results": data, "next_cursor": None, "has_more": False})
 
 
 @extend_schema_view(
@@ -607,6 +794,10 @@ class PublicPricingView(APIView):
                     "currency": tariff.currency,
                     "amount_per_24h": tariff.amount_per_24h,
                     "valid_from": tariff.valid_from,
+                    # Promotion add-ons (null = not offered in this period), so
+                    # the campaign editor can upsell TOP/RAISED with live math.
+                    "amount_top_per_24h": tariff.amount_top_per_24h,
+                    "amount_raised_per_24h": tariff.amount_raised_per_24h,
                 }
             }
         )
@@ -635,6 +826,13 @@ class PublicReportView(APIView):
             )
         from apps.moderation.models import Report
 
+        category = request.data.get("category") or Report.Category.OTHER
+        if category not in Report.Category.values:
+            return Response(
+                {"error": {"code": "validation_error", "message": "Unknown report category",
+                           "fields": {"category": "Not a valid choice"}}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # The referenced entity must exist — otherwise the public endpoint is a
         # spam sink (spec §12 rate-limited, but still garbage-in).
         try:
@@ -655,6 +853,33 @@ class PublicReportView(APIView):
         # an append-only audit trail for privileged actions — public input must
         # not write into it (audit-log pollution / unbounded growth).
         Report.objects.create(
-            entity=entity, entity_id=entity_id, reason=reason[:2000]
+            entity=entity, entity_id=entity_id, category=category, reason=reason[:2000]
         )
         return Response({"detail": "Report received"}, status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema_view(
+    post=extend_schema(tags=["Public"], summary="Record an ad open or contact click",
+                       description="Counts only: stores the event kind and time, never the "
+                                   "visitor. Accepted only while the ad is publicly live.",
+                       request=serializers.PublicCampaignEventRequestSerializer,
+                       responses={202: DetailSerializer})
+)
+class PublicCampaignEventView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "ad_event"
+
+    def post(self, request, id):
+        body = serializers.PublicCampaignEventRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        # Same visibility rule as the public ad page: only a currently eligible
+        # placement makes the ad public. Anything else counts for nobody.
+        live = Placement.objects.filter(campaign_id=id).filter(eligible_now_q(timezone.now()))
+        if not live.exists():
+            return Response(
+                {"error": {"code": "not_found", "message": "Ad unavailable", "fields": {}}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        CampaignEvent.objects.create(campaign_id=id, kind=body.validated_data["kind"])
+        return Response({"detail": "Event recorded"}, status=status.HTTP_202_ACCEPTED)

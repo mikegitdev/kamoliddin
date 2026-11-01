@@ -66,6 +66,77 @@ def _eligible(business, headline, lat, *, body=""):
     return campaign, location
 
 
+# --- Joymee-style promotion blocks (TOP > RAISED > organic) ------------------
+
+
+def test_promoted_campaigns_lead_the_feed_in_tier_blocks(rf, business):
+    """Joymee ranking: every TOP card first, then RAISED, then organic — even
+    when the promoted campaigns are farther away. Distance still orders within
+    each block."""
+    _eligible(business, "Organic near", 41.31)
+    top_far, _ = _eligible(business, "Top far", 41.33)
+    raised_mid, _ = _eligible(business, "Raised mid", 41.32)
+    top_near, _ = _eligible(business, "Top near", 41.31)
+
+    # The add-on rides on the paid placement itself, exactly as after checkout.
+    Placement.objects.filter(campaign=top_far).update(promotion_tier="top")
+    Placement.objects.filter(campaign=top_near).update(promotion_tier="top")
+    Placement.objects.filter(campaign=raised_mid).update(promotion_tier="raised")
+
+    response = _ads(rf, lat=ORIGIN["lat"], lon=ORIGIN["lon"])
+    assert response.status_code == 200
+    results = response.data["results"]
+    assert [r["headline"] for r in results] == [
+        "Top near",      # TOP block, nearer first
+        "Top far",
+        "Raised mid",    # RAISED block
+        "Organic near",  # organic block, distance ordering unchanged
+    ]
+    assert [r["promotion"] for r in results] == ["top", "top", "raised", None]
+
+
+def test_cursor_paginates_across_promotion_blocks(rf, business):
+    """The keyset cursor carries the promotion rank: paging through a feed
+    with promoted cards never repeats or skips a campaign."""
+    campaigns = []
+    for i, lat in enumerate((41.31, 41.32, 41.33, 41.34)):
+        campaign, _loc_row = _eligible(business, f"Offer {i}", lat)
+        campaigns.append(campaign)
+    # First campaign is TOP, second RAISED, rest organic.
+    Placement.objects.filter(campaign=campaigns[0]).update(promotion_tier="top")
+    Placement.objects.filter(campaign=campaigns[1]).update(promotion_tier="raised")
+
+    seen = []
+    cursor = None
+    while True:
+        params = {"lat": ORIGIN["lat"], "lon": ORIGIN["lon"], "limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        page = _ads(rf, **params).data
+        seen.extend(r["headline"] for r in page["results"])
+        if not page["next_cursor"]:
+            break
+        cursor = page["next_cursor"]
+
+    assert seen == ["Offer 0", "Offer 1", "Offer 2", "Offer 3"]
+
+
+def test_expired_promotion_falls_back_to_organic(rf, business):
+    """Promotion lives only while an eligible placement carries it: once the
+    promoted placement's interval ends, the card ranks organically again —
+    Joymee's countdown semantics without a separate expiry job."""
+    campaign, location = _eligible(business, "Promo offer", 41.31)
+    _eligible(business, "Organic nearer", 41.30)
+    # A TOP placement whose interval already ended is invisible, so the
+    # campaign's rank falls back to its remaining organic placement.
+    promoted = _place(campaign, location, start=-3, end=-1)
+    Placement.objects.filter(pk=promoted.pk).update(promotion_tier="top")
+
+    results = _ads(rf, lat=ORIGIN["lat"], lon=ORIGIN["lon"]).data["results"]
+    assert [r["promotion"] for r in results] == [None, None]
+    assert [r["headline"] for r in results] == ["Organic nearer", "Promo offer"]
+
+
 def test_orders_by_distance_and_returns_card_fields(rf, business):
     far, far_loc = _eligible(business, "Far offer", 41.33)   # ~3.3 km
     near, near_loc = _eligible(business, "Near offer", 41.31)  # ~1.1 km
@@ -239,3 +310,82 @@ def test_validates_origin_and_radius(rf):
 
     out_of_range = _ads(rf, lat=99, lon=69.27)
     assert out_of_range.status_code == 400
+
+
+# --- Post-hoc promotion windows + featured strip (Joymee follow-ups) --------
+
+
+def test_expired_promotion_window_falls_back_to_organic(rf, business):
+    """A post-hoc promotion whose recorded window has passed stops counting
+    even though the placement itself is still eligible — Joymee's countdown
+    without an expiry job."""
+    campaign, _ = _eligible(business, "Was promoted", 41.32)
+    _eligible(business, "Organic nearer", 41.31)
+    placement = campaign.placements.get()
+    now = timezone.now()
+    placement.promotion_tier = "top"
+    placement.promotion_started_at = now - timedelta(days=3)
+    placement.promotion_ends_at = now - timedelta(hours=1)  # ended
+    placement.save(update_fields=[
+        "promotion_tier", "promotion_started_at", "promotion_ends_at",
+    ])
+
+    results = _ads(rf, lat=ORIGIN["lat"], lon=ORIGIN["lon"]).data["results"]
+    assert [r["promotion"] for r in results] == [None, None]
+    assert [r["headline"] for r in results] == ["Organic nearer", "Was promoted"]
+
+
+def test_featured_strip_returns_only_live_top_promotions(rf, business):
+    """/public/featured (Joymee VIP-pool equivalent): one card per campaign,
+    only campaigns with a LIVE TOP window; RAISED and organic never appear."""
+    from apps.discovery.views import PublicFeaturedAdsView
+
+    top_a, _ = _eligible(business, "Top offer A", 41.31)
+    top_b, _ = _eligible(business, "Top offer B", 41.32)
+    raised, _ = _eligible(business, "Raised offer", 41.31)
+    _eligible(business, "Organic offer", 41.31)
+
+    now = timezone.now()
+    Placement.objects.filter(campaign=top_a).update(
+        promotion_tier="top",
+        promotion_started_at=now - timedelta(hours=2),
+        promotion_ends_at=now + timedelta(days=2),
+    )
+    Placement.objects.filter(campaign=top_b).update(
+        promotion_tier="top",
+        promotion_started_at=now - timedelta(hours=1),  # more recent: first
+        promotion_ends_at=now + timedelta(days=1),
+    )
+    Placement.objects.filter(campaign=raised).update(
+        promotion_tier="raised",
+        promotion_started_at=now - timedelta(hours=1),
+        promotion_ends_at=now + timedelta(days=1),
+    )
+
+    response = PublicFeaturedAdsView.as_view()(
+        rf.get("/api/v1/public/featured", {"lat": str(ORIGIN["lat"]),
+                                           "lon": str(ORIGIN["lon"])})
+    )
+    assert response.status_code == 200
+    results = response.data["results"]
+    # With an origin the strip is nearest-first (A at 41.31 beats B at 41.32);
+    # without one it falls back to most-recently-promoted (checked implicitly
+    # by the recency sort above the distance branch).
+    assert [r["headline"] for r in results] == ["Top offer A", "Top offer B"]
+    assert all(r["promotion"] == "top" for r in results)
+    assert all(r["distance_m"] is not None for r in results)
+
+
+def test_featured_strip_excludes_expired_windows(rf, business):
+    from apps.discovery.views import PublicFeaturedAdsView
+
+    campaign, _ = _eligible(business, "Expired top", 41.31)
+    now = timezone.now()
+    Placement.objects.filter(campaign=campaign).update(
+        promotion_tier="top",
+        promotion_started_at=now - timedelta(days=5),
+        promotion_ends_at=now - timedelta(days=1),
+    )
+
+    response = PublicFeaturedAdsView.as_view()(rf.get("/api/v1/public/featured"))
+    assert response.data["results"] == []

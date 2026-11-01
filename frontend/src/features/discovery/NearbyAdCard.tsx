@@ -2,8 +2,21 @@ import { Link } from "react-router-dom";
 import { plural, useI18n } from "@/shared/i18n";
 import { formatDistanceM } from "@/shared/format";
 import type { ApiNearbyAd } from "@/shared/api/queries";
-import { IconPin } from "@/shared/icons";
-import { FallImg } from "@/shared/ui";
+import { IconPin, IconRocket } from "@/shared/icons";
+import { FallImg, VerifiedBadge } from "@/shared/ui";
+
+/** Joymee-style paid visibility badge: TOP (crown tier) or UP (raised tier).
+ *  Purely presentational — the server already ordered the feed so promoted
+ *  cards lead; the badge just explains WHY a farther card is first. */
+export function PromoBadge({ tier, title }: { tier: "top" | "raised" | null; title: string }) {
+  if (!tier) return null;
+  return (
+    <span className={`promo-badge ${tier}`} title={title}>
+      <IconRocket size={11} />
+      {tier === "top" ? "TOP" : "UP"}
+    </span>
+  );
+}
 
 /** One ad card of the nearby list: banner → offer → business → branch + distance.
  *  The primary action opens the existing public ad page; "on map" hands the
@@ -30,20 +43,26 @@ export function NearbyAdCard({
       <article className="nearby-ad-card">
         <Link to={`/ads/${ad.id}`} className="nac-media" state={state} tabIndex={-1} aria-hidden="true">
           <FallImg src={ad.banner_url} alt="" className="" />
+          {ad.promotion && <PromoBadge tier={ad.promotion} title={t.promoBadgeTitle} />}
         </Link>
         <div className="nac-body">
           <div className="nac-top">
             {categoryName && <span className="nac-category">{categoryName}</span>}
-            <span className="nac-distance" title={t.distanceNote}>
-              ≈ {formatDistanceM(ad.distance_m, locale)}
-            </span>
+            {ad.distance_m != null && (
+              <span className="nac-distance" title={t.distanceNote}>
+                ≈ {formatDistanceM(ad.distance_m, locale)}
+              </span>
+            )}
           </div>
           <h3 className="nac-headline">
             <Link to={`/ads/${ad.id}`} state={state}>
               {ad.headline}
             </Link>
           </h3>
-          <p className="nac-business">{ad.business_name}</p>
+          <p className="nac-business">
+            {ad.business_name}
+            {ad.business_verified && <VerifiedBadge title={t.verifiedTitle} />}
+          </p>
           {ad.body.trim() !== "" && <p className="nac-text">{ad.body}</p>}
           <p className="nac-branch">
             {ad.location.name}

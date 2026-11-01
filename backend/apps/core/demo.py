@@ -955,10 +955,15 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
     from apps.businesses.models import Business, BusinessCategory
     from apps.campaigns.models import Campaign
     from apps.locations.models import Location
-    from apps.moderation.services import approve_campaign, reject_campaign, submit_for_review
+    from apps.moderation.services import (
+        approve_campaign,
+        reject_campaign,
+        set_business_verified,
+        submit_for_review,
+    )
     from apps.payments.models import PaymentAttempt
     from apps.payments.settlement import settle_payment_attempt
-    from apps.placements.models import Placement
+    from apps.placements.models import Placement, PromotionTier
     from apps.placements.services import issue_free_grant
 
     owner, _ = User.objects.get_or_create(phone_e164="+998901234567")
@@ -971,11 +976,21 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
 
     if reset:
         # PROTECT FKs everywhere — delete in dependency order, children first.
+        # kind=promotion orders PROTECT their target placement while placements
+        # PROTECT their orders — break that cycle by unlinking (record kept).
         from apps.billing.models import OrderItem, Refund
-        from apps.campaigns.models import CampaignReview
+        from apps.campaigns.models import CampaignOutcome, CampaignReview
         from apps.payments.models import PaymentAttempt, PaymentEvent
         from apps.placements.models import FreeGrant
 
+        # Surveys are demo telemetry — dropped with the rest of the demo set
+        # (PROTECT FK would otherwise block the campaign delete).
+        CampaignOutcome.objects.filter(
+            campaign__business__owner=owner
+        ).delete()
+        Order.objects.filter(
+            business__owner=owner, promoted_placement__isnull=False
+        ).update(promoted_placement=None)
         Placement.objects.filter(campaign__business__owner=owner).delete()
         FreeGrant.objects.filter(business__owner=owner).delete()
         CampaignReview.objects.filter(
@@ -991,7 +1006,13 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
         Business.objects.filter(owner=owner).delete()
         log("reset: demo data cleared")
 
-    Tariff.objects.get_or_create(amount_per_24h=30_000_00)
+    tariff, _t_created = Tariff.objects.get_or_create(amount_per_24h=30_000_00)
+    # Joymee-style visibility add-ons: TOP pins above organic, RAISED is the
+    # cheaper second block. Backfill older demo tariffs with the promo prices.
+    if tariff.amount_top_per_24h is None or tariff.amount_raised_per_24h is None:
+        tariff.amount_top_per_24h = 20_000_00
+        tariff.amount_raised_per_24h = 8_000_00
+        tariff.save(update_fields=["amount_top_per_24h", "amount_raised_per_24h", "updated_at"])
 
     categories = {}
     for slug, ru, uz in [
@@ -1010,7 +1031,7 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
 
     now = timezone.now()
 
-    def purchase(campaign, locations, days):
+    def purchase(campaign, locations, days, promotion_tier=None):
         # Fresh clock per call: the loop below runs long (banner rendering),
         # and create_quote only accepts starts within QUOTE_START_GRACE of
         # now — the shared `now` above would drift past it.
@@ -1023,6 +1044,7 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
             location_ids=[loc.id for loc in locations],
             requested_start_at=started - timedelta(minutes=10),  # within grace
             requested_end_at=started + timedelta(days=days),
+            promotion_tier=promotion_tier,
         )
         attempt, _ = create_checkout(user=owner, order_id=order.id)
         attempt.status = PaymentAttempt.Status.SUCCEEDED
@@ -1104,7 +1126,14 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
                     reason="Партнёрский грант для нового направления",
                 )
             else:  # active
-                purchase(campaign, locations, days=7)
+                # Two flagship campaigns demo the paid visibility add-ons:
+                # TOP pins the card above organic results, RAISED fills the
+                # cheaper second block (Joymee's subscription tiers).
+                promo = {
+                    "lavash-baraka": PromotionTier.TOP,
+                    "oshxona-zarafshon": PromotionTier.RAISED,
+                }.get(biz["slug"])
+                purchase(campaign, locations, days=7, promotion_tier=promo)
                 approve_campaign(campaign=campaign, reviewer=staff)
 
         # Extra ads at the first branch (varied pin counts). Idempotent like
@@ -1124,6 +1153,16 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
                 if not extra.orders.exists():
                     purchase(extra, locations[:1], days=7)
                     approve_campaign(campaign=extra, reviewer=staff)
+
+    # Joymee borrow #8: one flagship business carries the verified badge out
+    # of the box, so the blue check is visible on the demo map without staff
+    # setup. Idempotent like the rest of the seed.
+    flagship = Business.objects.filter(owner=owner, slug="lavash-baraka").first()
+    if flagship is not None and not flagship.is_verified:
+        set_business_verified(
+            business=flagship, staff=staff, verified=True,
+            reason="Демо: проверенный партнёр при посеве",
+        )
 
     stats["active_placements"] = Placement.objects.filter(
         state=Placement.State.ACTIVE, campaign__business__owner=owner

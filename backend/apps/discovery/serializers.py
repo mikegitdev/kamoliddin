@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.campaigns.models import CampaignEvent
 from apps.moderation.models import Report
 
 
@@ -14,6 +15,7 @@ class PublicLocationSerializer(serializers.Serializer):
     lat = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     business_name = serializers.SerializerMethodField()
+    business_verified = serializers.SerializerMethodField()
     active_ads_count = serializers.IntegerField(read_only=True)
     preview_headline = serializers.SerializerMethodField()
     preview_banner_url = serializers.SerializerMethodField()
@@ -29,6 +31,10 @@ class PublicLocationSerializer(serializers.Serializer):
 
     def get_business_name(self, obj) -> str:
         return obj.business.name
+
+    def get_business_verified(self, obj) -> bool:
+        """Staff-awarded trust badge (Joymee's blue check)."""
+        return bool(obj.business.is_verified)
 
     # Annotated by pins/search views; absent annotations degrade to null so
     # any other caller of this serializer keeps working.
@@ -46,8 +52,10 @@ class PublicCampaignSerializer(serializers.Serializer):
     body = serializers.CharField(read_only=True)
     banner_url = serializers.CharField(read_only=True)
     business_name = serializers.CharField(read_only=True)
+    business_verified = serializers.BooleanField(read_only=True, required=False)
     starts_at = serializers.DateTimeField(read_only=True)
     ends_at = serializers.DateTimeField(read_only=True)
+    promotion = serializers.CharField(read_only=True, allow_null=True, required=False)
 
 
 class PublicAdLocationSerializer(serializers.Serializer):
@@ -97,6 +105,7 @@ class PublicLocationDetailSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(read_only=True)
     business_name = serializers.SerializerMethodField()
     business_site = serializers.SerializerMethodField()
+    business_verified = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     active_ads = PublicCampaignSerializer(many=True, read_only=True)
 
@@ -111,6 +120,9 @@ class PublicLocationDetailSerializer(serializers.Serializer):
 
     def get_business_site(self, obj) -> str:
         return obj.business.site
+
+    def get_business_verified(self, obj) -> bool:
+        return bool(obj.business.is_verified)
 
     def get_category(self, obj) -> str:
         return obj.business.category.slug
@@ -163,6 +175,8 @@ class PublicNearbyAdSerializer(serializers.Serializer):
     pinned to its nearest CURRENTLY eligible branch (distance is measured to
     that branch only — an ineligible nearer branch never shortens it).
     `branches_count` counts all currently eligible branches city-wide.
+    `promotion` is the Joymee-style paid visibility tier of the campaign
+    ("top" / "raised" / null) — drives the badge and the ranking block.
     Sourced from a Placement row; context carries a per-campaign eligible
     branch count so the page stays N+1-free."""
 
@@ -171,23 +185,43 @@ class PublicNearbyAdSerializer(serializers.Serializer):
     body = serializers.CharField(read_only=True, source="campaign.body")
     banner_url = serializers.SerializerMethodField()
     business_name = serializers.CharField(read_only=True, source="campaign.business.name")
+    business_verified = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     location = PublicNearbyAdLocationSerializer(read_only=True)
     distance_m = serializers.SerializerMethodField()
     branches_count = serializers.SerializerMethodField()
+    promotion = serializers.SerializerMethodField()
 
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.campaign.banner_key}" if obj.campaign.banner_key else ""
 
+    def get_business_verified(self, obj) -> bool:
+        return bool(obj.campaign.business.is_verified)
+
     def get_category(self, obj) -> str:
         return obj.campaign.business.category.slug
 
-    def get_distance_m(self, obj) -> int:
-        return round(obj.distance.m)
+    def get_distance_m(self, obj) -> "int | None":
+        # The feed always annotates a distance; the featured strip may run
+        # without an origin — degrade to null instead of crashing.
+        distance = getattr(obj, "distance", None)
+        return round(distance.m) if distance is not None else None
 
     def get_branches_count(self, obj) -> int:
         counts = self.context.get("branch_counts", {})
         return counts.get(obj.campaign_id, 1)
+
+    def get_promotion(self, obj) -> "str | None":
+        # Annotated by the feed (promo_rank: 2=top, 1=raised, 0=organic);
+        # degrade to the row's own tier when the annotation is absent.
+        rank = getattr(obj, "promo_rank", None)
+        if rank is None:
+            return obj.promotion_tier
+        if rank >= 2:
+            return "top"
+        if rank == 1:
+            return "raised"
+        return None
 
 
 class PublicNearbyAdsResultSerializer(serializers.Serializer):
@@ -199,6 +233,13 @@ class PublicNearbyAdsResultSerializer(serializers.Serializer):
 class PublicTariffSerializer(serializers.Serializer):
     currency = serializers.CharField(read_only=True)
     amount_per_24h = serializers.IntegerField(read_only=True, help_text="Minor units (tiyin)")
+    amount_top_per_24h = serializers.IntegerField(
+        read_only=True, allow_null=True, help_text="TOP add-on per 24h; null when not offered"
+    )
+    amount_raised_per_24h = serializers.IntegerField(
+        read_only=True, allow_null=True,
+        help_text="RAISED add-on per 24h; null when not offered",
+    )
     valid_from = serializers.DateTimeField(read_only=True)
 
 
@@ -209,4 +250,10 @@ class PublicPricingSerializer(serializers.Serializer):
 class PublicReportRequestSerializer(serializers.Serializer):
     entity = serializers.ChoiceField(choices=Report.Entity.choices)
     entity_id = serializers.UUIDField()
+    category = serializers.ChoiceField(choices=Report.Category.choices,
+                                       default=Report.Category.OTHER)
     reason = serializers.CharField(max_length=2000)
+
+
+class PublicCampaignEventRequestSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=CampaignEvent.Kind.choices)

@@ -525,7 +525,7 @@ export function BranchesPage() {
         <div className="field">
           <label htmlFor="br-map">{t.pickOnMap}</label>
           <span className="field-hint" id="br-map-hint">
-            {t.pinHint}
+            {t.pinHint} {t.locationPrecisionHint}
           </span>
           <div id="br-map">
             <MapPicker

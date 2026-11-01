@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.businesses.models import Business
 
-from .models import Campaign, CampaignReview
+from .models import Campaign, CampaignOutcome, CampaignReview
 
 
 class CampaignReviewSerializer(serializers.ModelSerializer):
@@ -28,17 +28,29 @@ class CampaignSerializer(serializers.ModelSerializer):
     active_placements_count = serializers.SerializerMethodField()
     # Nearest upcoming/ongoing show window (annotation), for list cards.
     next_interval = serializers.SerializerMethodField()
+    # Public engagement counters (annotation): ad opens and contact/directions
+    # clicks. Counts only — no visitor data is stored (Joymee borrow #2).
+    views_count = serializers.SerializerMethodField()
+    contact_clicks_count = serializers.SerializerMethodField()
+    # Outcome survey (Joymee borrow #8): the recorded answer (null until
+    # answered) and whether the cabinet should ASK (campaign ran, fully
+    # ended, not yet answered). Annotations keep lists N+1-free.
+    outcome = serializers.SerializerMethodField()
+    outcome_eligible = serializers.SerializerMethodField()
 
     class Meta:
         model = Campaign
         fields = (
             "id", "business", "business_name", "headline", "body", "banner_key",
             "banner_url", "review_status", "review_version", "active_placements_count",
-            "next_interval", "created_at", "updated_at",
+            "next_interval", "views_count", "contact_clicks_count",
+            "outcome", "outcome_eligible",
+            "created_at", "updated_at",
         )
         read_only_fields = ("id", "review_status", "review_version",
-                            "active_placements_count", "created_at", "updated_at",
-                            "business_name")
+                            "active_placements_count", "views_count", "contact_clicks_count",
+                            "outcome", "outcome_eligible",
+                            "created_at", "updated_at", "business_name")
 
     def __init__(self, *args: object, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -53,6 +65,48 @@ class CampaignSerializer(serializers.ModelSerializer):
 
     def get_active_placements_count(self, obj) -> int:
         return getattr(obj, "active_placements_count", 0) or 0
+
+    def get_views_count(self, obj) -> int:
+        return getattr(obj, "views_count", 0) or 0
+
+    def get_contact_clicks_count(self, obj) -> int:
+        return getattr(obj, "contact_clicks_count", 0) or 0
+
+    def get_outcome(self, obj):
+        """{answer, comment, created_at} once recorded; null before that."""
+        outcome = None
+        if getattr(obj, "outcome_answer", None):
+            outcome = obj.outcome          # annotation guarantees the row
+        elif not hasattr(obj, "outcome_ever_ran"):
+            outcome = getattr(obj, "outcome", None)  # unannotated: one query
+        if outcome is None:
+            return None
+        return {
+            "answer": outcome.answer,
+            "comment": outcome.comment,
+            "created_at": outcome.created_at,
+        }
+
+    def get_outcome_eligible(self, obj) -> bool:
+        """Ask exactly once: the campaign ran, every placement has ended, and
+        no answer is recorded yet (Joymee's post-sale survey trigger)."""
+        if hasattr(obj, "outcome_ever_ran"):  # annotated list/detail path
+            if getattr(obj, "outcome_answer", None):
+                return False
+            return bool(obj.outcome_ever_ran) and not bool(obj.outcome_still_running)
+        # Unannotated instance (create/submit response): compute directly.
+        from apps.placements.models import Placement
+
+        if CampaignOutcome.objects.filter(campaign=obj).exists():
+            return False
+        return (
+            Placement.objects.filter(campaign=obj).exists()
+            and not Placement.objects.filter(
+                campaign=obj,
+                state__in=(Placement.State.PENDING, Placement.State.SCHEDULED,
+                           Placement.State.ACTIVE),
+            ).exists()
+        )
 
     @extend_schema_field(
         {

@@ -6,7 +6,7 @@ import {
 } from "@/shared/api/queries";
 import { formatPhone } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
-import { QueryError } from "@/shared/ui";
+import { QueryError, VerifiedBadge } from "@/shared/ui";
 import {
   FilterPill,
   RowMenu,
@@ -79,6 +79,19 @@ function BusinessList({ locale }: { locale: string }) {
     });
   };
 
+  // Joymee's blue check: staff judgment only (no document pipeline) — the
+  // reason goes to the audit log, the badge is display-only trust signal.
+  const verify = (b: ApiAdminBusiness) => {
+    const awarding = !b.is_verified;
+    return action.run({
+      path: `businesses/${b.id}/${awarding ? "verify" : "unverify"}`,
+      payload: { reason: awarding ? t.verifyDefaultReason : t.unverifyDefaultReason },
+      body: `«${b.name}» — ${awarding ? t.confirmVerifyBusiness : t.confirmUnverifyBusiness}`,
+      confirmLabel: awarding ? t.staffVerify : t.staffUnverify,
+      danger: !awarding,
+    });
+  };
+
   return (
     <>
       <div className="staff-toolbar">
@@ -123,7 +136,10 @@ function BusinessList({ locale }: { locale: string }) {
             {data?.results.map((b) => (
               <tr key={b.id}>
                 <td className="max-w-240 wrap-anywhere">
-                  <strong>{b.name}</strong>
+                  <strong className="row row-center gap-6">
+                    {b.name}
+                    {b.is_verified && <VerifiedBadge title={t.verifiedTitle} />}
+                  </strong>
                   <div className="muted-2">{locale === "uz" ? b.category_uz : b.category_ru}</div>
                 </td>
                 <td className="muted-2">
@@ -148,6 +164,10 @@ function BusinessList({ locale }: { locale: string }) {
                       { label: t.viewBranches, onClick: () => link.go("businesses", { business: b.id }) },
                       { label: t.viewPlacements, onClick: () => link.go("placements", { business: b.id }) },
                       { label: t.viewLog, onClick: () => link.go("logs", { entity: "business", entity_id: b.id }) },
+                      {
+                        label: b.is_verified ? t.staffUnverify : t.staffVerify,
+                        onClick: () => void verify(b),
+                      },
                       ...(b.status !== "under_review"
                         ? [statusItem(b.status === "active", t.disable, t.enable, action.busy, () => void toggle(b))]
                         : []),

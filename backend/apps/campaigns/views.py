@@ -1,8 +1,8 @@
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Count, Min, Q
+from django.db.models import Count, Exists, Min, OuterRef, Q, Subquery
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, status
+from rest_framework import permissions, serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import (
     ListAPIView,
@@ -13,9 +13,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.moderation.services import ModerationError, submit_for_review
-from apps.placements.models import eligible_now_q
+from apps.placements.models import Placement, eligible_now_q
 
-from .models import Campaign, CampaignReview
+from .models import Campaign, CampaignEvent, CampaignOutcome, CampaignReview
 from .serializers import CampaignReviewSerializer, CampaignSerializer
 
 
@@ -27,6 +27,20 @@ def with_live_annotation(qs):
     upcoming = Q(placements__state__in=("scheduled", "active")) & Q(
         placements__end_at__gt=now
     )
+    # Outcome-survey state (Joymee borrow #8), as subqueries so lists stay
+    # N+1-free: the recorded answer, and whether the campaign is ASKABLE —
+    # it ran at least once and nothing is pending/scheduled/active anymore.
+    outcome_answer = Subquery(
+        CampaignOutcome.objects.filter(campaign=OuterRef("pk")).values("answer")[:1]
+    )
+    ever_ran = Exists(Placement.objects.filter(campaign=OuterRef("pk")))
+    still_running = Exists(
+        Placement.objects.filter(
+            campaign=OuterRef("pk"),
+            state__in=(Placement.State.PENDING, Placement.State.SCHEDULED,
+                       Placement.State.ACTIVE),
+        )
+    )
     return qs.annotate(
         active_placements_count=Count(
             "placements",
@@ -35,6 +49,13 @@ def with_live_annotation(qs):
         ),
         next_interval_start=Min("placements__start_at", filter=upcoming),
         next_interval_end=Min("placements__end_at", filter=upcoming),
+        views_count=Count("events", filter=Q(events__kind=CampaignEvent.Kind.VIEW), distinct=True),
+        contact_clicks_count=Count(
+            "events", filter=Q(events__kind=CampaignEvent.Kind.CONTACT), distinct=True
+        ),
+        outcome_answer=outcome_answer,
+        outcome_ever_ran=ever_ran,
+        outcome_still_running=still_running,
     )
 
 
@@ -117,6 +138,71 @@ class CampaignSubmitView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(CampaignSerializer(campaign).data)
+
+
+class OutcomeRequestSerializer(serializers.Serializer):
+    """Joymee's 'did it work?' survey — asked once, campaign over."""
+
+    answer = serializers.ChoiceField(choices=CampaignOutcome.Answer.choices)
+    comment = serializers.CharField(max_length=500, required=False, allow_blank=True,
+                                    default="")
+
+
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Campaigns"],
+        summary="Record the post-campaign outcome survey",
+        description="Asked once per campaign after every placement has ended "
+                    "(Joymee's 'were you able to sell?' loop). Immutable once "
+                    "answered; a second answer is refused.",
+        request=OutcomeRequestSerializer,
+        responses=CampaignSerializer,
+    )
+)
+class CampaignOutcomeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        body = OutcomeRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        campaign = Campaign.objects.filter(pk=id, business__owner=request.user).first()
+        if campaign is None:
+            return Response(
+                {"error": {"code": "not_found", "message": "Campaign not found", "fields": {}}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if CampaignOutcome.objects.filter(campaign=campaign).exists():
+            return Response(
+                {"error": {"code": "already_answered",
+                           "message": "The outcome was already recorded for this campaign",
+                           "fields": {}}},
+                status=status.HTTP_409_CONFLICT,
+            )
+        still_running = Placement.objects.filter(
+            campaign=campaign,
+            state__in=(Placement.State.PENDING, Placement.State.SCHEDULED,
+                       Placement.State.ACTIVE),
+        ).exists()
+        ran = Placement.objects.filter(campaign=campaign).exists()
+        if ran is False or still_running:
+            return Response(
+                {"error": {"code": "not_ended",
+                           "message": "The survey opens after all placements of this "
+                                      "campaign have ended",
+                           "fields": {}}},
+                status=status.HTTP_409_CONFLICT,
+            )
+        CampaignOutcome.objects.create(
+            campaign=campaign,
+            answer=body.validated_data["answer"],
+            comment=body.validated_data["comment"],
+        )
+        # Detail payload re-uses the annotated queryset so the response
+        # carries the fresh outcome fields.
+        fresh = with_live_annotation(
+            Campaign.objects.filter(pk=campaign.pk).select_related("business")
+        ).first()
+        return Response(CampaignSerializer(fresh).data)
 
 
 @extend_schema_view(

@@ -18,6 +18,12 @@ export function saveBusiness(input: BusinessInput, id?: string): Promise<ApiBusi
     : api("/api/v1/businesses", { method: "POST", json: input });
 }
 
+/** Logo only (uploaded via uploadMedia "logos"); "" removes it. Kept separate
+ *  from saveBusiness so a logo change never touches unsaved profile edits. */
+export function saveLogo(id: string, logoKey: string): Promise<ApiBusiness> {
+  return api(`/api/v1/businesses/${id}`, { method: "PATCH", json: { logo_key: logoKey } });
+}
+
 /** Empty businesses only — the backend refuses anything with branches,
  *  campaigns or orders (spec §7.1/§14 retention). */
 export function deleteBusiness(id: string): Promise<void> {
@@ -88,10 +94,36 @@ export interface QuoteInput {
   location_ids: string[];
   requested_start_at: string;
   requested_end_at: string;
+  /** Optional Joymee-style paid visibility add-on (TOP/RAISED) applied to
+   *  every line; the server prices it — this is only the choice. */
+  promotion_tier?: "top" | "raised" | null;
 }
 
 export function requestQuote(input: QuoteInput): Promise<ApiOrder> {
   return api("/api/v1/orders/quote", { method: "POST", json: input });
+}
+
+/** Joymee tariff-page equivalent: buy TOP/RAISED days for ONE running
+ *  placement as a fresh one-time order (no wallet — ADR-0007). */
+export function requestPromotionQuote(input: {
+  placement_id: string;
+  tier: "top" | "raised";
+  days: number;
+}): Promise<ApiOrder> {
+  return api("/api/v1/orders/promotion-quote", { method: "POST", json: input });
+}
+
+/** Joymee's 'were you able to sell?' loop: record the outcome once, after the
+ *  campaign's placements have all ended. */
+export function recordOutcome(
+  campaignId: string,
+  answer: "brought_customers" | "other_channel" | "no_effect",
+  comment = "",
+): Promise<ApiCampaign> {
+  return api(`/api/v1/campaigns/${campaignId}/outcome`, {
+    method: "POST",
+    json: { answer, comment },
+  });
 }
 
 export function checkoutOrder(id: string, returnUrl = ""): Promise<ApiCheckout> {

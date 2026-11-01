@@ -141,6 +141,10 @@ export function AdvertiserLayout() {
         <NavLink to="/app/campaigns">{t.campaigns}</NavLink>
         <NavLink to="/app/billing">{t.billing}</NavLink>
         <NavLink to="/app/account">{t.account}</NavLink>
+        {/* Phones hide the header's "to map" action; this keeps the map one tap away. */}
+        <Link to="/" className="nav-map-mobile">
+          <IconExternal size={12} /> {t.toMap}
+        </Link>
         {user?.is_staff && (
           <NavLink to="/staff" className="nav-staff">
             {t.staffTitle}

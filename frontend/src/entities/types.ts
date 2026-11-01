@@ -14,6 +14,8 @@ export interface ApiLocationPin {
   lat: number;
   category: string;
   business_name: string;
+  /** Staff-awarded trust badge on the business (blue check). */
+  business_verified?: boolean;
   /** Count of CURRENTLY active public ads — not historical (spec §10). */
   active_ads_count: number;
   /** Distance from the search origin in meters (search results only). */
@@ -32,6 +34,10 @@ export interface ApiActiveAd {
   business_name: string;
   starts_at: string;
   ends_at: string;
+  /** Paid visibility tier of this ad at the branch ("top"/"raised"/null). */
+  promotion?: "top" | "raised" | null;
+  /** Staff-awarded trust badge on the business (blue check). */
+  business_verified?: boolean;
 }
 
 /** Branch context carried by the public ad detail endpoint: only locations
@@ -91,6 +97,8 @@ export interface ApiLocationDetail {
   whatsapp: string;
   business_name: string;
   business_site: string;
+  /** Staff-awarded trust badge on the business (blue check). */
+  business_verified: boolean;
   category: string;
   active_ads: ApiActiveAd[];
 }
@@ -114,6 +122,8 @@ export interface ApiBusiness {
   whatsapp: string;
   site: string;
   status: string;
+  /** Staff-awarded trust badge (Joymee's blue check); read-only for owners. */
+  is_verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -144,6 +154,17 @@ export type CampaignStatus =
   | "rejected"
   | "suspended";
 
+export type CampaignOutcomeAnswer =
+  | "brought_customers"
+  | "other_channel"
+  | "no_effect";
+
+export interface ApiCampaignOutcome {
+  answer: CampaignOutcomeAnswer;
+  comment: string;
+  created_at: string;
+}
+
 export interface ApiCampaign {
   id: string;
   business: string;
@@ -159,6 +180,13 @@ export interface ApiCampaign {
   active_placements_count: number;
   /** Nearest upcoming/ongoing show window (list cards); null when none. */
   next_interval: { start_at: string; end_at: string } | null;
+  /** Public engagement counters: ad opens and contact/directions clicks. */
+  views_count: number;
+  contact_clicks_count: number;
+  /** Post-campaign survey (Joymee borrow #8): recorded answer, null until given. */
+  outcome: ApiCampaignOutcome | null;
+  /** True when the cabinet should ask (ran, fully ended, not answered). */
+  outcome_eligible: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -178,6 +206,10 @@ export interface ApiOrderItem {
   unit_rate_snapshot: number;
   charge_days: number;
   line_total: number;
+  /** Paid visibility add-on chosen at quote time (null = none). */
+  promotion_tier: "top" | "raised" | null;
+  /** Locked add-on surcharge for this line (minor units, 0 when none). */
+  promotion_line_total: number;
 }
 
 export type OrderState =
@@ -188,6 +220,8 @@ export type OrderState =
   | "failed"
   | "expired";
 
+export type OrderKind = "placement" | "promotion";
+
 export interface ApiOrder {
   id: string;
   business: string;
@@ -195,6 +229,10 @@ export interface ApiOrder {
   campaign: string;
   campaign_headline: string;
   campaign_status: CampaignStatus;
+  /** placement = display intervals; promotion = TOP/RAISED days for a running ad. */
+  kind: OrderKind;
+  /** Set only for kind=promotion: the placement this order boosts. */
+  promoted_placement: string | null;
   amount_total: number;
   currency: string;
   state: OrderState;

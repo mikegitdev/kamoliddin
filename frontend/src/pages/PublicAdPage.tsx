@@ -19,6 +19,7 @@ import {
   HoursList,
   ShareButton,
   StickyContactActions,
+  VerifiedBadge,
   directionsUrl,
   shareHoursLine,
   shareText,
@@ -82,6 +83,16 @@ export function PublicAdPage() {
     }
   }, [expired, refetch]);
 
+  // Engagement counters (advertiser stats): one view per opened live ad, and
+  // one per contact/directions click. Staff previews of non-live ads are not
+  // counted. Counts are fire-and-forget — a failed beacon never blocks the page.
+  const viewRecorded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!live || !id || viewRecorded.current === id) return;
+    viewRecorded.current = id;
+    void recordAdEvent(id, "view");
+  }, [live, id]);
+
   if (isLoading || (unavailable && previewLoading)) {
     return (
       <div className="page">
@@ -133,6 +144,7 @@ export function PublicAdPage() {
   const categoryName = categories?.find((c) => c.slug === featuredDetail?.category);
   const moreOffers = (featuredDetail?.active_ads ?? []).filter((ad) => ad.id !== data.id);
   const categoryLabel = categoryName ? (locale === "uz" ? categoryName.name_uz : categoryName.name_ru) : "";
+  const recordContact = live && id ? () => void recordAdEvent(id, "contact") : undefined;
 
   // Share: offer first, then where/when/how to reach it — readable without opening the link.
   const shareUrl = new URL(`/ads/${data.id}`, window.location.origin);
@@ -192,7 +204,10 @@ export function PublicAdPage() {
               {data.business_name.trim().charAt(0).toUpperCase()}
             </span>
             <div className="min-w-0">
-              <strong>{data.business_name}</strong>
+              <strong>
+                {data.business_name}
+                {data.business_verified && <VerifiedBadge title={t.verifiedTitle} />}
+              </strong>
               {categoryLabel && <span className="muted-2">{categoryLabel}</span>}
             </div>
           </div>
@@ -200,6 +215,11 @@ export function PublicAdPage() {
           {/* 2. Offer. Ad disclosure: visitors must always see this is paid placement. */}
           <div className="ad-meta">
             <span className="chip gray">{t.adLabel}</span>
+            {live?.promotion && (
+              <span className={`promo-badge ${live.promotion}`} title={t.promoBadgeTitle}>
+                {live.promotion === "top" ? "TOP" : "UP"}
+              </span>
+            )}
             {msLeft !== null && msLeft > 0 && (
               <span className="chip ad-countdown">
                 <IconClock size={13} />
@@ -255,6 +275,7 @@ export function PublicAdPage() {
                   telegram={featured.telegram}
                   whatsapp={featured.whatsapp}
                   site={featured.business_site}
+                  onAction={recordContact}
                 />
               </div>
             </div>
@@ -299,10 +320,16 @@ export function PublicAdPage() {
           telegram={featured.telegram}
           whatsapp={featured.whatsapp}
           site={featured.business_site}
+          onAction={recordContact}
         />
       )}
     </div>
   );
+}
+
+/** Anonymous engagement beacon (POST /public/campaigns/{id}/events). */
+function recordAdEvent(id: string, kind: "view" | "contact") {
+  return api(`/api/v1/public/campaigns/${id}/events`, { method: "POST", json: { kind } }).catch(() => {});
 }
 
 const VISIBILITY_TEXT: Record<Exclude<AdVisibility, "live">, keyof Dict> = {

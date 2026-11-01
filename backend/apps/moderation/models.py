@@ -63,9 +63,18 @@ class Report(models.Model):
         RESOLVED = "resolved", "Resolved (action taken)"
         DISMISSED = "dismissed", "Dismissed (no violation)"
 
+    class Category(models.TextChoices):
+        SPAM = "spam", "Spam or irrelevant ad"
+        OFFENSIVE = "offensive", "Offensive"
+        PROHIBITED = "prohibited", "Prohibited product or service"
+        OUTDATED = "outdated", "Outdated or wrong information"
+        OTHER = "other", "Other"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     entity = models.CharField(max_length=20, choices=Entity.choices)
     entity_id = models.CharField(max_length=64)
+    category = models.CharField(max_length=20, choices=Category.choices,
+                                default=Category.OTHER)
     reason = models.TextField()
     state = models.CharField(max_length=10, choices=State.choices,
                              default=State.OPEN)

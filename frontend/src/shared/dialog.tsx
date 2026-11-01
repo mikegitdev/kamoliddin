@@ -204,14 +204,17 @@ function ReportBody({ options, close }: { options: ReportOptions; close: () => v
     return () => window.removeEventListener("keydown", onKey);
   }, [close]);
 
+  // Stable category keys (mirror Report.Category on the backend) so staff can
+  // filter the queue; the label is only what the visitor sees.
   const presets: { key: string; label: string }[] = [
-    { key: t.reportReasonSpam, label: t.reportReasonSpam },
-    { key: t.reportReasonOffensive, label: t.reportReasonOffensive },
-    { key: t.reportReasonProhibited, label: t.reportReasonProhibited },
-    { key: t.reportReasonOutdated, label: t.reportReasonOutdated },
-    { key: t.reportReasonOther, label: t.reportReasonOther },
+    { key: "spam", label: t.reportReasonSpam },
+    { key: "offensive", label: t.reportReasonOffensive },
+    { key: "prohibited", label: t.reportReasonProhibited },
+    { key: "outdated", label: t.reportReasonOutdated },
+    { key: "other", label: t.reportReasonOther },
   ];
-  const reason = (note.trim() || preset).trim();
+  const chosen = presets.find((p) => p.key === preset);
+  const reason = (note.trim() || chosen?.label || "").trim();
 
   const submit = async () => {
     if (!reason || state === "sending") return;
@@ -220,7 +223,12 @@ function ReportBody({ options, close }: { options: ReportOptions; close: () => v
     try {
       await api("/api/v1/public/reports", {
         method: "POST",
-        json: { entity: options.entity, entity_id: options.entityId, reason },
+        json: {
+          entity: options.entity,
+          entity_id: options.entityId,
+          category: chosen?.key ?? "other",
+          reason,
+        },
       });
       setState("sent");
     } catch (e) {

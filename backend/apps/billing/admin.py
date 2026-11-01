@@ -11,7 +11,10 @@ class OrderItemInline(admin.TabularInline):
 
 @admin.register(Tariff)
 class TariffAdmin(admin.ModelAdmin):
-    list_display = ("amount_per_24h", "currency", "valid_from", "valid_until")
+    list_display = (
+        "amount_per_24h", "amount_top_per_24h", "amount_raised_per_24h",
+        "currency", "valid_from", "valid_until",
+    )
     readonly_fields = ("created_at", "updated_at")
 
 

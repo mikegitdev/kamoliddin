@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinesses, useCategories } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
-import { deleteBusiness, saveBusiness } from "@/features/advertiser/api";
+import { deleteBusiness, saveBusiness, saveLogo, uploadMedia } from "@/features/advertiser/api";
 import { selectBusiness, useCurrentBusiness } from "@/features/advertiser/currentBusiness";
 import { useI18n } from "@/shared/i18n";
 import { useDirtyRouteGuard } from "@/shared/route-guard";
 import { toast } from "@/shared/toast";
 import { confirmDialog } from "@/shared/dialog";
-import { IconAlert, IconTrash } from "@/shared/icons";
-import { QueryError } from "@/shared/ui";
+import { IconAlert, IconPlus, IconTrash } from "@/shared/icons";
+import { FallImg, QueryError } from "@/shared/ui";
 
 export function BusinessProfilePage() {
   const { t, locale } = useI18n();
@@ -100,6 +100,23 @@ export function BusinessProfilePage() {
       // business, or the cabinet flips to its create-business state.
       selectBusiness("");
       queryClient.invalidateQueries({ queryKey: ["businesses"] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
+  // Logo key as last saved from this page. Kept local on purpose: refetching the
+  // business would reset the unsaved profile form below.
+  const [logoKey, setLogoKey] = useState<string | null>(null);
+  const shownLogoKey = logoKey ?? existing?.logo_key ?? "";
+  const logoMutation = useMutation({
+    mutationFn: async (file: File | null) => {
+      const key = file ? (await uploadMedia(file, "logos")).key : "";
+      await saveLogo(existing!.id, key);
+      return key;
+    },
+    onSuccess: (key) => {
+      setLogoKey(key);
+      toast.success(key ? t.logoSaved : t.saved);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
   });
@@ -219,6 +236,49 @@ export function BusinessProfilePage() {
             placeholder="https://…"
           />
         </div>
+      </div>
+
+      <div className="form-section">
+        <h3 className="section-title">
+          <span className="section-num" aria-hidden="true">4</span>
+          {t.logoTitle}
+        </h3>
+        <span className="field-hint">{existing ? t.logoHint : t.logoNeedsBusiness}</span>
+        {existing && (
+          <div className="row mt-8">
+            <FallImg
+              className="logo-preview"
+              src={shownLogoKey ? `/media/${shownLogoKey}` : undefined}
+              alt={t.logoTitle}
+            />
+            <div className="stack">
+              <input
+                id="biz-logo"
+                className="file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={logoMutation.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) logoMutation.mutate(file);
+                }}
+              />
+              <label htmlFor="biz-logo" className="btn small">
+                <IconPlus size={14} /> {t.logoUpload}
+              </label>
+              {shownLogoKey && (
+                <button
+                  className="btn small"
+                  disabled={logoMutation.isPending}
+                  onClick={() => logoMutation.mutate(null)}
+                >
+                  {t.logoRemove}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="form-actions">

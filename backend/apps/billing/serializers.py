@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.payments.models import PaymentAttempt
+from apps.placements.models import PromotionTier
 
 from .models import Order, OrderItem
 
@@ -10,7 +11,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ("location", "location_name", "unit_rate_snapshot", "charge_days", "line_total")
+        fields = (
+            "location", "location_name", "unit_rate_snapshot", "charge_days", "line_total",
+            "promotion_tier", "promotion_line_total",
+        )
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -20,12 +24,15 @@ class OrderSerializer(serializers.ModelSerializer):
         source="campaign.review_status", read_only=True
     )
     business_name = serializers.CharField(source="business.name", read_only=True)
+    kind = serializers.CharField(read_only=True)
+    promoted_placement = serializers.UUIDField(read_only=True)
 
     class Meta:
         model = Order
         fields = (
             "id", "business", "business_name", "campaign", "campaign_headline",
-            "campaign_status", "amount_total", "currency", "state", "quote_expires_at",
+            "campaign_status", "kind", "promoted_placement", "amount_total",
+            "currency", "state", "quote_expires_at",
             "interval_start_at", "interval_end_at",
             "items", "created_at", "updated_at",
         )
@@ -90,6 +97,19 @@ class QuoteRequestSerializer(serializers.Serializer):
     )
     requested_start_at = serializers.DateTimeField()
     requested_end_at = serializers.DateTimeField()
+    # Joymee-style paid visibility add-on applied to every line (optional).
+    promotion_tier = serializers.ChoiceField(
+        choices=PromotionTier.choices, required=False, allow_null=True
+    )
+
+
+class PromotionQuoteRequestSerializer(serializers.Serializer):
+    """Joymee's tariff-page equivalent: buy TOP/RAISED days for ONE running
+    placement as a fresh one-time order (ADR-0007 intact — no wallet)."""
+
+    placement_id = serializers.UUIDField()
+    tier = serializers.ChoiceField(choices=PromotionTier.choices)
+    days = serializers.IntegerField(min_value=1, max_value=30)
 
 
 class CheckoutRequestSerializer(serializers.Serializer):

@@ -145,7 +145,13 @@ def reserve_order_capacity(order: Order) -> list[Placement]:
     Called before the provider session is created — no money has moved, so
     exhaustion simply refuses checkout. Idempotent per order; the
     (order, location) unique constraint backstops concurrent double-checkout.
+
+    Promotion orders (kind=promotion) buy a visibility window for an EXISTING
+    placement: they never reserve slots or create placements — the boost rides
+    a slot the advertiser already paid for.
     """
+    if order.kind == Order.Kind.PROMOTION:
+        return list(order_placements(order))  # empty: promotion orders own none
     existing = list(order_placements(order).select_related("location"))
     if existing:
         return existing
@@ -165,6 +171,7 @@ def reserve_order_capacity(order: Order) -> list[Placement]:
             start_at=start_at,
             end_at=end_at,
             charge_days=item.charge_days,
+            promotion_tier=item.promotion_tier,
             source_type=Placement.SourceType.PAID,
             state=Placement.State.PENDING,
         )
@@ -183,7 +190,31 @@ def release_order_reservations(order: Order) -> int:
 
 def cancel_order_placements(order: Order) -> int:
     """Refund path: stop every not-yet-expired placement purchased by `order`
-    (PENDING/SCHEDULED/ACTIVE). Historical rows and accounting stay intact."""
+    (PENDING/SCHEDULED/ACTIVE). Historical rows and accounting stay intact.
+
+    For kind=promotion orders the paid promotion window is ENDED now — the
+    placement itself keeps running on its original purchase."""
+    if order.kind == Order.Kind.PROMOTION:
+        now = timezone.now()
+        assert order.promoted_placement_id is not None  # promotion orders carry it
+        placement = (
+            Placement.objects.select_for_update()
+            .filter(pk=order.promoted_placement_id)
+            .first()
+        )
+        if placement is None or not placement.promotion_ends_at:
+            return 0
+        if placement.promotion_ends_at <= now:
+            return 0  # already expired — nothing to end
+        placement.promotion_ends_at = now
+        placement.save(update_fields=["promotion_ends_at", "updated_at"])
+        ActivityEvent.objects.create(
+            action="promotion.ended",
+            entity="placement",
+            entity_id=str(placement.id),
+            metadata={"order": str(order.id), "reason": "refund"},
+        )
+        return 1
     return Placement.objects.filter(
         order=order,
         state__in=[Placement.State.PENDING, Placement.State.SCHEDULED, Placement.State.ACTIVE],
@@ -245,16 +276,61 @@ def _promote(placement: Placement, *, now) -> None:
         placement.state = Placement.State.SCHEDULED
 
 
+def _apply_promotion_window(order: Order, *, now) -> Placement:
+    """Settlement of a kind=promotion order: stamp tier + [now, now+days) on
+    the promoted placement. Idempotent — a duplicate webhook re-stamps the
+    same window derived from the paid order's snapshot, never extends it.
+    Refunds end the window via `cancel_order_placements`; records are never
+    erased."""
+    assert order.promoted_placement_id is not None  # promotion orders carry it
+    placement = (
+        Placement.objects.select_for_update()
+        .select_related("campaign")
+        .filter(pk=order.promoted_placement_id)
+        .first()
+    )
+    if placement is None:  # PROTECT FK keeps the row; defensive only
+        raise LookupError("promoted placement vanished")
+    item = order.items.first()
+    tier = item.promotion_tier if item else None
+    days = item.charge_days if item else 0
+    if not tier or days <= 0:
+        raise ValueError("promotion order has no purchasable tier/days snapshot")
+    placement.promotion_tier = tier
+    placement.promotion_started_at = now
+    placement.promotion_ends_at = now + timedelta(days=days)
+    placement.save(update_fields=[
+        "promotion_tier", "promotion_started_at", "promotion_ends_at", "updated_at",
+    ])
+    ends_at = placement.promotion_ends_at
+    assert ends_at is not None
+    ActivityEvent.objects.create(
+        action="promotion.applied",
+        entity="placement",
+        entity_id=str(placement.id),
+        metadata={
+            "order": str(order.id), "tier": tier, "days": days,
+            "until": ends_at.isoformat(),
+        },
+    )
+    return placement
+
+
 @transaction.atomic
 def activate_order_entitlements(order: Order) -> list[Placement]:
     """Apply a PAID order to its placements — exactly once per order, idempotent
     under retries and duplicate callbacks.
+
+    Promotion orders (kind=promotion) apply their tier and a fresh promotion
+    window to `order.promoted_placement` instead — no capacity is involved.
 
     The order's checkout reservations are promoted; orders without
     reservations (legacy rows) get placements created here under the
     capacity lock. If capacity vanished in between, the placement is BLOCKED
     with an audit event for the admin refund queue — never silently overbooked."""
     now = timezone.now()
+    if order.kind == Order.Kind.PROMOTION:
+        return [_apply_promotion_window(order, now=now)]
     campaign = order.campaign
     approved = campaign.review_status == Campaign.ReviewStatus.APPROVED
     start_at, end_at = _order_interval(order)

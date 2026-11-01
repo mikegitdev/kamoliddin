@@ -43,6 +43,7 @@ from apps.moderation.services import (
     ModerationError,
     block_placement,
     set_business_status,
+    set_business_verified,
     set_location_status,
     set_user_blocked,
     unblock_placement,
@@ -244,8 +245,8 @@ class AdminBusinessSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Business
-        fields = ("id", "name", "slug", "status", "category_ru", "category_uz", "owner_id",
-                  "owner_phone", "owner_active", "locations_count",
+        fields = ("id", "name", "slug", "status", "is_verified", "category_ru", "category_uz",
+                  "owner_id", "owner_phone", "owner_active", "locations_count",
                   "campaigns_count", "live_ads", "created_at")
 
 
@@ -297,6 +298,36 @@ class BusinessStatusView(APIView):
         except ModerationError as exc:
             return _conflict(exc)
         return Response({"id": str(business.id), "status": business.status})
+
+
+class BusinessVerifyView(APIView):
+    """POST /admin/businesses/{id}/verify|unverify — award or remove the staff
+    trust badge (Joymee's blue check, staff judgment only: no documents are
+    collected or stored, the reason lives in the ActivityEvent audit)."""
+
+    permission_classes = [IsAdminUser]
+    verified = True
+
+    @extend_schema(tags=["Admin"], summary="Award/remove the verified badge",
+                   request=ReasonSerializer, responses=OkSerializer)
+    def post(self, request, id):
+        serializer = ReasonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        business = Business.objects.filter(pk=id).first()
+        if business is None:
+            return _not_found("Business")
+        try:
+            set_business_verified(
+                business=business, staff=request.user,
+                verified=self.verified, reason=serializer.validated_data["reason"],
+            )
+        except ModerationError as exc:
+            return _conflict(exc)
+        return Response({"id": str(business.id), "is_verified": business.is_verified})
+
+
+class BusinessUnverifyView(BusinessVerifyView):
+    verified = False
 
 
 class AdminLocationSerializer(serializers.ModelSerializer):
@@ -382,10 +413,10 @@ class AdminPlacementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Placement
-        fields = ("id", "state", "source_type", "block_reason", "start_at", "end_at",
-                  "charge_days", "order_id", "campaign_id", "campaign_headline",
-                  "campaign_status", "banner_url", "location_id", "location_name",
-                  "business_id", "business_name", "visible", "created_at")
+        fields = ("id", "state", "source_type", "promotion_tier", "block_reason",
+                  "start_at", "end_at", "charge_days", "order_id", "campaign_id",
+                  "campaign_headline", "campaign_status", "banner_url", "location_id",
+                  "location_name", "business_id", "business_name", "visible", "created_at")
 
     def get_banner_url(self, obj) -> str:
         key = obj.campaign.banner_key

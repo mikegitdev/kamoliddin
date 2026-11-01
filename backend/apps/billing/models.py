@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.businesses.models import Business
 from apps.campaigns.models import Campaign
 from apps.locations.models import Location
+from apps.placements.models import PromotionTier
 
 CURRENCY_UZS = "UZS"
 SECONDS_PER_DAY = 86_400
@@ -33,6 +34,15 @@ class Tariff(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     currency = models.CharField(max_length=3, default=CURRENCY_UZS)
     amount_per_24h = models.BigIntegerField(help_text="Minor units (tiyin) per 24h per location")
+    # Optional paid visibility add-ons (Joymee-style TOP/RAISED), priced per
+    # 24h on top of the base rate. NULL = the tier is not offered in this
+    # tariff period, so checkout cannot select it at all.
+    amount_top_per_24h = models.BigIntegerField(
+        null=True, blank=True, help_text="Minor units per 24h for the TOP add-on"
+    )
+    amount_raised_per_24h = models.BigIntegerField(
+        null=True, blank=True, help_text="Minor units per 24h for the RAISED add-on"
+    )
     valid_from = models.DateTimeField(default=timezone.now)
     valid_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -55,7 +65,14 @@ class Tariff(models.Model):
 
 
 class Order(models.Model):
-    """One purchase of placements. Server-generated totals; immutable once paid."""
+    """One purchase. Server-generated totals; immutable once paid.
+
+    kind=placement (default): buys display intervals at locations —
+    checkout reserves capacity, settlement activates placements.
+    kind=promotion: buys a Joymee-style TOP/RAISED window for ONE
+    already-running placement (`promoted_placement`) — no capacity is
+    consumed and settlement applies the tier+window instead of creating
+    placements."""
 
     class State(models.TextChoices):
         DRAFT_QUOTE = "draft_quote", "Draft quote"
@@ -65,9 +82,20 @@ class Order(models.Model):
         FAILED = "failed", "Failed"
         EXPIRED = "expired", "Expired"
 
+    class Kind(models.TextChoices):
+        PLACEMENT = "placement", "Placement intervals"
+        PROMOTION = "promotion", "Promotion of a running placement"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(Business, on_delete=models.PROTECT, related_name="orders")
     campaign = models.ForeignKey(Campaign, on_delete=models.PROTECT, related_name="orders")
+    kind = models.CharField(max_length=12, choices=Kind.choices,
+                            default=Kind.PLACEMENT)
+    # Set only for kind=promotion: the running placement this order boosts.
+    promoted_placement = models.ForeignKey(
+        "placements.Placement", on_delete=models.PROTECT,
+        related_name="promotion_orders", null=True, blank=True,
+    )
     amount_total = models.BigIntegerField()  # minor units
     currency = models.CharField(max_length=3, default=CURRENCY_UZS)
     state = models.CharField(max_length=20, choices=State.choices, default=State.DRAFT_QUOTE)
@@ -97,6 +125,15 @@ class OrderItem(models.Model):
     unit_rate_snapshot = models.BigIntegerField(help_text="Tariff minor units at quote time")
     charge_days = models.PositiveSmallIntegerField()
     line_total = models.BigIntegerField()  # unit_rate_snapshot * charge_days
+    # Promotion add-on snapshot (spec §6 immutability applies here too): the
+    # tier chosen at quote time and its own locked line amount, so refunds and
+    # audits read the exact paid promotion without re-deriving prices.
+    promotion_tier = models.CharField(
+        max_length=8, choices=PromotionTier.choices, null=True, blank=True
+    )
+    promotion_line_total = models.BigIntegerField(
+        default=0, help_text="Locked promotion surcharge for this line (minor units)"
+    )
 
     class Meta:
         constraints = [
@@ -107,14 +144,26 @@ class OrderItem(models.Model):
         return f"{self.order_id} / {self.location_id} / {self.charge_days}d"
 
 
+def promotion_price_per_24h(tariff: Tariff, tier: str) -> int | None:
+    """Per-24h price of a promotion tier under `tariff`; None when the tier
+    is not offered in this tariff period."""
+    if tier == PromotionTier.TOP:
+        return tariff.amount_top_per_24h
+    if tier == PromotionTier.RAISED:
+        return tariff.amount_raised_per_24h
+    return None
+
+
 def quote_order_lines(
     *,
     campaign: Campaign,
     locations: list[Location],
     start_at: datetime,
     end_at: datetime,
+    promotion_tier: str | None = None,
 ) -> tuple[list[OrderItem], int, Tariff]:
-    """Build (unsaved) order items from the current tariff. The caller validates
+    """Build (unsaved) order items from the current tariff, optionally with a
+    Joymee-style promotion add-on applied to every line. The caller validates
     ownership, per-location capacity and interval conflicts transactionally
     (spec §6, §12)."""
     tariff = Tariff.current()
@@ -125,6 +174,15 @@ def quote_order_lines(
     if any(loc.business_id != campaign.business_id for loc in locations):
         raise ValueError("All locations must belong to the campaign's business")
 
+    promo_rate: int | None = None
+    if promotion_tier:
+        if promotion_tier not in PromotionTier.values:
+            raise ValueError("Unknown promotion tier")
+        promo_rate = promotion_price_per_24h(tariff, promotion_tier)
+        if promo_rate is None:
+            raise ValueError(f"Promotion tier {promotion_tier!r} is not priced "
+                             "in the current tariff")
+
     days = compute_charge_days(start_at, end_at)
     items = [
         OrderItem(
@@ -132,10 +190,12 @@ def quote_order_lines(
             unit_rate_snapshot=tariff.amount_per_24h,
             charge_days=days,
             line_total=tariff.amount_per_24h * days,
+            promotion_tier=promotion_tier or None,
+            promotion_line_total=(promo_rate * days) if promo_rate is not None else 0,
         )
         for loc in locations
     ]
-    total = sum(item.line_total for item in items)
+    total = sum(item.line_total + item.promotion_line_total for item in items)
     return items, total, tariff
 
 

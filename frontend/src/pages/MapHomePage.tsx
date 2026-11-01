@@ -866,6 +866,8 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
           onShowOnMap={showAdOnMap}
           hasFilters={hasFilters}
           onClearFilters={clearFilters}
+          originLat={listOrigin.lat}
+          originLon={listOrigin.lon}
         />
       )}
 

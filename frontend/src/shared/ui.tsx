@@ -192,6 +192,8 @@ export interface ContactActionsProps {
   /** Hide on phones: pages with a StickyContactActions bar render the same
    *  actions twice on small screens — the in-content copy goes away. */
   hiddenOnMobile?: boolean;
+  /** Fired when a contact or directions link is followed (ad engagement counts). */
+  onAction?: () => void;
 }
 function withProtocol(value: string): string {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
@@ -234,6 +236,7 @@ export function ContactActions({
   compact = false,
   shortDirections = false,
   hiddenOnMobile = false,
+  onAction,
 }: ContactActionsProps) {
   const { t } = useI18n();
   const size = compact ? "btn small" : "btn";
@@ -279,6 +282,7 @@ export function ContactActions({
           // tel: in a new tab leaves a blank page (and in-app browsers block it)
           target={href.startsWith("tel:") ? undefined : "_blank"}
           rel="noreferrer"
+          onClick={onAction}
         >
           {icon} {label}
         </a>
@@ -500,13 +504,38 @@ export function AdCard({
   fromLocationId?: string;
   hideBusiness?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <Link to={`/ads/${ad.id}`} className="ad-card" state={{ fromLocationId }}>
       <FallImg src={ad.banner_url} alt="" className="" />
       <div className="ad-card-body">
         <strong>{ad.headline}</strong>
-        {!hideBusiness && <span className="muted-2">{ad.business_name}</span>}
+        {!hideBusiness && (
+          <span className="muted-2">
+            {ad.business_name}
+            {ad.business_verified && <VerifiedBadge title={t.verifiedTitle} />}
+          </span>
+        )}
       </div>
     </Link>
+  );
+}
+
+/** Staff-awarded trust badge (Joymee's blue check): a small blue check circle
+ *  next to a business name on any public surface. Tooltip-only copy lives in
+ *  i18n (`verifiedTitle`) so RU/UZ stay in sync. */
+export function VerifiedBadge({ title }: { title: string }) {
+  return (
+    <span className="verified-badge" title={title} aria-label={title}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M20 6 9 17l-5-5"
+          stroke="currentColor"
+          strokeWidth="3.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
   );
 }

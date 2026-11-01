@@ -8,9 +8,12 @@ urlpatterns = [
          name="public-location-detail"),
     path("campaigns/<uuid:id>", views.PublicCampaignDetailView.as_view(),
          name="public-campaign-detail"),
+    path("campaigns/<uuid:id>/events", views.PublicCampaignEventView.as_view(),
+         name="public-campaign-event"),
     path("categories", views.CategoryListView.as_view(), name="public-categories"),
     path("search", views.PublicSearchView.as_view(), name="public-search"),
     path("ads", views.PublicNearbyAdsView.as_view(), name="public-nearby-ads"),
+    path("featured", views.PublicFeaturedAdsView.as_view(), name="public-featured-ads"),
     path("pricing", views.PublicPricingView.as_view(), name="public-pricing"),
     path("reports", views.PublicReportView.as_view(), name="public-report"),
 ]

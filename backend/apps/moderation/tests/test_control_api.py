@@ -69,3 +69,35 @@ def test_placement_block_unblock_roundtrip(staff, campaign, location):
     assert placement.state == Placement.State.ACTIVE
     assert placement.block_reason == ""
 
+
+
+def test_business_verify_badge_roundtrip_and_guards(staff, owner, business):
+    """Joymee's blue check, staff-only: award via /verify, expose on the admin
+    list, audit both transitions, refuse no-op repeats; non-staff gets 403."""
+    client = _auth(staff)
+    assert _auth(owner).post(
+        reverse("admin-business-verify", kwargs={"id": business.id}),
+        {"reason": "x"}, format="json",
+    ).status_code == 403
+
+    response = client.post(reverse("admin-business-verify", kwargs={"id": business.id}),
+                           {"reason": "met the owner, checked the license"}, format="json")
+    assert response.status_code == 200
+    business.refresh_from_db()
+    assert business.is_verified is True
+    assert ActivityEvent.objects.filter(action="business.verified",
+                                        entity_id=str(business.id)).exists()
+
+    listed = client.get(reverse("admin-businesses"), {"q": business.name}).json()
+    row = next(r for r in listed["results"] if r["id"] == str(business.id))
+    assert row["is_verified"] is True
+
+    # No-op repeat is a conflict, not a silent second award.
+    assert client.post(reverse("admin-business-verify", kwargs={"id": business.id}),
+                       {"reason": "again"}, format="json").status_code == 409
+
+    response = client.post(reverse("admin-business-unverify", kwargs={"id": business.id}),
+                           {"reason": "complaints rechecked"}, format="json")
+    assert response.status_code == 200
+    business.refresh_from_db()
+    assert business.is_verified is False

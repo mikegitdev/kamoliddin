@@ -35,7 +35,7 @@ the client · `—` = not exposed to this layer at all.
 | category     | FK NOT NULL            | **req** (slug of an active category)  | **req** (select)   | Save disabled until chosen |
 | slug         | NOT NULL, unique       | RO — generated `slugify(name)-xxxx`   | —                  | Uniqueness suffix, never user-typed |
 | owner        | FK NOT NULL            | auto — from auth user                 | —                  | Not in serializer fields |
-| logo_key     | blank, default `""`    | opt                                   | — **not editable** | Upload endpoint exists (`purpose=logos`), no cabinet input → OQ-15 |
+| logo_key     | blank, default `""`    | opt                                   | | Cabinet upload/remove (`purpose=logos`), saved on its own via `PATCH logo_key` | Resolved OQ-15 |
 | description  | blank, default `""`    | opt                                   | opt                | |
 | phone        | blank, default `""`    | opt; if non-empty → normalized `+998…`| opt                | Clearable: UI sends `""` |
 | telegram     | blank, default `""`    | opt; accepts `@handle`, `t.me/…` link, phone, or invite hash; stored bare | opt | Clearable via `""` |
@@ -99,6 +99,7 @@ Deletion: **drafts only** (`CampaignDetailView.perform_destroy`).
 | location_ids       | req, non-empty, ≤ 100; all must be own **active** branches; capacity checked per location (spec §14) | req — ≥ 1 checkbox selected          |
 | requested_start_at | req; must not be in the past (grace: now − 60 s)                          | req — `startInPast` blocks quoting    |
 | requested_end_at   | req; must be strictly after start                                         | req — `scheduleOk` gates stage 3       |
+| promotion_tier     | **opt** (`top` \| `raised` \| null); refused with `promotion_unavailable` when the current tariff prices no such tier | opt — radio picker on the schedule step ("no promotion" default); hidden while the tariff prices no tier |
 
 ### 4.2 Checkout (POST /orders/{id}/checkout)
 
@@ -106,14 +107,35 @@ Deletion: **drafts only** (`CampaignDetailView.perform_destroy`).
 |------------|------------------------------|------------------------------|
 | return_url | **opt** (`required=False`, default `""`) | auto — page always sends its own URL |
 
-### 4.3 Order / OrderItem — no advertiser-writable fields
+### 4.3 Promotion quote (POST /orders/promotion-quote) — Joymee tariff page
+
+Buys TOP/RAISED **days** for one already-running placement as a fresh
+one-time order (`kind=promotion`). No wallet, no stored balance (ADR-0007).
+
+| Field        | API rules                                                                 | UI equivalent                          |
+|--------------|---------------------------------------------------------------------------|----------------------------------------|
+| placement_id | req; must be **own, currently ACTIVE**, and carry no live promotion window | auto (per-row “Promote” button)      |
+| tier         | req; `top` \| `raised`; refused `promotion_unavailable` when the tariff prices no such tier | req — radio in the promote dialog |
+| days         | req; integer 1..30                                                        | req — stepper in the promote dialog    |
+
+Server-priced: `tier price × days`, one order item with `line_total = 0`
+and the whole amount in `promotion_line_total`. Settlement stamps the
+window `[now, now+days)` on the placement (`promotion_started_at` /
+`promotion_ends_at`); refunding that order ends the window while the
+placement itself keeps running. Checkout-time add-ons (4.1 `promotion_tier`)
+leave the window fields null — the tier rides the placement interval.
+
+### 4.4 Order / OrderItem — no advertiser-writable fields
 
 Everything on the order is **server-generated and read-only**: `amount_total`,
 `currency`, `state`, `quote_expires_at`, `interval_start_at` / `interval_end_at`
 (quote snapshot), and each OrderItem's `unit_rate_snapshot`, `charge_days`
-(`ceil(duration/24h)`, ≥ 1, spec §6), `line_total`. Totals are snapshotted at
-quote time and immutable once paid. The CheckoutPage has no user-editable money
-fields — only the pay-method choice and the redirect.
+(`ceil(duration/24h)`, ≥ 1, spec §6), `line_total`, plus the promotion add-on
+snapshot `promotion_tier` / `promotion_line_total` (uniform per-24h tier price
+× charge_days, locked at quote time exactly like the base rate). Totals are
+snapshotted at quote time and immutable once paid. The CheckoutPage has no
+user-editable money fields — only the pay-method choice, the promotion pick
+(made earlier, at quote time) and the redirect.
 
 ## 5. Cross-cutting rules
 
@@ -134,10 +156,10 @@ fields — only the pay-method choice and the redirect.
 | OQ | Layer gap | Where |
 |----|-----------|-------|
 | 11 | Resolved: UI and API both require at least 3 trimmed headline characters | `CampaignEditorPage` and `CampaignSerializer.validate_headline` |
-| 12 | Banner-less drafts: model/API require a non-empty `banner_key`; UI papers over it with the sentinel `banners/placeholder.jpg` — a key that **does not exist in media storage** (broken image on such drafts) | `CampaignEditorPage.PLACEHOLDER_BANNER` |
+| 12 | Banner-less drafts: model/API require a non-empty `banner_key`; UI papers over it with the sentinel `banners/placeholder.jpg` — a key that **does not exist in media storage** (broken image on such drafts; the editor now shows a placeholder graphic instead of a broken image — contract choice still open) | `CampaignEditorPage.PLACEHOLDER_BANNER` |
 | 13 | Resolved: Location contacts clear via `""` and hours via `{}` on PATCH; Business contacts also clear via `""` | `BranchesPage` save payload and `BusinessProfilePage` |
 | 14 | `Location.city` is writable in the API but not exposed in the UI — every branch is stored as "Tashkent" | `LocationSerializer` vs `BranchesPage` |
-| 15 | `Business.logo_key` is API-optional with an upload path (`purpose=logos`) but no cabinet UI | `BusinessProfilePage` |
+| 15 | Resolved: `Business.logo_key` has a cabinet upload/remove control | `BusinessProfilePage` |
 
 Each row is mirrored in `docs/architecture/open-questions.md` (#11–#15) for
 decision tracking, including resolved items; none of them is a silent contract.

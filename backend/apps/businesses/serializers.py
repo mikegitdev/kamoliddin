@@ -16,9 +16,11 @@ class BusinessSerializer(ContactFieldsMixin, serializers.ModelSerializer):
         model = Business
         fields = (
             "id", "name", "slug", "category", "owner_phone", "logo_key", "description",
-            "phone", "telegram", "whatsapp", "site", "status", "created_at", "updated_at",
+            "phone", "telegram", "whatsapp", "site", "status", "is_verified",
+            "created_at", "updated_at",
         )
-        read_only_fields = ("id", "slug", "status", "created_at", "updated_at", "owner_phone")
+        read_only_fields = ("id", "slug", "status", "is_verified", "created_at",
+                            "updated_at", "owner_phone")
 
     def validate_name(self, value: str) -> str:
         if not value.strip():

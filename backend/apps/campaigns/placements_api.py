@@ -16,7 +16,9 @@ class PlacementSerializer(serializers.ModelSerializer):
         fields = (
             "id", "location", "location_name", "location_business",
             "start_at", "end_at", "actual_start_at", "actual_end_at",
-            "state", "source_type", "charge_days", "created_at",
+            "state", "source_type", "promotion_tier",
+            "promotion_started_at", "promotion_ends_at",
+            "charge_days", "created_at",
         )
         read_only_fields = fields
 

@@ -51,6 +51,7 @@ import {
 } from "@/shared/icons";
 import { plural, useI18n } from "@/shared/i18n";
 import { CampaignChip, FallImg, QueryError } from "@/shared/ui";
+
 import type { ApiCampaign } from "@/entities/types";
 
 /* ------------------------------------------------------------------ *
@@ -146,6 +147,10 @@ export function CampaignEditorPage() {
   const [start, setStart] = useState(dates.start);
   const [end, setEnd] = useState(dates.end);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Paid visibility add-on (Joymee-style TOP/RAISED). Deliberately NOT part
+  // of the persisted draft: it is a checkout-time money choice, reset on
+  // reload, exactly like picking a tariff on Joymee's promote page.
+  const [promoTier, setPromoTier] = useState<"top" | "raised" | null>(null);
   const [saved, setSaved] = useState<ApiCampaign | null>(null);
   const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [restoredAt, setRestoredAt] = useState<number | null>(null);
@@ -359,6 +364,7 @@ export function CampaignEditorPage() {
       location_ids: [...selected],
       requested_start_at: localInputToIso(start),
       requested_end_at: localInputToIso(end),
+      promotion_tier: promoTier,
     });
 
   const goToCheckout = (order: { id: string }) => {
@@ -452,9 +458,16 @@ export function CampaignEditorPage() {
   const { data: pricing } = usePublicPricing();
   const tariff = pricing?.tariff ?? null;
   const estimateDays = estimateChargeDays(localInputToIso(start), localInputToIso(end));
+  const promoRate =
+    promoTier && tariff ? tariff[`amount_${promoTier}_per_24h`] : null;
   const estimate =
     tariff && selected.size > 0 && estimateDays > 0
-      ? { total: tariff.amount_per_24h * selected.size * estimateDays, currency: tariff.currency }
+      ? {
+          total:
+            (tariff.amount_per_24h + (promoRate ?? 0)) * selected.size * estimateDays,
+          promoRate,
+          currency: tariff.currency,
+        }
       : null;
 
   // ---------- render ----------
@@ -742,7 +755,7 @@ export function CampaignEditorPage() {
                 </span>
               )}
             </div>
-            {bannerUrl && <img className="banner-preview" src={bannerUrl} alt="" />}
+            {bannerUrl && <FallImg className="banner-preview" src={bannerUrl} alt="" />}
             {rawFile && !editingBanner && (
               <button
                 type="button"
@@ -904,6 +917,66 @@ export function CampaignEditorPage() {
             ))}
           </div>
 
+          {/* Paid visibility add-on (Joymee's TOP/RAISE upsell, moved to
+              checkout time): pick a tier, see the surcharge, pay it with the
+              placement in ONE order — no wallet, no second state machine.
+              Hidden entirely while the current tariff prices no tier. */}
+          {tariff && (tariff.amount_top_per_24h != null || tariff.amount_raised_per_24h != null) && (
+            <div className="promo-picker" role="radiogroup" aria-label={t.promoTitle}>
+              <strong>{t.promoTitle}</strong>
+              <div className="promo-options">
+                <button
+                  type="button"
+                  className="promo-option"
+                  role="radio"
+                  aria-checked={promoTier === null}
+                  onClick={() => setPromoTier(null)}
+                >
+                  <span className="promo-name">{t.promoNone}</span>
+                  <span className="muted-2">{t.promoNoneDesc}</span>
+                </button>
+                {tariff.amount_top_per_24h != null && (
+                  <button
+                    type="button"
+                    className="promo-option promo-top"
+                    role="radio"
+                    aria-checked={promoTier === "top"}
+                    onClick={() => setPromoTier("top")}
+                  >
+                    <span className="promo-name">
+                      <span className="promo-badge top">TOP</span>
+                      {t.promoTopName}
+                    </span>
+                    <span className="muted-2">{t.promoTopDesc}</span>
+                    <span className="promo-price">
+                      +{formatMinor(tariff.amount_top_per_24h, tariff.currency, locale)}
+                      {t.perDayShort}
+                    </span>
+                  </button>
+                )}
+                {tariff.amount_raised_per_24h != null && (
+                  <button
+                    type="button"
+                    className="promo-option promo-raised"
+                    role="radio"
+                    aria-checked={promoTier === "raised"}
+                    onClick={() => setPromoTier("raised")}
+                  >
+                    <span className="promo-name">
+                      <span className="promo-badge raised">UP</span>
+                      {t.promoRaisedName}
+                    </span>
+                    <span className="muted-2">{t.promoRaisedDesc}</span>
+                    <span className="promo-price">
+                      +{formatMinor(tariff.amount_raised_per_24h, tariff.currency, locale)}
+                      {t.perDayShort}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Live cost estimate: the quote endpoint stays the source of
               truth — this keeps the money decision informed, not final. */}
           <div className="estimate-card" aria-live="polite">
@@ -916,6 +989,12 @@ export function CampaignEditorPage() {
                 <span className="muted-2">
                   {selected.size} {plural(locale, "locations", selected.size)} × {estimateDays} {t.estimateDaysLabel}{" · "}
                   {formatMinor(tariff!.amount_per_24h, tariff!.currency, locale)} {t.perDay}
+                  {promoRate != null && (
+                    <>
+                      {" · +"}
+                      {formatMinor(promoRate, estimate.currency, locale)} {t.promoAddOn} {t.perDay}
+                    </>
+                  )}
                 </span>
                 <span className="muted-2">{t.estimateNote}</span>
               </>

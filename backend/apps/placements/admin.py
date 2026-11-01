@@ -5,9 +5,9 @@ from .models import FreeGrant, Placement
 
 @admin.register(Placement)
 class PlacementAdmin(admin.ModelAdmin):
-    list_display = ("campaign", "location", "state", "source_type", "charge_days",
-                    "start_at", "end_at")
-    list_filter = ("state", "source_type")
+    list_display = ("campaign", "location", "state", "source_type", "promotion_tier",
+                    "charge_days", "start_at", "end_at")
+    list_filter = ("state", "source_type", "promotion_tier")
     search_fields = ("campaign__headline", "location__name")
 
 

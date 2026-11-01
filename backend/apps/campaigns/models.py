@@ -42,6 +42,54 @@ class Campaign(models.Model):
         return f"{self.headline} ({self.review_status})"
 
 
+class CampaignEvent(models.Model):
+    """Anonymous engagement counter row for a public ad (Joymee borrow #2).
+
+    Only the kind and timestamp are stored — no visitor identity, IP or
+    user agent — so advertisers get counts without any personal data.
+    """
+
+    class Kind(models.TextChoices):
+        VIEW = "view", "Ad opened"
+        CONTACT = "contact", "Contact or directions clicked"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="events")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["campaign", "kind"])]
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.campaign_id}"
+
+
+class CampaignOutcome(models.Model):
+    """Post-campaign outcome survey (Joymee's "were you able to sell?" loop,
+    borrow #8): asked once, after every placement of the campaign has ended.
+
+    The answer is product telemetry for pricing/placement decisions — never
+    public, never money-relevant. One row per campaign, immutable once given
+    (re-asking would only measure regret, not outcomes)."""
+
+    class Answer(models.TextChoices):
+        BROUGHT_CUSTOMERS = "brought_customers", "The ad brought customers"
+        OTHER_CHANNEL = "other_channel", "Customers came via another channel"
+        NO_EFFECT = "no_effect", "No noticeable effect"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.OneToOneField(
+        Campaign, on_delete=models.PROTECT, related_name="outcome"
+    )
+    answer = models.CharField(max_length=20, choices=Answer.choices)
+    comment = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.answer} {self.campaign_id}"
+
+
 class CampaignReview(models.Model):
     """Immutable moderation decision record (spec §5). Never updated, only appended."""
 

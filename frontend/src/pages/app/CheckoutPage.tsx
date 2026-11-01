@@ -134,6 +134,25 @@ export function CheckoutPage() {
       </div>
 
       <div className="table-wrap">
+        {order.kind === "promotion" ? (
+          /* Joymee tariff page: the bought product is a visibility window, not
+           * display time — one clear row instead of a misleading rate table. */
+          <div className="promo-order-summary">
+            <span className={`promo-badge ${order.items[0]?.promotion_tier ?? "top"}`}>
+              {order.items[0]?.promotion_tier === "raised" ? "UP" : "TOP"}
+            </span>
+            <span>
+              <strong>{t.promoOrderTitle}</strong>
+              <span className="muted-2">
+                {" · "}{order.items[0]?.location_name}{" · "}
+                {order.items[0]?.charge_days} × 24 {t.hoursShort}
+              </span>
+            </span>
+            <strong className="promo-order-total">
+              {formatMinor(order.amount_total, order.currency, locale)}
+            </strong>
+          </div>
+        ) : (
         <table className="table">
           <thead>
             <tr>
@@ -146,10 +165,32 @@ export function CheckoutPage() {
           <tbody>
             {order.items.map((item) => (
               <tr key={item.location}>
-                <td data-label={t.branches}>{item.location_name}</td>
-                <td data-label={t.perDay}>{formatMinor(item.unit_rate_snapshot, order.currency, locale)}</td>
+                <td data-label={t.branches}>
+                  {item.location_name}
+                  {item.promotion_tier && (
+                    <span className={`promo-badge ${item.promotion_tier} inline`}>
+                      {item.promotion_tier === "top" ? "TOP" : "UP"}
+                    </span>
+                  )}
+                </td>
+                <td data-label={t.perDay}>
+                  {formatMinor(item.unit_rate_snapshot, order.currency, locale)}
+                  {item.promotion_tier && (
+                    <span className="muted-2 promo-surcharge">
+                      {" +"}
+                      {formatMinor(
+                        Math.round(item.promotion_line_total / item.charge_days),
+                        order.currency,
+                        locale,
+                      )}{" "}
+                      {t.promoAddOn}
+                    </span>
+                  )}
+                </td>
                 <td data-label={t.days}>{item.charge_days}</td>
-                <td data-label={t.total}>{formatMinor(item.line_total, order.currency, locale)}</td>
+                <td data-label={t.total}>
+                  {formatMinor(item.line_total + item.promotion_line_total, order.currency, locale)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -164,7 +205,10 @@ export function CheckoutPage() {
             </tr>
           </tfoot>
         </table>
+        )}
       </div>
+
+      <p className="muted-2">{t.billedWholeDaysNote}</p>
 
       {/* The money decision: amount rests right beside the action. */}
       {(unpaid || showExternal) && (

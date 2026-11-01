@@ -29,6 +29,14 @@ export function ReportsTab({
   const [busy, setBusy] = useState(false);
   const lang = locale as "ru" | "uz";
   const link = useStaffLink();
+  // Same labels the visitor picked from (see shared/dialog.tsx ReportBody).
+  const reasonLabel: Record<string, string> = {
+    spam: t.reportReasonSpam,
+    offensive: t.reportReasonOffensive,
+    prohibited: t.reportReasonProhibited,
+    outdated: t.reportReasonOutdated,
+    other: t.reportReasonOther,
+  };
 
   const process = async (id: string, decision: "resolve" | "dismiss") => {
     setBusy(true);
@@ -69,7 +77,10 @@ export function ReportsTab({
                 </strong>
                 <ReportStateChip state={r.state} />
               </div>
-              <p className="muted-2">{r.reason}</p>
+              <p className="muted-2">
+                <strong>{reasonLabel[r.category] ?? t.reportReasonOther}</strong>
+                {r.reason && ` · ${r.reason}`}
+              </p>
               <div className="muted-2"><IconClock size={12} /> {formatDateTime(r.created_at, lang)}</div>
               {r.state !== "open" && (
                 <div className="muted-2">

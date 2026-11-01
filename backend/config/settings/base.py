@@ -189,6 +189,7 @@ REST_FRAMEWORK = {
         "otp_request": "5/min",
         "otp_verify": "20/min",
         "report": "10/min",  # public complaint submissions
+        "ad_event": "60/min",  # ad open / contact click counters (per IP)
     },
     # Throttles key on the client IP. 0 = REMOTE_ADDR only: a client-sent
     # X-Forwarded-For must never pick the bucket. prod.py raises it to 1

@@ -10,6 +10,7 @@ import {
 } from "@/shared/api/queries";
 import type { ApiCategory } from "@/entities/types";
 import { IconDirections, IconPin } from "@/shared/icons";
+import { FeaturedStrip } from "./FeaturedStrip";
 import { NearbyAdCard } from "./NearbyAdCard";
 
 /** The exact query object shape returned by useNearbyAds(). */
@@ -33,6 +34,8 @@ export function NearbyAdsList({
   onShowOnMap,
   hasFilters,
   onClearFilters,
+  originLat,
+  originLon,
 }: {
   query: NearbyAdsQuery;
   /** Human label of the distance origin ("Near you" / picked point / city center). */
@@ -53,6 +56,9 @@ export function NearbyAdsList({
   onShowOnMap: (ad: ApiNearbyAd) => void;
   hasFilters: boolean;
   onClearFilters: () => void;
+  /** Distance origin for the featured strip (same point the feed sorts by). */
+  originLat: number;
+  originLon: number;
 }) {
   const { t } = useI18n();
   const pages = query.data?.pages ?? [];
@@ -187,6 +193,9 @@ export function NearbyAdsList({
           </div>
         ) : (
           <>
+            {/* Joymee's VIP carousel: live TOP promotions showcase above the
+                organic results — hidden automatically when nothing is live. */}
+            <FeaturedStrip lat={originLat} lon={originLon} categoryName={categoryName} />
             <ul className="ads-list">
               {ads.map((ad, i) => (
                 <NearbyAdCard

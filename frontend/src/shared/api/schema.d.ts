@@ -72,6 +72,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/businesses/{id}/unverify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Award/remove the verified badge
+         * @description POST /admin/businesses/{id}/verify|unverify — award or remove the staff
+         *     trust badge (Joymee's blue check, staff judgment only: no documents are
+         *     collected or stored, the reason lives in the ActivityEvent audit).
+         */
+        post: operations["api_v1_admin_businesses_unverify_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/businesses/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Award/remove the verified badge
+         * @description POST /admin/businesses/{id}/verify|unverify — award or remove the staff
+         *     trust badge (Joymee's blue check, staff judgment only: no documents are
+         *     collected or stored, the reason lives in the ActivityEvent audit).
+         */
+        post: operations["api_v1_admin_businesses_verify_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/campaigns": {
         parameters: {
             query?: never;
@@ -789,6 +833,26 @@ export interface paths {
         patch: operations["api_v1_campaigns_partial_update"];
         trace?: never;
     };
+    "/api/v1/campaigns/{id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the post-campaign outcome survey
+         * @description Asked once per campaign after every placement has ended (Joymee's 'were you able to sell?' loop). Immutable once answered; a second answer is refused.
+         */
+        post: operations["api_v1_campaigns_outcome_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/campaigns/{id}/placements": {
         parameters: {
             query?: never;
@@ -952,6 +1016,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/promotion-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote a promotion for one running placement
+         * @description Joymee-style post-hoc boost: buy TOP/RAISED days for an already-active placement as a fresh one-time order. Server-priced from the current tariff; settlement stamps the promotion window at payment time.
+         */
+        post: operations["api_v1_orders_promotion_quote_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/quote": {
         parameters: {
             query?: never;
@@ -1032,6 +1116,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/campaigns/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record an ad open or contact click
+         * @description Counts only: stores the event kind and time, never the visitor. Accepted only while the ad is publicly live.
+         */
+        post: operations["api_v1_public_campaigns_events_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/categories": {
         parameters: {
             query?: never;
@@ -1041,6 +1145,26 @@ export interface paths {
         };
         /** Business categories */
         get: operations["api_v1_public_categories_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/featured": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Featured strip: currently TOP-promoted campaigns
+         * @description Joymee's VIP pool equivalent — a rotating showcase of campaigns whose TOP promotion window is live right now. One card per campaign; ordered by most recent promotion. Optional lat/lon add a distance_m hint for the strip cards.
+         */
+        get: operations["api_v1_public_featured_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1209,6 +1333,7 @@ export interface components {
             name: string;
             slug: string;
             status?: components["schemas"]["EntityStatusEnum"];
+            is_verified?: boolean;
             readonly category_ru: string;
             readonly category_uz: string;
             /** Format: uuid */
@@ -1246,10 +1371,12 @@ export interface components {
             readonly body: string;
             readonly banner_url: string;
             readonly business_name: string;
+            readonly business_verified: boolean;
             /** Format: date-time */
             readonly starts_at: string;
             /** Format: date-time */
             readonly ends_at: string;
+            readonly promotion: string | null;
             readonly locations: components["schemas"]["PublicAdLocation"][];
             readonly review_status: string;
             /**
@@ -1359,6 +1486,13 @@ export interface components {
             readonly id: string;
             state?: components["schemas"]["PlacementStateEnum"];
             source_type?: components["schemas"]["SourceTypeEnum"];
+            /**
+             * @description Paid visibility add-on purchased with this placement (Joymee-style TOP/RAISED); grants stay null.
+             *
+             *     * `top` - TOP (pinned above organic results)
+             *     * `raised` - RAISED (second promotion block)
+             */
+            promotion_tier?: (components["schemas"]["PromotionTierEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             /** @description Why a BLOCKED placement was blocked (e.g. capacity_conflict) */
             block_reason?: string;
             /** Format: date-time */
@@ -1404,11 +1538,20 @@ export interface components {
             activity: components["schemas"]["AdminActivity"][];
         };
         /**
+         * @description * `brought_customers` - The ad brought customers
+         *     * `other_channel` - Customers came via another channel
+         *     * `no_effect` - No noticeable effect
+         * @enum {string}
+         */
+        AnswerEnum: "brought_customers" | "other_channel" | "no_effect";
+        /**
          * @description * `approve` - approve
          *     * `reject` - reject
          * @enum {string}
          */
         ApproveRejectDecisionEnum: "approve" | "reject";
+        /** @enum {unknown} */
+        BlankEnum: "";
         /** @description validate_<field> hooks for serializers exposing the contact fields. */
         Business: {
             /** Format: uuid */
@@ -1425,6 +1568,7 @@ export interface components {
             /** Format: uri */
             site?: string;
             readonly status: components["schemas"]["EntityStatusEnum"];
+            readonly is_verified: boolean;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1449,6 +1593,14 @@ export interface components {
                 /** Format: date-time */
                 end_at?: string;
             } | null;
+            readonly views_count: number;
+            readonly contact_clicks_count: number;
+            readonly outcome: string;
+            /**
+             * @description Ask exactly once: the campaign ran, every placement has ended, and
+             *     no answer is recorded yet (Joymee's post-sale survey trigger).
+             */
+            readonly outcome_eligible: boolean;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1487,6 +1639,15 @@ export interface components {
             readonly name_ru: string;
             readonly name_uz: string;
         };
+        /**
+         * @description * `spam` - Spam or irrelevant ad
+         *     * `offensive` - Offensive
+         *     * `prohibited` - Prohibited product or service
+         *     * `outdated` - Outdated or wrong information
+         *     * `other` - Other
+         * @enum {string}
+         */
+        CategoryEnum: "spam" | "offensive" | "prohibited" | "outdated" | "other";
         /**
          * @description * `auto` - auto
          *     * `sms` - sms
@@ -1547,6 +1708,12 @@ export interface components {
             locations: components["schemas"]["_GrantLocationOption"][];
             grants: components["schemas"]["_GrantRow"][];
         };
+        /**
+         * @description * `view` - Ad opened
+         *     * `contact` - Contact or directions clicked
+         * @enum {string}
+         */
+        KindEnum: "view" | "contact";
         /** @description validate_<field> hooks for serializers exposing the contact fields. */
         Location: {
             /** Format: uuid */
@@ -1586,6 +1753,8 @@ export interface components {
             key: string;
             url: string;
         };
+        /** @enum {unknown} */
+        NullEnum: null;
         /** @description Uniform 202 body for OTP requests (anti-enumeration). */
         OTPAccepted: {
             readonly detail: string;
@@ -1621,6 +1790,9 @@ export interface components {
             readonly campaign: string;
             readonly campaign_headline: string;
             readonly campaign_status: string;
+            readonly kind: string;
+            /** Format: uuid */
+            readonly promoted_placement: string;
             readonly amount_total: number;
             readonly currency: string;
             readonly state: components["schemas"]["OrderStateEnum"];
@@ -1653,6 +1825,9 @@ export interface components {
             readonly campaign: string;
             readonly campaign_headline: string;
             readonly campaign_status: string;
+            readonly kind: string;
+            /** Format: uuid */
+            readonly promoted_placement: string;
             readonly amount_total: number;
             readonly currency: string;
             readonly state: components["schemas"]["OrderStateEnum"];
@@ -1690,6 +1865,12 @@ export interface components {
             charge_days: number;
             /** Format: int64 */
             line_total: number;
+            promotion_tier?: (components["schemas"]["PromotionTierEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            /**
+             * Format: int64
+             * @description Locked promotion surcharge for this line (minor units)
+             */
+            promotion_line_total?: number;
         };
         /**
          * @description * `draft_quote` - Draft quote
@@ -1701,6 +1882,12 @@ export interface components {
          * @enum {string}
          */
         OrderStateEnum: "draft_quote" | "awaiting_payment" | "payment_processing" | "paid" | "failed" | "expired";
+        /** @description Joymee's 'did it work?' survey — asked once, campaign over. */
+        OutcomeRequest: {
+            answer: components["schemas"]["AnswerEnum"];
+            /** @default  */
+            comment: string;
+        };
         PaginatedAdminActivityList: {
             /** @example 123 */
             count: number;
@@ -1855,6 +2042,7 @@ export interface components {
             /** Format: uri */
             site?: string;
             readonly status?: components["schemas"]["EntityStatusEnum"];
+            readonly is_verified?: boolean;
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -1879,6 +2067,14 @@ export interface components {
                 /** Format: date-time */
                 end_at?: string;
             } | null;
+            readonly views_count?: number;
+            readonly contact_clicks_count?: number;
+            readonly outcome?: string;
+            /**
+             * @description Ask exactly once: the campaign ran, every placement has ended, and
+             *     no answer is recorded yet (Joymee's post-sale survey trigger).
+             */
+            readonly outcome_eligible?: boolean;
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -1951,6 +2147,23 @@ export interface components {
             readonly actual_end_at: string | null;
             readonly state: components["schemas"]["PlacementStateEnum"];
             readonly source_type: components["schemas"]["SourceTypeEnum"];
+            /**
+             * @description Paid visibility add-on purchased with this placement (Joymee-style TOP/RAISED); grants stay null.
+             *
+             *     * `top` - TOP (pinned above organic results)
+             *     * `raised` - RAISED (second promotion block)
+             */
+            readonly promotion_tier: (components["schemas"]["PromotionTierEnum"] | components["schemas"]["NullEnum"]) | null;
+            /**
+             * Format: date-time
+             * @description When a post-hoc promotion window started (settlement time).
+             */
+            readonly promotion_started_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a post-hoc promotion window ends (or was ended by refund).
+             */
+            readonly promotion_ends_at: string | null;
             readonly charge_days: number;
             /** Format: date-time */
             readonly created_at: string;
@@ -1965,6 +2178,22 @@ export interface components {
          * @enum {string}
          */
         PlacementStateEnum: "pending" | "scheduled" | "active" | "expired" | "blocked" | "cancelled";
+        /**
+         * @description Joymee's tariff-page equivalent: buy TOP/RAISED days for ONE running
+         *     placement as a fresh one-time order (ADR-0007 intact — no wallet).
+         */
+        PromotionQuoteRequest: {
+            /** Format: uuid */
+            placement_id: string;
+            tier: components["schemas"]["TierEnum"];
+            days: number;
+        };
+        /**
+         * @description * `top` - TOP (pinned above organic results)
+         *     * `raised` - RAISED (second promotion block)
+         * @enum {string}
+         */
+        PromotionTierEnum: "top" | "raised";
         /**
          * @description Branch context for a directly opened ad link (spec §14): only data of
          *     locations where the campaign is CURRENTLY eligible — same visibility rules
@@ -1993,10 +2222,12 @@ export interface components {
             readonly body: string;
             readonly banner_url: string;
             readonly business_name: string;
+            readonly business_verified: boolean;
             /** Format: date-time */
             readonly starts_at: string;
             /** Format: date-time */
             readonly ends_at: string;
+            readonly promotion: string | null;
         };
         /**
          * @description Ad detail payload plus the currently eligible branches. starts_at/ends_at
@@ -2010,11 +2241,16 @@ export interface components {
             readonly body: string;
             readonly banner_url: string;
             readonly business_name: string;
+            readonly business_verified: boolean;
             /** Format: date-time */
             readonly starts_at: string;
             /** Format: date-time */
             readonly ends_at: string;
+            readonly promotion: string | null;
             readonly locations: components["schemas"]["PublicAdLocation"][];
+        };
+        PublicCampaignEventRequest: {
+            kind: components["schemas"]["KindEnum"];
         };
         /**
          * @description Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
@@ -2031,6 +2267,8 @@ export interface components {
             readonly lat: number;
             readonly category: string;
             readonly business_name: string;
+            /** @description Staff-awarded trust badge (Joymee's blue check). */
+            readonly business_verified: boolean;
             readonly active_ads_count: number;
             readonly preview_headline: string | null;
             readonly preview_banner_url: string | null;
@@ -2050,6 +2288,7 @@ export interface components {
             readonly whatsapp: string;
             readonly business_name: string;
             readonly business_site: string;
+            readonly business_verified: boolean;
             readonly category: string;
             readonly active_ads: components["schemas"]["PublicCampaign"][];
         };
@@ -2059,6 +2298,8 @@ export interface components {
          *     pinned to its nearest CURRENTLY eligible branch (distance is measured to
          *     that branch only — an ineligible nearer branch never shortens it).
          *     `branches_count` counts all currently eligible branches city-wide.
+         *     `promotion` is the Joymee-style paid visibility tier of the campaign
+         *     ("top" / "raised" / null) — drives the badge and the ranking block.
          *     Sourced from a Placement row; context carries a per-campaign eligible
          *     branch count so the page stays N+1-free.
          */
@@ -2069,10 +2310,12 @@ export interface components {
             readonly body: string;
             readonly banner_url: string;
             readonly business_name: string;
+            readonly business_verified: boolean;
             readonly category: string;
             readonly location: components["schemas"]["PublicNearbyAdLocation"];
-            readonly distance_m: number;
+            readonly distance_m: number | null;
             readonly branches_count: number;
+            readonly promotion: string | null;
         };
         /** @description Nearest eligible branch of a nearby-ads card (see PublicNearbyAdSerializer). */
         PublicNearbyAdLocation: {
@@ -2097,6 +2340,8 @@ export interface components {
             entity: components["schemas"]["EntityEnum"];
             /** Format: uuid */
             entity_id: string;
+            /** @default other */
+            category: components["schemas"]["CategoryEnum"];
             reason: string;
         };
         PublicSearchCampaign: {
@@ -2121,6 +2366,8 @@ export interface components {
             readonly lat: number;
             readonly category: string;
             readonly business_name: string;
+            /** @description Staff-awarded trust badge (Joymee's blue check). */
+            readonly business_verified: boolean;
             readonly active_ads_count: number;
             readonly preview_headline: string | null;
             readonly preview_banner_url: string | null;
@@ -2135,6 +2382,10 @@ export interface components {
             readonly currency: string;
             /** @description Minor units (tiyin) */
             readonly amount_per_24h: number;
+            /** @description TOP add-on per 24h; null when not offered */
+            readonly amount_top_per_24h: number | null;
+            /** @description RAISED add-on per 24h; null when not offered */
+            readonly amount_raised_per_24h: number | null;
             /** Format: date-time */
             readonly valid_from: string;
         };
@@ -2164,6 +2415,9 @@ export interface components {
             readonly campaign: string;
             readonly campaign_headline: string;
             readonly campaign_status: string;
+            readonly kind: string;
+            /** Format: uuid */
+            readonly promoted_placement: string;
             readonly amount_total: number;
             readonly currency: string;
             readonly state: components["schemas"]["OrderStateEnum"];
@@ -2197,6 +2451,7 @@ export interface components {
             requested_start_at: string;
             /** Format: date-time */
             requested_end_at: string;
+            promotion_tier?: (components["schemas"]["PromotionTierEnum"] | components["schemas"]["NullEnum"]) | null;
         };
         Reason: {
             reason: string;
@@ -2250,6 +2505,7 @@ export interface components {
             readonly id: string;
             readonly entity: components["schemas"]["EntityEnum"];
             readonly entity_id: string;
+            readonly category: components["schemas"]["CategoryEnum"];
             readonly reason: string;
             readonly state: components["schemas"]["ReportStateEnum"];
             readonly resolution_note: string;
@@ -2331,6 +2587,12 @@ export interface components {
             /** @description Whether login codes are delivered to Telegram */
             readonly bound: boolean;
         };
+        /**
+         * @description * `top` - TOP (pinned above organic results)
+         *     * `raised` - RAISED (second promotion block)
+         * @enum {string}
+         */
+        TierEnum: "top" | "raised";
         /**
          * @description * `live` - live
          *     * `draft` - draft
@@ -2549,6 +2811,60 @@ export interface operations {
                 "application/json": components["schemas"]["StatusChange"];
                 "application/x-www-form-urlencoded": components["schemas"]["StatusChange"];
                 "multipart/form-data": components["schemas"]["StatusChange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    api_v1_admin_businesses_unverify_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    api_v1_admin_businesses_verify_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+                "application/x-www-form-urlencoded": components["schemas"]["Reason"];
+                "multipart/form-data": components["schemas"]["Reason"];
             };
         };
         responses: {
@@ -3745,6 +4061,33 @@ export interface operations {
             };
         };
     };
+    api_v1_campaigns_outcome_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["OutcomeRequest"];
+                "multipart/form-data": components["schemas"]["OutcomeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Campaign"];
+                };
+            };
+        };
+    };
     api_v1_campaigns_placements_list: {
         parameters: {
             query?: never;
@@ -3998,6 +4341,31 @@ export interface operations {
             };
         };
     };
+    api_v1_orders_promotion_quote_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromotionQuoteRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PromotionQuoteRequest"];
+                "multipart/form-data": components["schemas"]["PromotionQuoteRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
+            };
+        };
+    };
     api_v1_orders_quote_create: {
         parameters: {
             query?: never;
@@ -4106,6 +4474,33 @@ export interface operations {
             };
         };
     };
+    api_v1_public_campaigns_events_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicCampaignEventRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PublicCampaignEventRequest"];
+                "multipart/form-data": components["schemas"]["PublicCampaignEventRequest"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_v1_public_categories_list: {
         parameters: {
             query?: never;
@@ -4121,6 +4516,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Category"][];
+                };
+            };
+        };
+    };
+    api_v1_public_featured_retrieve: {
+        parameters: {
+            query?: {
+                lat?: number;
+                /** @description 1..20, default 10 */
+                limit?: number;
+                lon?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicNearbyAdsResult"];
                 };
             };
         };
