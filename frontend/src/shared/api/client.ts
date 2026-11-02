@@ -36,6 +36,7 @@ const CODE_MESSAGES: Record<string, keyof Dict> = {
   order_already_paid: "errOrderPaid",
   order_not_payable: "errOrderNotPayable",
   capacity_exhausted: "errCapacity",
+  grant_exists: "errGrantExists",
   campaign_not_submitted: "errCampaignNotSubmitted",
   start_in_past: "errStartInPast",
   invalid_interval: "endAfterStart",
@@ -54,6 +55,14 @@ const CODE_MESSAGES: Record<string, keyof Dict> = {
   image_too_small: "errImageTooSmall",
   campaign_not_approved: "errCampaignNotApproved",
   location_mismatch: "errLocationMismatch",
+  telegram_bound: "errTelegramBound",
+  telegram_disabled: "errTelegramDisabled",
+  not_draft: "errNotDraft",
+  business_in_use: "errBusinessInUse",
+  location_in_use: "errLocationInUse",
+  already_answered: "errAlreadyAnswered",
+  not_ended: "errNotEnded",
+  too_many_open_quotes: "errTooManyQuotes",
   // Generic fallbacks for raise sites without a specific code
   validation_error: "errValidationError",
   checkout_error: "errCheckout",
@@ -122,9 +131,28 @@ export class ApiError extends Error {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
-function csrfToken(): string | null {
+function csrfTokenFromCookie(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   return match?.[1] ?? null;
+}
+
+// Cross-origin deployments (VITE_API_BASE_URL on another origin) can't read
+// the API's csrftoken cookie — /auth/csrf also returns the token in its body.
+let csrfTokenFromBody: string | null = null;
+
+async function csrfToken(): Promise<string | null> {
+  const cookie = csrfTokenFromCookie();
+  if (cookie) return cookie;
+  if (csrfTokenFromBody === null) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/auth/csrf`, { credentials: "include" });
+      const body = (await res.json()) as { csrftoken?: string } | null;
+      csrfTokenFromBody = body?.csrftoken ?? "";
+    } catch {
+      csrfTokenFromBody = "";
+    }
+  }
+  return csrfTokenFromBody || null;
 }
 
 export async function api<T>(
@@ -137,7 +165,7 @@ export async function api<T>(
   }
   const method = (options.method ?? "GET").toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
-    const token = csrfToken();
+    const token = await csrfToken();
     if (token) headers.set("X-CSRFToken", token);
   }
 
@@ -170,7 +198,34 @@ export async function api<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Session expired mid-use: instead of every panel failing with its own
+      // "not authenticated" error, hand off once to the global handler
+      // (registered by Providers: clears the cache, returns to /login).
+      // Anonymous visitors never reach 401 endpoints — auth-gated pages only.
+      notifyUnauthorized();
+    }
     throw new ApiError(response.status, payload);
   }
   return payload as T;
+}
+
+// --- Global session-expiry hook -----------------------------------------------------
+
+let unauthorizedHandler: (() => void) | null = null;
+let unauthorizedInFlight = false;
+
+/** Registers the app-wide "session expired" reaction (Providers, once). */
+export function setUnauthorizedHandler(fn: () => void): void {
+  unauthorizedHandler = fn;
+}
+
+function notifyUnauthorized(): void {
+  if (unauthorizedInFlight || !unauthorizedHandler) return;
+  unauthorizedInFlight = true;
+  try {
+    unauthorizedHandler();
+  } finally {
+    unauthorizedInFlight = false;
+  }
 }

@@ -32,7 +32,9 @@ $COMPOSE pull --ignore-pull-failures
 echo "==> 5/10 Migration check + migrate + collectstatic (explicit, fail-fast)"
 $COMPOSE run --rm web python manage.py makemigrations --check --dry-run
 $COMPOSE run --rm web python manage.py migrate
-$COMPOSE run --rm web python manage.py collectstatic --noinput
+# The image runs as the unprivileged `app` user; collectstatic writes into
+# the root-owned-on-reuse backend_static volume, so elevate for this step.
+$COMPOSE run --rm --user root web python manage.py collectstatic --noinput
 
 echo "==> 6/10 Garage app key + bucket grant (idempotent)"
 ENV_FILE="$ENV_FILE" infra/scripts/garage-init.sh
@@ -41,7 +43,9 @@ echo "==> 7/10 Starting services"
 $COMPOSE up -d
 
 echo "==> 8/10 Health gates: web readiness (DB, 503 on failure) + Celery"
-$COMPOSE exec -T web curl -fsS http://localhost:8000/health/
+# X-Forwarded-Proto: SECURE_SSL_REDIRECT would answer a bare request with a
+# 301, which curl -f treats as success — the gate would pass on a dead DB.
+$COMPOSE exec -T web curl -fsS -H "X-Forwarded-Proto: https" http://localhost:8000/health/
 echo
 $COMPOSE exec -T worker celery -A config inspect ping
 
@@ -49,9 +53,12 @@ echo "==> 9/10 Release SHA"
 git rev-parse HEAD > .last-release-sha || true
 
 echo "==> 10/10 External HTTPS spot-check"
-if curl -fsS "https://localhost/health/" -o /dev/null 2>/dev/null; then
+# --resolve pins the real domain to loopback so the cert's SAN validates.
+DOMAIN="$(grep -E '^DJANGO_ALLOWED_HOSTS=' "$ENV_FILE" | head -1 | cut -d= -f2 | cut -d, -f1 | tr -d ' ')"
+if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "*" ] \
+   && curl -fsS --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/health/" -o /dev/null 2>/dev/null; then
   echo "TLS serving OK"
 else
-  echo "WARN: https://localhost/health/ failed (cert CN is the site domain) — verify https://<domain>/health/ manually."
+  echo "WARN: external spot-check failed — verify https://<domain>/health/ manually."
 fi
 echo "Done. Rollback: docs/runbooks/deploy.md (forward-only schema caveats)."

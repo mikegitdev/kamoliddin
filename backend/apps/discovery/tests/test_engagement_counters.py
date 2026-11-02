@@ -40,10 +40,17 @@ def test_event_on_live_ad_is_counted(rf, campaign, location):
     _make_eligible(campaign, location)
 
     assert _event(rf, campaign.id, "view").status_code == 202
+    assert _event(rf, campaign.id, "view").status_code == 202
     assert _event(rf, campaign.id, "contact").status_code == 202
 
     kinds = sorted(CampaignEvent.objects.filter(campaign=campaign).values_list("kind", flat=True))
-    assert kinds == ["contact", "view"]
+    assert kinds == ["contact", "view", "view"]
+
+    # Denormalized counters stay in lockstep with the raw rows (the cabinet
+    # reads the columns, never a live Count over the events table).
+    campaign.refresh_from_db()
+    assert campaign.views_count == 2
+    assert campaign.contact_clicks_count == 1
 
 
 def test_event_on_non_live_ad_is_refused_and_not_stored(rf, campaign):

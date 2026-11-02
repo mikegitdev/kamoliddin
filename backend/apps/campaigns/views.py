@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AnonymousUser
+from django.db import transaction
 from django.db.models import Count, Exists, Min, OuterRef, Q, Subquery
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -15,7 +16,7 @@ from rest_framework.views import APIView
 from apps.moderation.services import ModerationError, submit_for_review
 from apps.placements.models import Placement, eligible_now_q
 
-from .models import Campaign, CampaignEvent, CampaignOutcome, CampaignReview
+from .models import Campaign, CampaignOutcome, CampaignReview
 from .serializers import CampaignReviewSerializer, CampaignSerializer
 
 
@@ -49,13 +50,13 @@ def with_live_annotation(qs):
         ),
         next_interval_start=Min("placements__start_at", filter=upcoming),
         next_interval_end=Min("placements__end_at", filter=upcoming),
-        views_count=Count("events", filter=Q(events__kind=CampaignEvent.Kind.VIEW), distinct=True),
-        contact_clicks_count=Count(
-            "events", filter=Q(events__kind=CampaignEvent.Kind.CONTACT), distinct=True
-        ),
         outcome_answer=outcome_answer,
         outcome_ever_ran=ever_ran,
         outcome_still_running=still_running,
+    ).prefetch_related(
+        # get_outcome reads obj.outcome when the annotation says an answer
+        # exists — without the prefetch that is one query per answered row.
+        "outcome"
     )
 
 
@@ -106,7 +107,7 @@ class CampaignDetailView(RetrieveUpdateDestroyAPIView):
         # and routes advertiser cancellation through the refund flow instead.
         if instance.review_status != Campaign.ReviewStatus.DRAFT:
             raise ValidationError(
-                {"detail": "Only draft campaigns can be deleted"}, code="not_draft"
+                "Only draft campaigns can be deleted", code="not_draft"
             )
         instance.delete()
 
@@ -138,6 +139,47 @@ class CampaignSubmitView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(CampaignSerializer(campaign).data)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Campaigns"],
+        summary="Duplicate a campaign as a fresh draft",
+        description="Spec §13 cabinet flow (create/copy/purchase another term): "
+                    "copies headline, body and banner into a new DRAFT with "
+                    "review_version 1. The banner storage object is shared; "
+                    "reviews, orders and placements are not carried over.",
+        request=None,
+        responses={201: CampaignSerializer},
+    )
+)
+class CampaignCopyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        source = Campaign.objects.filter(
+            pk=id, business__owner=request.user
+        ).first()
+        if source is None:
+            return Response(
+                {"error": {"code": "not_found", "message": "Campaign not found", "fields": {}}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        with transaction.atomic():
+            copy = Campaign.objects.create(
+                business=source.business,
+                headline=source.headline,
+                body=source.body,
+                banner_key=source.banner_key,
+                review_status=Campaign.ReviewStatus.DRAFT,
+                review_version=1,
+            )
+        fresh = (
+            with_live_annotation(
+                Campaign.objects.filter(pk=copy.pk).select_related("business")
+            ).first()
+        )
+        return Response(CampaignSerializer(fresh).data, status=status.HTTP_201_CREATED)
 
 
 class OutcomeRequestSerializer(serializers.Serializer):

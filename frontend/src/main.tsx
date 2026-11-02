@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "maplibre-gl/dist/maplibre-gl.css";
+/* maplibre's CSS moved to the adapter module — it ships with the maplibre
+   chunk instead of every route's stylesheet. */
 /* Self-hosted Montserrat (latin + cyrillic subsets via unicode-range) — the
    design system's typeface (free stand-in for Gotham, see joymee_design_system.md). */
 import "@fontsource/montserrat/400.css";

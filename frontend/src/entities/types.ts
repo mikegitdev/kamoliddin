@@ -24,6 +24,7 @@ export interface ApiLocationPin {
    *  null when none — drives the result-card thumbnail. */
   preview_headline?: string | null;
   preview_banner_url?: string | null;
+  preview_banner_thumb_url?: string | null;
 }
 
 export interface ApiActiveAd {
@@ -31,6 +32,7 @@ export interface ApiActiveAd {
   headline: string;
   body: string;
   banner_url: string;
+  banner_thumb_url?: string;
   business_name: string;
   starts_at: string;
   ends_at: string;
@@ -173,6 +175,7 @@ export interface ApiCampaign {
   body: string;
   banner_key: string;
   banner_url: string;
+  banner_thumb_url?: string;
   review_status: CampaignStatus;
   review_version: number;
   /** PUBLICATION state, independent of review_status: count of placements
@@ -240,6 +243,8 @@ export interface ApiOrder {
   interval_start_at: string | null;
   interval_end_at: string | null;
   items: ApiOrderItem[];
+  /** Latest refund state (null when none requested); hides re-request UI. */
+  refund_state?: string | null;
   created_at: string;
   updated_at: string;
 }

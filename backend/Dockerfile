@@ -28,8 +28,16 @@ COPY . .
 FROM base AS dev
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
-# Default (no --target): production image, unchanged behavior.
+# Default (no --target): production image.
 FROM base
+
+# Non-root runtime user. /app/staticfiles and /data are the only writable
+# paths (named volumes inherit this ownership when first created); deploys
+# run `collectstatic` via `compose run --user root` (deploy.sh step 5).
+RUN useradd --system --uid 1000 app \
+    && mkdir -p /app/staticfiles /data \
+    && chown app:app /app/staticfiles /data
+USER app
 
 EXPOSE 8000
 

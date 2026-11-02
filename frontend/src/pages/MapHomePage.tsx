@@ -75,7 +75,10 @@ type GeoState = "idle" | "locating" | "denied";
 const PANEL_SELECTOR = ".results-panel";
 function panelWidth(): number {
   const panel = document.querySelector(PANEL_SELECTOR) as HTMLElement | null;
-  return panel?.offsetWidth ?? 380;
+  // `?? 380` misses the collapsed-desktop case: the pill is display:none, so
+  // offsetWidth is 0 — treat non-positive measurements as "no panel".
+  const w = panel?.offsetWidth ?? 0;
+  return w > 1 ? w : 380;
 }
 function panelFlyOffset(): [number, number] {
   return [Math.round(panelWidth() * 0.55), 0];
@@ -280,9 +283,12 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     if (searchActive) rememberSearch(debouncedQuery);
     const pin = pinsById.get(id);
     const adapter = adapterRef.current;
-    if (!pin || !fly || !adapter) return;
+    if (!pin || !adapter) return;
+    // Reposition only when the pin is NOT comfortably visible — covers both
+    // list clicks (fly=true) and marker clicks (fly=false): a marker in the
+    // lower half of the screen must not hide behind the detail sheet.
     const bounds = adapter.getBounds();
-    if (!bounds || !comfortablyVisible(bounds, pin.lon, pin.lat)) {
+    if (!fly || !bounds || !comfortablyVisible(bounds, pin.lon, pin.lat)) {
       // Offset the target so the pin is not hidden behind the panel / sheet.
       const offset: [number, number] = isMobile ? MOBILE_FLY_OFFSET : panelFlyOffset();
       adapter.flyTo([pin.lon, pin.lat], DETAIL_ZOOM, offset);
@@ -313,20 +319,23 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
     if (searchActive) setSheet((s) => (s === "collapsed" ? "list" : s));
   }, [searchActive]);
 
-  // Area mode: if the user pans far enough that the selected pin leaves the
-  // fetched results, drop the stale selection instead of showing a skeleton.
+  // Stale-selection guards: if the user pans (area mode) or the search
+  // refetch drops the selected pin from the live result set, clear the
+  // selection instead of leaving a skeleton detail sheet forever.
   // A branch pinned from the ads list is exempt until the refetch lands.
   useEffect(() => {
+    if (!selectedPin || pinnedFromList?.id === selectedPin) return;
+    if (!searchActive && pins !== undefined && !pins.some((p) => p.id === selectedPin)) {
+      clearSelection();
+    }
     if (
-      selectedPin &&
-      pinnedFromList?.id !== selectedPin &&
-      !searchActive &&
-      pins !== undefined &&
-      !pins.some((p) => p.id === selectedPin)
+      searchActive &&
+      searchData !== undefined &&
+      !searchData.locations.some((p) => p.id === selectedPin)
     ) {
       clearSelection();
     }
-  }, [selectedPin, searchActive, pins, clearSelection, pinnedFromList]);
+  }, [selectedPin, searchActive, pins, searchData, clearSelection, pinnedFromList]);
 
   // Deep link /?pin=<id> ("show on map" from detail pages): select the pin
   // once its data is available, then clean the URL so refresh behaves
@@ -524,11 +533,17 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
   // who draws on top). It must stay neutral — never ad volume (spec §10 [C]):
   // search keeps result order (relevance, then distance); browsing ranks by
   // distance from the map center, so priority follows where the visitor looks.
+  // Quantized to ~100m: re-ranking on sub-cell pans only re-uploads the whole
+  // GeoJSON source for an order nobody can perceive.
   const rankCenter = searchActive ? null : camera?.center ?? null;
+  const rankKey = rankCenter
+    ? `${rankCenter[0].toFixed(3)},${rankCenter[1].toFixed(3)}`
+    : "";
   const markers = useMemo(() => {
     let ordered = resultsWithPin;
-    if (rankCenter) {
-      const [cLon, cLat] = rankCenter;
+    const center = rankKey ? (rankKey.split(",").map(Number) as [number, number]) : null;
+    if (center) {
+      const [cLon, cLat] = center;
       const kx = Math.cos((cLat * Math.PI) / 180); // equirectangular is plenty at city scale
       const dist = (p: ApiLocationPin) => ((p.lon - cLon) * kx) ** 2 + (p.lat - cLat) ** 2;
       ordered = [...resultsWithPin].sort((a, b) => dist(a) - dist(b));
@@ -540,7 +555,7 @@ export function MapHomePage({ active = true }: { active?: boolean }) {
       activeAdsCount: p.active_ads_count,
       label: p.business_name,
     }));
-  }, [resultsWithPin, rankCenter]);
+  }, [resultsWithPin, rankKey]);
 
   // Must run after init AND whenever the visible result set or its order
   // changes (viewport pan, search, category). Without it the map is just tiles.

@@ -1,25 +1,62 @@
+import { lazy } from "react";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/RootLayout";
-import { LocationDetailPage } from "@/pages/LocationDetailPage";
-import { PublicAdPage } from "@/pages/PublicAdPage";
-import { LoginPage } from "@/pages/LoginPage";
-import { DemoPayPage } from "@/pages/DemoPayPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RouteErrorPage } from "@/pages/RouteErrorPage";
-import { StaffPage } from "@/pages/StaffPage";
-import {
-  AdvertiserLayout,
-  OverviewPage,
-  BusinessProfilePage,
-  BranchesPage,
-  CampaignsPage,
-  CampaignDetailPage,
-  CampaignEditorPage,
-  CheckoutPage,
-  BillingPage,
-  OrderDetailPage,
-  AccountPage,
-} from "@/pages/app";
+
+// Route-level code splitting: staff console, cabinet, editor, demo pay and the
+// public detail pages each load on first visit instead of fusing into the
+// entry chunk (per-file imports — the pages/app barrel would undo the split).
+// RouteErrorPage/NotFoundPage stay eager: they must render when a lazy chunk
+// fails to load.
+const LocationDetailPage = lazy(() =>
+  import("@/pages/LocationDetailPage").then((m) => ({ default: m.LocationDetailPage })),
+);
+const PublicAdPage = lazy(() =>
+  import("@/pages/PublicAdPage").then((m) => ({ default: m.PublicAdPage })),
+);
+const LoginPage = lazy(() =>
+  import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+const DemoPayPage = lazy(() =>
+  import("@/pages/DemoPayPage").then((m) => ({ default: m.DemoPayPage })),
+);
+const StaffPage = lazy(() =>
+  import("@/pages/StaffPage").then((m) => ({ default: m.StaffPage })),
+);
+const AdvertiserLayout = lazy(() =>
+  import("@/pages/app/layout").then((m) => ({ default: m.AdvertiserLayout })),
+);
+const OverviewPage = lazy(() =>
+  import("@/pages/app/OverviewPage").then((m) => ({ default: m.OverviewPage })),
+);
+const BusinessProfilePage = lazy(() =>
+  import("@/pages/app/BusinessProfilePage").then((m) => ({ default: m.BusinessProfilePage })),
+);
+const BranchesPage = lazy(() =>
+  import("@/pages/app/BranchesPage").then((m) => ({ default: m.BranchesPage })),
+);
+const CampaignsPage = lazy(() =>
+  import("@/pages/app/CampaignsPage").then((m) => ({ default: m.CampaignsPage })),
+);
+const CampaignDetailPage = lazy(() =>
+  import("@/pages/app/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })),
+);
+const CampaignEditorPage = lazy(() =>
+  import("@/pages/app/CampaignEditorPage").then((m) => ({ default: m.CampaignEditorPage })),
+);
+const CheckoutPage = lazy(() =>
+  import("@/pages/app/CheckoutPage").then((m) => ({ default: m.CheckoutPage })),
+);
+const BillingPage = lazy(() =>
+  import("@/pages/app/BillingPage").then((m) => ({ default: m.BillingPage })),
+);
+const OrderDetailPage = lazy(() =>
+  import("@/pages/app/OrderDetailPage").then((m) => ({ default: m.OrderDetailPage })),
+);
+const AccountPage = lazy(() =>
+  import("@/pages/app/AccountPage").then((m) => ({ default: m.AccountPage })),
+);
 
 /** Data router (createBrowserRouter): enables useBlocker for the dirty-form
  *  route-leave guards. Route tree is identical to the previous <Routes>. */

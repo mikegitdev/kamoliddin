@@ -86,7 +86,7 @@ export function CampaignsTab({ locale }: { locale: string }) {
               <tr key={c.id}>
                 <td className="max-w-240 wrap-anywhere">
                   <div className="staff-entity">
-                    <FallImg className="thumb" src={c.banner_url} alt="" />
+                    <FallImg className="thumb" src={c.banner_thumb_url || c.banner_url} alt="" />
                     <strong>{c.headline}</strong>
                   </div>
                 </td>

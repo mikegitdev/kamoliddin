@@ -15,8 +15,21 @@ class ModerationError(Exception):
     pass
 
 
+def _locked_campaign(campaign: Campaign) -> Campaign:
+    """Re-read the campaign under a row lock INTO the same instance.
+
+    Every review transition validates review_status then writes it; without
+    the lock, two concurrent staff requests can both pass the check and both
+    append contradictory immutable CampaignReview rows (and approval also
+    activates placements — money-adjacent). refresh-from-locked-queryset
+    keeps the caller's instance identity and in-place mutation contract."""
+    campaign.refresh_from_db(from_queryset=Campaign.objects.select_for_update())
+    return campaign
+
+
 @transaction.atomic
 def approve_campaign(*, campaign: Campaign, reviewer) -> CampaignReview:
+    campaign = _locked_campaign(campaign)
     if campaign.review_status not in (
         Campaign.ReviewStatus.SUBMITTED,
         Campaign.ReviewStatus.UNDER_REVIEW,
@@ -56,6 +69,7 @@ def approve_campaign(*, campaign: Campaign, reviewer) -> CampaignReview:
 
 @transaction.atomic
 def reject_campaign(*, campaign: Campaign, reviewer, reason: str) -> CampaignReview:
+    campaign = _locked_campaign(campaign)
     if campaign.review_status not in (
         Campaign.ReviewStatus.SUBMITTED,
         Campaign.ReviewStatus.UNDER_REVIEW,
@@ -84,8 +98,10 @@ def reject_campaign(*, campaign: Campaign, reviewer, reason: str) -> CampaignRev
     return review
 
 
+@transaction.atomic
 def submit_for_review(*, campaign: Campaign, actor=None) -> None:
     """draft/rejected -> submitted; bumps review_version when resubmitting edits."""
+    campaign = _locked_campaign(campaign)
     if campaign.review_status not in (
         Campaign.ReviewStatus.DRAFT,
         Campaign.ReviewStatus.REJECTED,
@@ -111,6 +127,7 @@ def submit_for_review(*, campaign: Campaign, actor=None) -> None:
 def suspend_campaign(*, campaign: Campaign, staff, reason: str) -> None:
     """Admin takedown (spec §7.1): approved -> suspended. Public visibility is
     computed live (approved-only), so a suspend hides every placement at once."""
+    campaign = _locked_campaign(campaign)
     if campaign.review_status != Campaign.ReviewStatus.APPROVED:
         raise ModerationError(
             f"Cannot suspend campaign in status {campaign.review_status!r}"
@@ -125,6 +142,7 @@ def suspend_campaign(*, campaign: Campaign, staff, reason: str) -> None:
 
 @transaction.atomic
 def unsuspend_campaign(*, campaign: Campaign, staff, reason: str = "") -> None:
+    campaign = _locked_campaign(campaign)
     if campaign.review_status != Campaign.ReviewStatus.SUSPENDED:
         raise ModerationError(
             f"Cannot unsuspend campaign in status {campaign.review_status!r}"

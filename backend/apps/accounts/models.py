@@ -9,8 +9,10 @@ from .managers import UserManager
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    """Phone-identified account. No email, no username; OTP login for owners,
-    password login only for staff using Django admin (spec §3, §9)."""
+    """Phone-identified account. No email, no username; OTP login for owners;
+    staff use phone+password for Django Admin — staff may ALSO open a normal
+    OTP session for the /staff console (documented scaffold assumption,
+    open-questions.md) (spec §3, §9)."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone_e164 = models.CharField("phone (E.164)", max_length=16, unique=True)
@@ -53,7 +55,9 @@ class OTPChallenge(models.Model):
         PHONE_CHANGE = "phone_change", "Phone change"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone_e164 = models.CharField(max_length=16, db_index=True)
+    # The phone is stored ONLY as a lookup hash — a challenge row must not
+    # retain plaintext numbers (abandoned login attempts never became users).
+    # Staff correlate challenges to phones via the hashed admin search.
     phone_hash = models.CharField(max_length=64, db_index=True)
     code_hash = models.CharField(max_length=64)
     purpose = models.CharField(max_length=20, choices=Purpose.choices, default=Purpose.LOGIN)
@@ -61,7 +65,8 @@ class OTPChallenge(models.Model):
     attempts = models.PositiveSmallIntegerField(default=0)
     resend_after = models.DateTimeField()
     consumed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # Indexed: the ops report's 24h OTP health scan and the daily quota check.
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         indexes = [
@@ -69,7 +74,7 @@ class OTPChallenge(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"OTP {self.phone_e164} ({self.purpose})"
+        return f"OTP {self.phone_hash[:8]}… ({self.purpose})"
 
 
 class PhoneChangeRecord(models.Model):

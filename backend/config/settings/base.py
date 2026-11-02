@@ -95,6 +95,9 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": env.db_url("DATABASE_URL", default="postgis://localads:localads@localhost:5432/localads"),
 }
+# Persistent connections: without this every request pays a fresh Postgres
+# connection handshake across the gunicorn workers.
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 
 # --- Cache / Celery ----------------------------------------------------------
 
@@ -108,6 +111,11 @@ CACHES = {
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_DEFAULT_QUEUE = "default"
+# Hard ceiling for the beat-driven sweeps: a hung sweep (e.g. a future HTTP
+# payment gateway without its own socket timeout) must not pin the worker
+# forever — beat re-dispatches idempotently on the next tick.
+CELERY_TASK_TIME_LIMIT = 600
+CELERY_TASK_SOFT_TIME_LIMIT = 540
 CELERY_BEAT_SCHEDULE = {
     "refresh-placement-states": {
         "task": "apps.placements.tasks.refresh_states_task",
@@ -124,16 +132,25 @@ CELERY_BEAT_SCHEDULE = {
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        # Attaches the current request id (X-Request-ID middleware) to every
+        # record — spec §15 structured logs.
+        "request_id": {"()": "apps.core.logging.RequestIDLogFilter"},
+    },
     "formatters": {
+        # Dev default: human-readable one-liner. Prod switches the handler to
+        # the JSON formatter below (config/settings/prod.py).
         "console": {
-            "format": "{levelname} {asctime} {name} {message}",
+            "format": "{levelname} {asctime} {name} [{request_id}] {message}",
             "style": "{",
         },
+        "json": {"()": "apps.core.logging.JsonFormatter"},
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "console",
+            "filters": ["request_id"],
         },
     },
     # Root catches apps.* loggers (exception handler tracebacks, webhook
@@ -215,9 +232,14 @@ SPECTACULAR_SETTINGS = {
         # Location.Status and Business.Status are the same choice set.
         "EntityStatusEnum": "apps.locations.models.Location.Status",
         "ReviewDecisionEnum": "apps.campaigns.models.CampaignReview.Decision",
+        "PromotionTierEnum": "apps.placements.models.PromotionTier",
         "ApproveRejectDecisionEnum": [("approve", "approve"), ("reject", "reject")],
         "ReportDecisionEnum": [("resolve", "resolve"), ("dismiss", "dismiss")],
     },
+    # The schema and Swagger UI expose the full API surface — staff only.
+    # drf-spectacular defaults SERVE_PERMISSIONS to AllowAny, bypassing
+    # DEFAULT_PERMISSION_CLASSES (verified: anonymous /api/docs/ was 200).
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
 }
 
 # --- i18n / tz -------------------------------------------------------------------

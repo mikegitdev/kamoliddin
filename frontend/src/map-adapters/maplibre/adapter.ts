@@ -1,4 +1,7 @@
 import maplibregl from "maplibre-gl";
+// Ships with the maplibre chunk (not the eager stylesheet) — this module is
+// the only consumer of maplibre's styles.
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { LatLngBounds, MapAdapter, MapAdapterOptions, MapMarker } from "../types";
 
 /** Mirrors --brand / --ink in index.css (map paint can't read CSS vars). */
@@ -120,6 +123,10 @@ const DEV_ATTRIBUTION = "© OpenStreetMap contributors";
 export class MapLibreAdapter implements MapAdapter {
   private map: maplibregl.Map | null = null;
   private clickCallback: ((id: string) => void) | null = null;
+  private viewportCallback: ((bounds: LatLngBounds, zoom: number) => void) | null = null;
+  private viewportBound = false;
+  private mapClickCallback: ((lng: number, lat: number) => void) | null = null;
+  private mapClickBound = false;
   private pickMarker: maplibregl.Marker | null = null;
   private pickChangeCallback: ((lng: number, lat: number) => void) | null = null;
   private ready = false;
@@ -326,8 +333,10 @@ export class MapLibreAdapter implements MapAdapter {
   private setData(markers: MapMarker[], cluster: boolean): void {
     const map = this.map;
     if (!map || !map.isStyleLoaded()) {
-      // Retry once the style is ready (first paint).
-      map?.once("load", () => this.setData(markers, cluster));
+      // Retry once the style settles. "idle" (not a second "load"): load only
+      // fires once, so a mid-session style source gap would otherwise drop
+      // markers with no recovery.
+      map?.once("idle", () => this.setData(markers, cluster));
       return;
     }
 
@@ -603,11 +612,19 @@ export class MapLibreAdapter implements MapAdapter {
   }
 
   onViewportChange(cb: (bounds: LatLngBounds, zoom: number) => void): void {
+    // Callback storage (not map.on per call): repeated registrations must
+    // replace, never accumulate, listeners.
+    this.viewportCallback = cb;
+    if (this.viewportBound) return;
+    this.viewportBound = true;
     this.map?.on("moveend", () => {
-      const b = this.map!.getBounds();
+      const cb = this.viewportCallback;
+      const map = this.map;
+      if (!cb || !map) return;
+      const b = map.getBounds();
       cb(
         { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() },
-        this.map!.getZoom(),
+        map.getZoom(),
       );
     });
   }
@@ -617,8 +634,12 @@ export class MapLibreAdapter implements MapAdapter {
   }
 
   onMapClick(cb: (lng: number, lat: number) => void): void {
+    // Same replacement semantics as onViewportChange.
+    this.mapClickCallback = cb;
+    if (this.mapClickBound) return;
+    this.mapClickBound = true;
     this.map?.on("click", (e) => {
-      cb(e.lngLat.lng, e.lngLat.lat);
+      this.mapClickCallback?.(e.lngLat.lng, e.lngLat.lat);
     });
   }
 

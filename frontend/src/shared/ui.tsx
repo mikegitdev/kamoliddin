@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation as useRouterLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "@/shared/i18n";
 import type { Dict } from "@/shared/i18n/ru";
+import { ApiError } from "@/shared/api/client";
 import { isOpenNow, tashkentNow, WEEK_DAYS, weekdayLabel, type WeekDay } from "@/shared/format";
 import type { ApiActiveAd, CampaignStatus, OrderState } from "@/entities/types";
 import {
@@ -120,12 +121,14 @@ export function AttemptChip({ status }: { status: string }) {
 const REFUND_CLASS: Record<string, string> = {
   refund_requested: "chip orange",
   admin_review: "chip blue",
+  provider_refund_processing: "chip blue",
   refunded: "chip green",
   refund_failed: "chip red",
 };
 const REFUND_LABEL: Record<string, keyof Dict> = {
   refund_requested: "stRefundRequested",
   admin_review: "stRefundAdminReview",
+  provider_refund_processing: "stRefundProcessing",
   refunded: "stRefundRefunded",
   refund_failed: "stRefundRejected",
 };
@@ -423,11 +426,20 @@ export function ShareButton({ title, text, url: shareUrl }: { title?: string; te
 
 /** Failed-load callout with retry — a query error must never render as an
  *  empty list or "not found". */
-export function QueryError({ onRetry }: { onRetry: () => void }) {
+export function QueryError({
+  onRetry,
+  error,
+}: {
+  onRetry: () => void;
+  /** When passed, network failures show their localized message instead of
+   *  the generic "failed to load" (users can tell offline from server-down). */
+  error?: unknown;
+}) {
   const { t } = useI18n();
+  const message = error instanceof ApiError ? error.message : t.loadError;
   return (
     <div className="callout danger" role="alert">
-      <span>{t.loadError}</span>
+      <span>{message}</span>
       <button className="btn small" onClick={onRetry}>
         {t.retry}
       </button>

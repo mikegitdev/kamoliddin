@@ -49,6 +49,9 @@ services:
       - ../nginx/certs:/etc/nginx/certs:ro
       - ../nginx/certbot:/var/www/certbot:ro
       - ../../frontend/dist:/var/www/frontend:ro
+      # Shared static volume: nginx serves whitenoise output directly so
+      # /static/ traffic never occupies a gunicorn worker.
+      - backend_static:/var/www/static:ro
     networks: [frontend_net]
     restart: unless-stopped
     <<: *logging
@@ -108,6 +111,12 @@ services:
 
   redis:
     image: redis:7-alpine
+    # AOF persistence: the broker (Celery) and throttle/cache DBs survive a
+    # container recreate. Beat-driven tasks re-dispatch on the next tick
+    # anyway, but any future delay() call must not silently vanish.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     networks: [backend_net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -151,3 +160,4 @@ volumes:
   garage_data:
   beat_schedule:
   backend_static:
+  redis_data:

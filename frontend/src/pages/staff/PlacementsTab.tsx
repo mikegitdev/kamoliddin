@@ -122,7 +122,7 @@ export function PlacementsTab({ locale }: { locale: string }) {
               <tr key={p.id}>
                 <td className="max-w-240 wrap-anywhere">
                   <div className="staff-entity">
-                    <FallImg className="thumb" src={p.banner_url} alt="" />
+                    <FallImg className="thumb" src={p.banner_thumb_url || p.banner_url} alt="" />
                     <div className="min-w-0">
                       <strong>{p.campaign_headline}</strong>
                       <div>

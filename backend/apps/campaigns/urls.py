@@ -2,6 +2,7 @@ from django.urls import path
 
 from .placements_api import CampaignPlacementListView
 from .views import (
+    CampaignCopyView,
     CampaignDetailView,
     CampaignListCreateView,
     CampaignOutcomeView,
@@ -13,6 +14,7 @@ urlpatterns = [
     path("campaigns", CampaignListCreateView.as_view(), name="campaigns"),
     path("campaigns/<uuid:id>", CampaignDetailView.as_view(), name="campaign-detail"),
     path("campaigns/<uuid:id>/submit", CampaignSubmitView.as_view(), name="campaign-submit"),
+    path("campaigns/<uuid:id>/copy", CampaignCopyView.as_view(), name="campaign-copy"),
     path("campaigns/<uuid:id>/outcome", CampaignOutcomeView.as_view(),
          name="campaign-outcome"),
     path("campaigns/<uuid:id>/reviews", CampaignReviewListView.as_view(),

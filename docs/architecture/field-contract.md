@@ -68,7 +68,13 @@ Deletion: only an **empty** business (no branches, campaigns, orders) —
 Deletion: only a branch with **no order items, placements, or grants**
 (`LocationDetailView.perform_destroy`).
 
-## 3. Campaign (`/api/v1/campaigns`, `/…/{id}/submit`; spec §4, §7.1; form: CampaignEditorPage)
+## 3. Campaign (`/api/v1/campaigns`, `/…/{id}/submit`, `/…/{id}/copy`, `/…/{id}/outcome`; spec §4, §7.1; form: CampaignEditorPage)
+
+Action endpoints (no writable fields beyond those below): `/submit` (draft/rejected →
+submitted), `/copy` (duplicates headline/body/banner into a fresh DRAFT — the
+banner storage object is shared; §13 "purchase another term" entry point), and
+`/outcome` (post-campaign survey, write-once: `answer` choice + optional
+`comment ≤500`).
 
 | Field          | DB                       | API write                             | UI form              | Notes |
 |----------------|--------------------------|---------------------------------------|----------------------|-------|

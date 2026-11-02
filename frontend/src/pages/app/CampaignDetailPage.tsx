@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,7 +15,7 @@ import { formatDateTime, formatMinor } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { toast } from "@/shared/toast";
 import { mountDialog, RefundDialogBody, confirmDialog } from "@/shared/dialog";
-import { deleteCampaign, recordOutcome, requestPromotionQuote, requestRefund } from "@/features/advertiser/api";
+import { copyCampaign, deleteCampaign, recordOutcome, requestPromotionQuote, requestRefund } from "@/features/advertiser/api";
 import {
   IconAlert,
   IconArrowLeft,
@@ -88,6 +88,18 @@ function PromoteDialogBody({
   const [tier, setTier] = useState<"top" | "raised">("top");
   const [days, setDays] = useState(3);
   const [busy, setBusy] = useState(false);
+  const firstTierRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // Dialog affordances the shared mountDialog core doesn't provide per
+    // body: initial focus + Escape to dismiss (matches Confirm/Reason bodies).
+    firstTierRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [close]);
 
   const tiers = (
     [
@@ -101,6 +113,9 @@ function PromoteDialogBody({
   return (
     <form
       className="dialog-form"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.promoteDialogTitle}
       onSubmit={async (e) => {
         e.preventDefault();
         if (busy || rate == null) return;
@@ -108,6 +123,9 @@ function PromoteDialogBody({
         try {
           await onSubmit(tier, days);
           close();
+        } catch {
+          // mutation onError already toasted; swallow so the rejection
+          // doesn't escape the async event handler.
         } finally {
           setBusy(false);
         }
@@ -115,12 +133,24 @@ function PromoteDialogBody({
     >
       <h3 className="dialog-title">{t.promoteDialogTitle}</h3>
       <p className="muted-2">{placementName} · {t.promoteDialogHint}</p>
-      <div className="promo-options">
-        {tiers.map((x) => (
+      <div
+        className="promo-options"
+        role="radiogroup"
+        aria-label={t.promoteDialogTitle}
+        onKeyDown={(e) => {
+          if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+          if (tiers.length < 2) return; // single priced tier: nothing to move to
+          e.preventDefault();
+          setTier((cur) => (cur === "top" ? "raised" : "top"));
+        }}
+      >
+        {tiers.map((x, i) => (
           <button
             key={x.id}
+            ref={i === 0 ? firstTierRef : undefined}
             type="button"
             className={`promo-option promo-${x.cls}`}
+            role="radio"
             aria-checked={tier === x.id}
             onClick={() => setTier(x.id)}
           >
@@ -196,12 +226,25 @@ export function CampaignDetailPage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
   });
 
+  // Spec §13: "purchase another term" starts from a copy of the content.
+  const copyAsDraft = useMutation({
+    mutationFn: () => copyCampaign(id!),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      navigate(`/app/campaigns/${draft.id}/edit`);
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
+  });
+
   const refund = useMutation({
     mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
       requestRefund(orderId, reason),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success(t.refundSent);
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      // Refund state shows on the order detail page too.
+      void queryClient.invalidateQueries({ queryKey: ["order", variables.orderId] });
+      void queryClient.invalidateQueries({ queryKey: ["me", "summary"] });
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
   });
@@ -213,6 +256,9 @@ export function CampaignDetailPage() {
       requestPromotionQuote(input),
     onSuccess: (order) => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      // The quote locks a price but the campaign detail page also shows the
+      // promotion badge/countdown — don't serve it stale after payment.
+      void queryClient.invalidateQueries({ queryKey: ["campaign", id!] });
       navigate(`/app/checkout/${order.id}`);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t.error),
@@ -315,6 +361,15 @@ export function CampaignDetailPage() {
             <Link className="btn small" to={`/ads/${campaign.id}`}>
               <IconExternal size={12} /> {t.openAd}
             </Link>
+          )}
+          {campaign.review_status !== "draft" && (
+            <button
+              className="btn small"
+              disabled={copyAsDraft.isPending}
+              onClick={() => copyAsDraft.mutate()}
+            >
+              {t.copyCampaign}
+            </button>
           )}
           {editable && (
             <Link className="btn primary small" to={`/app/campaigns/${campaign.id}/edit`}>

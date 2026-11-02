@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Outlet, ScrollRestoration, useLocation } from "react-router-dom";
-import { MapHomePage } from "@/pages/MapHomePage";
 
 /** Pages opened from the map. While one of them is showing, the map stays
  *  mounted (hidden) so Back returns to it instantly — no MapLibre re-init,
  *  tile reload, or lost camera/selection. */
 const MAP_CHILD = /^\/(ads|locations)\/[^/]+\/?$/;
+
+// Lazy: MapHomePage statically pulls the maplibre adapter — the only eager
+// chain left to the ~1MB map engine. First visit to "/" loads it in parallel
+// with first paint; every other route never downloads it at all.
+const MapHomePage = lazy(() =>
+  import("@/pages/MapHomePage").then((m) => ({ default: m.MapHomePage })),
+);
 
 export function RootLayout() {
   const { pathname } = useLocation();
@@ -23,7 +29,9 @@ export function RootLayout() {
         // visibility (not display:none) keeps the container's size, so the
         // map never resizes to 0×0 and fires bogus viewport changes.
         <div className={onMap ? "map-keepalive" : "map-keepalive is-hidden"} inert={!onMap}>
-          <MapHomePage active={onMap} />
+          <Suspense fallback={null}>
+            <MapHomePage active={onMap} />
+          </Suspense>
         </div>
       )}
       <Outlet />

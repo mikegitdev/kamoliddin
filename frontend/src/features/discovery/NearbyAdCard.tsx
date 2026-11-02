@@ -42,10 +42,12 @@ export function NearbyAdCard({
     <li style={{ "--i": Math.min(index, 8) } as React.CSSProperties}>
       <article className="nearby-ad-card">
         <Link to={`/ads/${ad.id}`} className="nac-media" state={state} tabIndex={-1} aria-hidden="true">
-          <FallImg src={ad.banner_url} alt="" className="" />
-          {ad.promotion && <PromoBadge tier={ad.promotion} title={t.promoBadgeTitle} />}
+          <FallImg src={ad.banner_thumb_url || ad.banner_url} alt="" className="" />
         </Link>
         <div className="nac-body">
+          {/* Outside the aria-hidden media link: paid promotion is content,
+              not decoration — screen readers must hear it. */}
+          {ad.promotion && <PromoBadge tier={ad.promotion} title={t.promoBadgeTitle} />}
           <div className="nac-top">
             {categoryName && <span className="nac-category">{categoryName}</span>}
             {ad.distance_m != null && (

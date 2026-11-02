@@ -19,6 +19,7 @@ class PublicLocationSerializer(serializers.Serializer):
     active_ads_count = serializers.IntegerField(read_only=True)
     preview_headline = serializers.SerializerMethodField()
     preview_banner_url = serializers.SerializerMethodField()
+    preview_banner_thumb_url = serializers.SerializerMethodField()
 
     def get_lon(self, obj) -> float:
         return obj.point.x
@@ -44,6 +45,13 @@ class PublicLocationSerializer(serializers.Serializer):
     def get_preview_banner_url(self, obj) -> "str | None":
         key = getattr(obj, "preview_banner_key", None)
         return f"/media/{key}" if key else None
+
+    def get_preview_banner_thumb_url(self, obj) -> "str | None":
+        from apps.core.media import banner_thumb_key
+
+        key = getattr(obj, "preview_banner_key", None)
+        thumb = banner_thumb_key(key) if key else None
+        return f"/media/{thumb}" if thumb else None
 
 
 class PublicCampaignSerializer(serializers.Serializer):
@@ -146,6 +154,7 @@ class PublicSearchCampaignSerializer(serializers.Serializer):
     headline = serializers.CharField(read_only=True)
     business_name = serializers.CharField(read_only=True)
     banner_url = serializers.CharField(read_only=True)
+    banner_thumb_url = serializers.CharField(read_only=True)
 
 
 class PublicSearchResultSerializer(serializers.Serializer):
@@ -184,6 +193,7 @@ class PublicNearbyAdSerializer(serializers.Serializer):
     headline = serializers.CharField(read_only=True, source="campaign.headline")
     body = serializers.CharField(read_only=True, source="campaign.body")
     banner_url = serializers.SerializerMethodField()
+    banner_thumb_url = serializers.SerializerMethodField()
     business_name = serializers.CharField(read_only=True, source="campaign.business.name")
     business_verified = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
@@ -194,6 +204,16 @@ class PublicNearbyAdSerializer(serializers.Serializer):
 
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.campaign.banner_key}" if obj.campaign.banner_key else ""
+
+    def get_banner_thumb_url(self, obj) -> str:
+        from apps.core.media import banner_thumb_key
+
+        thumb = (
+            banner_thumb_key(obj.campaign.banner_key)
+            if obj.campaign.banner_key
+            else None
+        )
+        return f"/media/{thumb}" if thumb else ""
 
     def get_business_verified(self, obj) -> bool:
         return bool(obj.campaign.business.is_verified)

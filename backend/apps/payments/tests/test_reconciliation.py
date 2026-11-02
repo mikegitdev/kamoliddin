@@ -45,6 +45,34 @@ def _succeeded_unsettled_attempt(owner, tariff, business, campaign, location):
     return order, attempt
 
 
+def test_poison_row_does_not_wedge_the_sweep(
+    owner, tariff, business, campaign, location
+):
+    """Per-item isolation: a deterministically-broken succeeded attempt (here:
+    a promotion order with no purchasable snapshot) raises inside settlement.
+    It must land in the manual queue while LATER attempts in the same pass
+    still settle — one poison row may never wedge leg A or leg B."""
+    broken = Order.objects.create(
+        business=business, campaign=campaign, kind=Order.Kind.PROMOTION,
+        amount_total=1000, state=Order.State.AWAITING_PAYMENT,
+    )
+    PaymentAttempt.objects.create(
+        order=broken, provider="fake", provider_payment_id="poison-1",
+        amount=1000, status=PaymentAttempt.Status.SUCCEEDED,
+    )
+    order, attempt = _succeeded_unsettled_attempt(
+        owner, tariff, business, campaign, location)
+
+    result = reconcile_payments()
+
+    order.refresh_from_db()
+    assert result["settled"] == 1
+    assert result["unresolved"] == 1
+    assert any("poison" in detail or str(broken.id) in detail
+               for detail in result["unresolved_detail"])
+    assert order.state == Order.State.PAID  # the healthy attempt still settled
+
+
 def test_sweep_settles_succeeded_but_unsettled(owner, tariff, business, campaign,
                                                location):
     order, attempt = _succeeded_unsettled_attempt(

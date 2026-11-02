@@ -30,10 +30,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      chunkSizeWarningLimit: 1100, // maplibre-gl is ~1MB minified; isolated below
+      // Route chunks are all small now; the ONLY chunk above 550KB is the
+      // isolated maplibre engine (~1MB, cached separately, map pages only) —
+      // keep the limit high enough not to warn about that known vendor chunk.
+      chunkSizeWarningLimit: 1100,
       rollupOptions: {
         output: {
-          // Split the heavy map engine into its own long-cacheable chunk.
+          // Split the heavy map engine into its own long-cacheable chunk —
+          // loaded only by map pages (adapter is dynamically reachable).
           manualChunks: {
             maplibre: ["maplibre-gl"],
             react: ["react", "react-dom", "react-router-dom"],

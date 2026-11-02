@@ -112,15 +112,19 @@ def assert_capacity(
     end_at,
     lock: bool = False,
     exclude_id=None,
+    limit: int | None = None,
 ) -> int:
     """Raise CapacityExhausted if `location` has no free slot for the interval.
 
     With lock=True, takes the per-location advisory lock first so concurrent
-    checkouts serialize their decision (acceptance #13)."""
+    checkouts serialize their decision (acceptance #13). `limit` lets callers
+    that check several locations in one transaction resolve the platform
+    setting once instead of re-reading it per location."""
     if lock:
         _advisory_lock_location(location.id)
     usage = capacity_usage(location, start_at=start_at, end_at=end_at, exclude_id=exclude_id)
-    limit = max_active_ads()
+    if limit is None:
+        limit = max_active_ads()
     if usage >= limit:
         raise CapacityExhausted(location=location, max_ads=limit, usage=usage)
     return usage
@@ -157,12 +161,14 @@ def reserve_order_capacity(order: Order) -> list[Placement]:
         return existing
     campaign = order.campaign
     start_at, end_at = _order_interval(order)
+    limit = max_active_ads()  # resolve once for all items, under the locks
     for item in order.items.select_related("location"):
         assert_capacity(
             item.location,
             start_at=start_at,
             end_at=end_at,
             lock=True,
+            limit=limit,
         )
         Placement.objects.create(
             campaign=campaign,
@@ -337,6 +343,7 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
     placements = []
     # Location order = advisory-lock order: concurrent multi-location
     # activations/approvals always lock in the same sequence (no deadlock).
+    limit = max_active_ads()  # one setting read for all items, under the locks
     for item in order.items.select_related("location").order_by("location_id"):
         placement = (
             Placement.objects.select_for_update()
@@ -355,6 +362,7 @@ def activate_order_entitlements(order: Order) -> list[Placement]:
                     start_at=start_at,
                     end_at=end_at,
                     lock=True,
+                    limit=limit,
                 )
             except CapacityExhausted as exc:
                 if placement is None:
@@ -452,6 +460,22 @@ def issue_free_grant(
             "Location does not belong to the campaign's business", code="location_mismatch"
         )
     now = timezone.now()
+    # Idempotency anchor: exactly one grant per (campaign, location, start_at).
+    # An identical re-issue returns the recorded grant (no duplicate rows, no
+    # capacity re-check); a different end time on the same key is refused —
+    # a grant must never be recorded without delivering its placement.
+    existing_grant = FreeGrant.objects.filter(
+        campaign=campaign, location=location, start_at=start_at
+    ).first()
+    if existing_grant is not None:
+        if existing_grant.end_at != end_at:
+            raise GrantError(
+                "A grant already exists for this campaign, branch and start "
+                "time with a different end time",
+                code="grant_exists",
+            )
+        return existing_grant
+
     charge_days = compute_charge_days(start_at, end_at)
     # Grants occupy a slot like paid placements: the per-location cap holds.
     try:
@@ -459,18 +483,31 @@ def issue_free_grant(
     except CapacityExhausted as exc:
         raise GrantError(str(exc), code="capacity_exhausted") from exc
     state = Placement.State.SCHEDULED if start_at > now else Placement.State.ACTIVE
-    Placement.objects.get_or_create(
+    # source_type=GRANT pins the dedup lookup to GRANT placements: a paid
+    # placement at the same (campaign, location, start_at) must never swallow
+    # the grant silently — it keeps its own slot (asserted above), and the
+    # grant creates a placement of its own.
+    placement, placement_created = Placement.objects.get_or_create(
         campaign=campaign,
         location=location,
         start_at=start_at,
+        source_type=Placement.SourceType.GRANT,
         defaults={
             "end_at": end_at,
             "charge_days": charge_days,
-            "source_type": Placement.SourceType.GRANT,
             "state": state,
             "actual_start_at": now if state == Placement.State.ACTIVE else None,
         },
     )
+    if not placement_created and placement.end_at != end_at:
+        # A grant placement exists with a different window but its FreeGrant
+        # record is gone (manual deletion). Refuse instead of recording a
+        # grant whose placement would silently keep the old window.
+        raise GrantError(
+            "A grant placement for this campaign, branch and start time "
+            "already exists with a different end time",
+            code="grant_exists",
+        )
     grant = FreeGrant.objects.create(
         business=campaign.business,
         campaign=campaign,
@@ -510,13 +547,21 @@ def refresh_states() -> dict[str, int]:
         Order.objects.filter(
             state__in=[Order.State.DRAFT_QUOTE, Order.State.AWAITING_PAYMENT],
             quote_expires_at__lt=now - AWAITING_PAYMENT_GRACE,
-        )
+        ).values_list("id", flat=True)
     )
-    for order in stale_orders:
-        released += release_order_reservations(order)
-        order.state = Order.State.EXPIRED
-        order.save(update_fields=["state", "updated_at"])
-        expired_orders += 1
+    for order_id in stale_orders:
+        # Row-locked re-check: a webhook/reconciliation may have settled this
+        # order to PAID since the snapshot above — money that moved must never
+        # be flipped to EXPIRED by the sweep (settlement locks the same row,
+        # so the two writers serialize here).
+        with transaction.atomic():
+            order = Order.objects.select_for_update().get(pk=order_id)
+            if order.state not in (Order.State.DRAFT_QUOTE, Order.State.AWAITING_PAYMENT):
+                continue
+            order.state = Order.State.EXPIRED
+            order.save(update_fields=["state", "updated_at"])
+            released += release_order_reservations(order)
+            expired_orders += 1
 
     result = {
         "activated": activated,

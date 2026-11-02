@@ -97,6 +97,16 @@ class ClickPaymentGateway:
 
     Required evidence before implementing: one-time checkout, callbacks, amount
     rules, refunds, settlement.
+
+    HARD CONSTRAINT for the real adapter: `create_checkout` is called INSIDE
+    the checkout transaction while the order row and per-location capacity
+    advisory locks are held (billing.services.create_checkout). It must use a
+    short hard socket/total timeout (<= a few seconds) and never block on an
+    unbounded network read — a hung call serializes all capacity decisions
+    for those locations. If provider latency ever becomes material, split the
+    transaction (persist the PENDING attempt, call out, then persist the
+    provider_payment_id) and extend reconciliation leg B to cover attempts
+    with an empty provider_payment_id.
     """
 
     slug = "click"

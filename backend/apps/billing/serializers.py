@@ -1,3 +1,6 @@
+from urllib.parse import urlparse
+
+from django.conf import settings
 from rest_framework import serializers
 
 from apps.payments.models import PaymentAttempt
@@ -26,6 +29,10 @@ class OrderSerializer(serializers.ModelSerializer):
     business_name = serializers.CharField(source="business.name", read_only=True)
     kind = serializers.CharField(read_only=True)
     promoted_placement = serializers.UUIDField(read_only=True)
+    # Latest refund state (null when none was ever requested): the cabinet
+    # list hides the "request refund" button for in-flight/finished refunds
+    # instead of letting the click 409. Prefetched by the list view.
+    refund_state = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -34,9 +41,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "campaign_status", "kind", "promoted_placement", "amount_total",
             "currency", "state", "quote_expires_at",
             "interval_start_at", "interval_end_at",
-            "items", "created_at", "updated_at",
+            "items", "refund_state", "created_at", "updated_at",
         )
         read_only_fields = fields
+
+    def get_refund_state(self, obj) -> "str | None":
+        refunds = obj.refunds.all() if hasattr(obj, "refunds") else obj.refunds.none()
+        latest = refunds.order_by("-created_at").first()
+        return latest.state if latest else None
 
 
 class QuoteSerializer(OrderSerializer):
@@ -114,3 +126,19 @@ class PromotionQuoteRequestSerializer(serializers.Serializer):
 
 class CheckoutRequestSerializer(serializers.Serializer):
     return_url = serializers.URLField(required=False, allow_blank=True, default="")
+
+    def validate_return_url(self, value: str) -> str:
+        """The provider sends the customer back here after payment, so the URL
+        must be one of the trusted frontend origins (CSRF_TRUSTED_ORIGINS).
+        An arbitrary value would let checkout mint a provider-mediated open
+        redirect once a real gateway is wired (spec §19 [E])."""
+        if not value:
+            return value
+        origin = urlparse(value)._replace(
+            path="", params="", query="", fragment=""
+        ).geturl()
+        if origin not in settings.CSRF_TRUSTED_ORIGINS:
+            raise serializers.ValidationError(
+                "return_url must point at a trusted frontend origin"
+            )
+        return value

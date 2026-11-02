@@ -226,6 +226,26 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
     if (!src) return;
     const step = e.shiftKey ? 0.05 : 0.01;
     let { x, y } = rect;
+    // +/− resize the crop (keyboard equivalent of the corner handles,
+    // WCAG 2.1.1): top-left stays anchored, aspect lock is respected.
+    if (["+", "=", "-", "_"].includes(e.key)) {
+      e.preventDefault();
+      const grow = e.key === "+" || e.key === "=";
+      const size = grow ? 0.05 : -0.05;
+      const MIN = 0.05;
+      if (k != null) {
+        const maxW = Math.min(1 - rect.x, (1 - rect.y) / k);
+        const w = clamp(rect.w + size, MIN, Math.min(1, maxW));
+        setRect({ ...rect, w, h: w * k });
+      } else {
+        setRect({
+          ...rect,
+          w: clamp(rect.w + size, MIN, 1 - rect.x),
+          h: clamp(rect.h + size, MIN, 1 - rect.y),
+        });
+      }
+      return;
+    }
     if (e.key === "ArrowLeft") x = clamp(x - step, 0, 1 - rect.w);
     else if (e.key === "ArrowRight") x = clamp(x + step, 0, 1 - rect.w);
     else if (e.key === "ArrowUp") y = clamp(y - step, 0, 1 - rect.h);
@@ -506,7 +526,9 @@ export function BannerEditor({ file, onApply, onClose }: Props) {
         </div>
       </div>
 
-      <p className="field-hint">{t.beHint}</p>
+      <p className="field-hint">
+        {t.beHint} <span className="muted-2">{t.beKeysHint}</span>
+      </p>
 
       <div className="be-actions">
         <button type="button" className="btn small" onClick={reset}>

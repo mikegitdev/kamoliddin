@@ -19,7 +19,7 @@ Users, businesses, branches, placements and logs live in control_api.py.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status
@@ -135,23 +135,32 @@ class QueueCampaignSerializer(serializers.ModelSerializer):
     business_name = serializers.CharField(source="business.name", read_only=True)
     owner_phone = serializers.CharField(source="business.owner.phone_e164", read_only=True)
     banner_url = serializers.SerializerMethodField()
+    banner_thumb_url = serializers.SerializerMethodField()
     locations = serializers.SerializerMethodField()
 
     class Meta:
         model = Campaign
-        fields = ("id", "headline", "body", "banner_url", "review_status",
-                  "review_version", "business_name", "owner_phone", "locations",
-                  "updated_at")
+        fields = ("id", "headline", "body", "banner_url", "banner_thumb_url",
+                  "review_status", "review_version", "business_name", "owner_phone",
+                  "locations", "updated_at")
 
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.banner_key}" if obj.banner_key else ""
 
+    def get_banner_thumb_url(self, obj) -> str:
+        from apps.core.media import banner_thumb_key
+
+        thumb = banner_thumb_key(obj.banner_key) if obj.banner_key else None
+        return f"/media/{thumb}" if thumb else ""
+
     def get_locations(self, obj) -> list[str]:
-        return list(
-            OrderItem.objects.filter(order__campaign=obj)
-            .values_list("location__name", flat=True)
-            .distinct()
-        )
+        # Ordered dedupe over the prefetched orders->items->location chain;
+        # without the prefetch this was one query per campaign in the queue.
+        seen: dict[str, None] = {}
+        for order in obj.orders.all():
+            for item in order.items.all():
+                seen.setdefault(item.location.name, None)
+        return list(seen)
 
 
 class ReviewQueueView(ListAPIView):
@@ -160,9 +169,21 @@ class ReviewQueueView(ListAPIView):
     serializer_class = QueueCampaignSerializer
     permission_classes = [IsAdminUser]
     pagination_class = None
-    queryset = Campaign.objects.select_related("business", "business__owner").filter(
-        review_status__in=(Campaign.ReviewStatus.SUBMITTED, Campaign.ReviewStatus.UNDER_REVIEW)
-    ).order_by("updated_at")
+    # Capped like the reports work queue: >200 pending reviews is an incident
+    # visible in the overview's queue_depth, not a list to page through here.
+    queryset = (
+        Campaign.objects.select_related("business", "business__owner")
+        .prefetch_related(
+            Prefetch(
+                "orders__items",
+                queryset=OrderItem.objects.select_related("location"),
+            )
+        )
+        .filter(
+            review_status__in=(Campaign.ReviewStatus.SUBMITTED, Campaign.ReviewStatus.UNDER_REVIEW)
+        )
+        .order_by("updated_at")[:200]
+    )
 
 
 class ReviewSerializer(serializers.Serializer):
@@ -245,9 +266,11 @@ class GrantView(APIView):
     @extend_schema(tags=["Admin"], summary="Grant form options and recent grants",
                    responses=GrantOptionsSerializer)
     def get(self, request):
-        campaigns = Campaign.objects.filter(
-            review_status=Campaign.ReviewStatus.APPROVED
-        ).order_by("-updated_at")[:100]
+        campaigns = (
+            Campaign.objects.select_related("business")
+            .filter(review_status=Campaign.ReviewStatus.APPROVED)
+            .order_by("-updated_at")[:100]
+        )
         locations = Location.objects.select_related("business").order_by("name")[:500]
         grants = (
             FreeGrant.objects.select_related(
@@ -299,9 +322,10 @@ class RefundListView(ListAPIView):
     serializer_class = RefundSerializer
     permission_classes = [IsAdminUser]
     pagination_class = None
+    # Work-queue view, capped like reports: the 200 most recent refunds.
     queryset = Refund.objects.select_related(
         "order", "order__campaign", "order__business", "operator"
-    ).order_by("-created_at")
+    ).order_by("-created_at")[:200]
 
 
 class RefundProcessSerializer(serializers.Serializer):
@@ -329,7 +353,10 @@ class RefundProcessView(APIView):
         except RefundError as exc:
             return Response(
                 {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
-                status=status.HTTP_409_CONFLICT,
+                status=(
+                    status.HTTP_404_NOT_FOUND if exc.code == "not_found"
+                    else status.HTTP_409_CONFLICT
+                ),
             )
         return Response(RefundSerializer(refund).data)
 

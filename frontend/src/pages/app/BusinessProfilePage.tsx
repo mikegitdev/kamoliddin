@@ -168,11 +168,11 @@ export function BusinessProfilePage() {
         <span className="field-hint">{t.profileSectionHint}</span>
         <div className="field">
           <label htmlFor="biz-name">{t.businessName}</label>
-          <input id="biz-name" value={form.name} onChange={set("name")} placeholder="Osh Markazi" />
+          <input id="biz-name" required value={form.name} onChange={set("name")} placeholder="Osh Markazi" />
         </div>
         <div className="field">
           <label htmlFor="biz-category">{t.categoryLabel}</label>
-          <select id="biz-category" value={form.category} onChange={set("category")}>
+          <select id="biz-category" required value={form.category} onChange={set("category")}>
             <option value="">{t.categoryPlaceholder}</option>
             {categories?.map((c) => (
               <option key={c.slug} value={c.slug}>

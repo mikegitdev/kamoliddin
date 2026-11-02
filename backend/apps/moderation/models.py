@@ -16,7 +16,9 @@ class ActivityEvent(models.Model):
     entity = models.CharField(max_length=60)    # e.g. campaign, location, refund
     entity_id = models.CharField(max_length=64)
     metadata = models.JSONField(blank=True, default=dict)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # Indexed: the admin activity log paginates this append-only table by
+    # created_at on every page load.
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ("-created_at",)

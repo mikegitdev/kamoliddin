@@ -81,7 +81,7 @@ class LocationDetailView(RetrieveUpdateDestroyAPIView):
             or instance.grants.exists()
         ):
             raise ValidationError(
-                {"detail": "Only branches without order or placement history can be deleted"},
+                "Only branches without order or placement history can be deleted",
                 code="location_in_use",
             )
         log_owner_delete(user=self.request.user, location=instance)

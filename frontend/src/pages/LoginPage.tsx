@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { api, ApiError } from "@/shared/api/client";
@@ -24,6 +24,8 @@ export function LoginPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const expired = searchParams.has("expired");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"phone" | "code">("phone");
@@ -108,6 +110,10 @@ export function LoginPage() {
         <p className="login-sub">{stage === "phone" ? t.tagline : `${t.codeSent} → ${formatPhone(phone)}`}</p>
         <p className="login-hint">{t.loginHint}</p>
 
+        {expired && stage === "phone" && (
+          <p className="login-expired" role="status">{t.sessionExpired}</p>
+        )}
+
         {stage === "phone" ? (
           <form
             onSubmit={(e) => {
@@ -169,7 +175,7 @@ export function LoginPage() {
             >
               {busy ? t.verifying : t.verify}
             </button>
-            <div className="otp-countdown">
+            <div className="otp-countdown" role="status">
               {countdown > 0 ? (
                 `${t.resend} — ${countdown} ${t.seconds}`
               ) : (

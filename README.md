@@ -68,7 +68,8 @@ Useful URLs:
 - Django admin: `http://localhost:8000/admin/`
 - Health: `http://localhost:8000/health/`
 - Media (public read, served by Django): `http://localhost:8000/media/...`
-  — objects live in Garage (S3-compatible, fully private; spec §11). Admin via
+  — objects live in Garage in production (S3-compatible, fully private;
+  spec §11); the dev default is local disk (`USE_S3=false`). Admin via
   `docker compose exec garage /garage -c /etc/garage.toml ...` (no web console).
 
 Dev SMS provider is `fake`: OTP codes are printed to the server log (never do this in prod).

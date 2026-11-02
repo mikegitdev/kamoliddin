@@ -124,7 +124,7 @@ export function CampaignsPage() {
         {visible.map((c) => (
           <li key={c.id} className="campaign-card">
             <Link to={`/app/campaigns/${c.id}`} className="cc-click" aria-label={c.headline}>
-              <FallImg className="thumb" src={c.banner_url || undefined} alt="" />
+              <FallImg className="thumb" src={c.banner_thumb_url || c.banner_url || undefined} alt="" />
               <div className="cc-main">
                 <span className="cc-title">{c.headline}</span>
                 <span className="muted-2">

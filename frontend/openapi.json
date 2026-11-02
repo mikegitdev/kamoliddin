@@ -986,7 +986,10 @@ paths:
       operationId: api_v1_auth_csrf_retrieve
       description: |-
         GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
-        X-CSRFToken on authenticated mutations (spec §9).
+        X-CSRFToken on authenticated mutations (spec §9). The token is also
+        returned in the body: a cross-origin SPA cannot read the API's cookie,
+        but the header token is validated against the cookie that travels with
+        the credentialed request, so the pair still matches.
       summary: Set the CSRF cookie
       tags:
       - Auth
@@ -997,7 +1000,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/CsrfToken'
           description: ''
   /api/v1/auth/logout:
     post:
@@ -1505,6 +1508,31 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/campaigns/{id}/copy:
+    post:
+      operationId: api_v1_campaigns_copy_create
+      description: 'Spec §13 cabinet flow (create/copy/purchase another term): copies
+        headline, body and banner into a new DRAFT with review_version 1. The banner
+        storage object is shared; reviews, orders and placements are not carried over.'
+      summary: Duplicate a campaign as a fresh draft
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Campaigns
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
   /api/v1/campaigns/{id}/outcome:
     post:
       operationId: api_v1_campaigns_outcome_create
@@ -2746,6 +2774,9 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
         location_id:
           type: string
           format: uuid
@@ -2768,6 +2799,7 @@ components:
           format: date-time
           readOnly: true
       required:
+      - banner_thumb_url
       - banner_url
       - business_id
       - business_name
@@ -2948,6 +2980,9 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
         review_status:
           allOf:
           - $ref: '#/components/schemas/ReviewStatusEnum'
@@ -2976,7 +3011,20 @@ components:
           type: integer
           readOnly: true
         outcome:
-          type: string
+          type: object
+          properties:
+            answer:
+              type: string
+              enum:
+              - brought_customers
+              - other_channel
+              - no_effect
+            comment:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          nullable: true
           readOnly: true
         outcome_eligible:
           type: boolean
@@ -2995,6 +3043,7 @@ components:
       required:
       - active_placements_count
       - banner_key
+      - banner_thumb_url
       - banner_url
       - business
       - business_name
@@ -3152,6 +3201,18 @@ components:
       - provider
       - provider_payment_id
       - redirect_url
+    CsrfToken:
+      type: object
+      properties:
+        detail:
+          type: string
+        csrftoken:
+          type: string
+          description: Same token as the csrftoken cookie — lets a cross-origin SPA
+            echo it in X-CSRFToken
+      required:
+      - csrftoken
+      - detail
     Detail:
       type: object
       description: 'Plain acknowledgement body: {"detail": "..."}.'
@@ -3457,6 +3518,10 @@ components:
           items:
             $ref: '#/components/schemas/OrderItem'
           readOnly: true
+        refund_state:
+          type: string
+          nullable: true
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -3481,6 +3546,7 @@ components:
       - kind
       - promoted_placement
       - quote_expires_at
+      - refund_state
       - state
       - updated_at
     OrderDetail:
@@ -3548,6 +3614,10 @@ components:
           items:
             $ref: '#/components/schemas/OrderItem'
           readOnly: true
+        refund_state:
+          type: string
+          nullable: true
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -3584,6 +3654,7 @@ components:
       - promoted_placement
       - quote_expires_at
       - refund
+      - refund_state
       - state
       - updated_at
     OrderItem:
@@ -3947,6 +4018,9 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
         review_status:
           allOf:
           - $ref: '#/components/schemas/ReviewStatusEnum'
@@ -3975,7 +4049,20 @@ components:
           type: integer
           readOnly: true
         outcome:
-          type: string
+          type: object
+          properties:
+            answer:
+              type: string
+              enum:
+              - brought_customers
+              - other_channel
+              - no_effect
+            comment:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          nullable: true
           readOnly: true
         outcome_eligible:
           type: boolean
@@ -4224,7 +4311,7 @@ components:
           type: string
           format: uuid
         tier:
-          $ref: '#/components/schemas/TierEnum'
+          $ref: '#/components/schemas/PromotionTierEnum'
         days:
           type: integer
           maximum: 30
@@ -4440,6 +4527,10 @@ components:
           type: string
           nullable: true
           readOnly: true
+        preview_banner_thumb_url:
+          type: string
+          nullable: true
+          readOnly: true
       required:
       - active_ads_count
       - business_name
@@ -4449,6 +4540,7 @@ components:
       - lat
       - lon
       - name
+      - preview_banner_thumb_url
       - preview_banner_url
       - preview_headline
     PublicLocationDetail:
@@ -4541,6 +4633,9 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
         business_name:
           type: string
           readOnly: true
@@ -4566,6 +4661,7 @@ components:
           nullable: true
           readOnly: true
       required:
+      - banner_thumb_url
       - banner_url
       - body
       - branches_count
@@ -4669,7 +4765,11 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
       required:
+      - banner_thumb_url
       - banner_url
       - business_name
       - headline
@@ -4717,6 +4817,10 @@ components:
           type: string
           nullable: true
           readOnly: true
+        preview_banner_thumb_url:
+          type: string
+          nullable: true
+          readOnly: true
         distance_m:
           type: integer
           readOnly: true
@@ -4731,6 +4835,7 @@ components:
       - lat
       - lon
       - name
+      - preview_banner_thumb_url
       - preview_banner_url
       - preview_headline
     PublicSearchResult:
@@ -4796,6 +4901,9 @@ components:
         banner_url:
           type: string
           readOnly: true
+        banner_thumb_url:
+          type: string
+          readOnly: true
         review_status:
           $ref: '#/components/schemas/ReviewStatusEnum'
         review_version:
@@ -4818,6 +4926,7 @@ components:
           format: date-time
           readOnly: true
       required:
+      - banner_thumb_url
       - banner_url
       - business_name
       - headline
@@ -4889,6 +4998,10 @@ components:
           items:
             $ref: '#/components/schemas/OrderItem'
           readOnly: true
+        refund_state:
+          type: string
+          nullable: true
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -4918,6 +5031,7 @@ components:
       - promoted_placement
       - quote_expires_at
       - quote_id
+      - refund_state
       - state
       - updated_at
     QuoteRequest:
@@ -5247,14 +5361,6 @@ components:
           description: Whether login codes are delivered to Telegram
       required:
       - bound
-    TierEnum:
-      enum:
-      - top
-      - raised
-      type: string
-      description: |-
-        * `top` - TOP (pinned above organic results)
-        * `raised` - RAISED (second promotion block)
     VisibilityEnum:
       enum:
       - live

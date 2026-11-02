@@ -83,6 +83,11 @@ export function submitCampaign(id: string): Promise<ApiCampaign> {
   return api(`/api/v1/campaigns/${id}/submit`, { method: "POST", json: {} });
 }
 
+/** Spec §13: duplicate any own campaign as a fresh editable draft. */
+export function copyCampaign(id: string): Promise<ApiCampaign> {
+  return api(`/api/v1/campaigns/${id}/copy`, { method: "POST", json: {} });
+}
+
 /** Drafts only — the backend refuses anything already submitted (spec §7.1). */
 export function deleteCampaign(id: string): Promise<void> {
   return api(`/api/v1/campaigns/${id}`, { method: "DELETE" });

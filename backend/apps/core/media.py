@@ -31,6 +31,21 @@ ALLOWED_SERVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_DIMENSION = {"banners": 2048, "logos": 512}
 MIN_DIMENSION = {"banners": (600, 300), "logos": (128, 128)}
 
+# Card thumbnail variant (spec §11 [R] "image variants"): map/feed/staff
+# cards render ~150-300px wide; serving the full 2048px banner per card is
+# the heaviest thing on the public map page. Derived key: banners/<stem>_sm.jpg
+THUMB_SUFFIX = "_sm"
+THUMB_LONG_EDGE = 480
+THUMB_QUALITY = 80
+
+
+def banner_thumb_key(banner_key: str) -> str | None:
+    """Derived thumbnail object key for a banner key; None for non-banners."""
+    if not banner_key.startswith("banners/") or "." not in banner_key:
+        return None
+    stem = banner_key.rsplit(".", 1)[0]
+    return f"{stem}{THUMB_SUFFIX}.jpg"
+
 
 class ImageRejected(ValueError):
     """Upload policy violation; `code` is the machine-readable error.code."""
@@ -40,12 +55,13 @@ class ImageRejected(ValueError):
         self.code = code
 
 
-def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
+def _reencode(data: bytes, purpose: str) -> tuple[str, bytes, bytes | None]:
     """Validate by magic bytes, strip metadata, enforce dimensions.
 
-    Returns (format, cleaned_bytes). The re-save through Pillow drops EXIF
-    (incl. GPS), ICC, XMP and any trailing payloads — the stored object is a
-    fresh encode of the pixel data, never the original bytes (spec §11).
+    Returns (format, cleaned_bytes, thumb_bytes). The re-save through Pillow
+    drops EXIF (incl. GPS), ICC, XMP and any trailing payloads — the stored
+    object is a fresh encode of the pixel data, never the original bytes
+    (spec §11). For banners a small JPEG card thumbnail is returned alongside.
     Raises ImageRejected (a ValueError) on policy violation."""
     try:
         image: Image.Image = Image.open(io.BytesIO(data))
@@ -84,7 +100,17 @@ def _reencode(data: bytes, purpose: str) -> tuple[str, bytes]:
     if fmt in ("JPEG", "WEBP"):
         save_kwargs["quality"] = 88
     image.save(buf, format=fmt, **save_kwargs)
-    return fmt, buf.getvalue()
+
+    thumb: bytes | None = None
+    if purpose == "banners":
+        card = image.copy()
+        card.thumbnail((THUMB_LONG_EDGE, THUMB_LONG_EDGE), Image.Resampling.LANCZOS)
+        if card.mode not in ("RGB", "L"):
+            card = card.convert("RGB")
+        thumb_buf = io.BytesIO()
+        card.save(thumb_buf, format="JPEG", quality=THUMB_QUALITY, optimize=True)
+        thumb = thumb_buf.getvalue()
+    return fmt, buf.getvalue(), thumb
 
 
 class MediaUploadView(APIView):
@@ -133,7 +159,7 @@ class MediaUploadView(APIView):
         # the content type or original filename — spec §11, ADR-0004).
         raw = upload.read()
         try:
-            fmt, cleaned = _reencode(raw, purpose)
+            fmt, cleaned, thumb = _reencode(raw, purpose)
         except ImageRejected as exc:  # policy violation
             return Response(
                 {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
@@ -150,6 +176,10 @@ class MediaUploadView(APIView):
         ext = ALLOWED_FORMATS[fmt]
         key = f"{purpose}/{uuid.uuid4().hex}.{ext}"
         saved_key = default_storage.save(key, ContentFile(cleaned))
+        if thumb is not None:
+            derived = banner_thumb_key(saved_key)
+            if derived is not None:
+                default_storage.save(derived, ContentFile(thumb))
         return Response({"key": saved_key, "url": default_storage.url(saved_key)})
 
 

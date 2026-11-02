@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
 
+class CsrfTokenSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    csrftoken = serializers.CharField(
+        help_text="Same token as the csrftoken cookie — lets a cross-origin SPA "
+                  "echo it in X-CSRFToken",
+    )
+
+
 class OTPRequestSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=24)
     channel = serializers.ChoiceField(

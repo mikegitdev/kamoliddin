@@ -22,14 +22,16 @@ class CampaignSerializer(serializers.ModelSerializer):
     )
     business_name = serializers.CharField(source="business.name", read_only=True)
     banner_url = serializers.SerializerMethodField()
+    banner_thumb_url = serializers.SerializerMethodField()
     # Publication status must stay separate from review_status (spec §7):
     # an approved campaign is NOT necessarily live. Populated by a queryset
     # annotation; unannotated instances (create/submit responses) report 0.
     active_placements_count = serializers.SerializerMethodField()
     # Nearest upcoming/ongoing show window (annotation), for list cards.
     next_interval = serializers.SerializerMethodField()
-    # Public engagement counters (annotation): ad opens and contact/directions
-    # clicks. Counts only — no visitor data is stored (Joymee borrow #2).
+    # Public engagement counters: denormalized columns on Campaign (kept in
+    # lockstep with CampaignEvent rows). Counts only — no visitor data is
+    # stored (Joymee borrow #2).
     views_count = serializers.SerializerMethodField()
     contact_clicks_count = serializers.SerializerMethodField()
     # Outcome survey (Joymee borrow #8): the recorded answer (null until
@@ -42,7 +44,8 @@ class CampaignSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = (
             "id", "business", "business_name", "headline", "body", "banner_key",
-            "banner_url", "review_status", "review_version", "active_placements_count",
+            "banner_url", "banner_thumb_url", "review_status", "review_version",
+            "active_placements_count",
             "next_interval", "views_count", "contact_clicks_count",
             "outcome", "outcome_eligible",
             "created_at", "updated_at",
@@ -63,6 +66,14 @@ class CampaignSerializer(serializers.ModelSerializer):
     def get_banner_url(self, obj) -> str:
         return f"/media/{obj.banner_key}" if obj.banner_key else ""
 
+    def get_banner_thumb_url(self, obj) -> str:
+        # Card-sized variant; API consumers fall back to banner_url when the
+        # thumbnail object is absent (pre-backfill uploads).
+        from apps.core.media import banner_thumb_key
+
+        thumb = banner_thumb_key(obj.banner_key) if obj.banner_key else None
+        return f"/media/{thumb}" if thumb else ""
+
     def get_active_placements_count(self, obj) -> int:
         return getattr(obj, "active_placements_count", 0) or 0
 
@@ -72,6 +83,20 @@ class CampaignSerializer(serializers.ModelSerializer):
     def get_contact_clicks_count(self, obj) -> int:
         return getattr(obj, "contact_clicks_count", 0) or 0
 
+    @extend_schema_field(
+        {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "enum": ["brought_customers", "other_channel", "no_effect"],
+                },
+                "comment": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+            },
+            "nullable": True,
+        }
+    )
     def get_outcome(self, obj):
         """{answer, comment, created_at} once recorded; null before that."""
         outcome = None
@@ -161,7 +186,13 @@ class CampaignSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"review_status": "Campaign is locked while under review"}
             )
-        content_changed = any(field in validated_data for field in self.CONTENT_FIELDS)
+        # Compare VALUES, not presence: a PATCH carrying an unchanged field
+        # must not send an approved campaign back to moderation (its live
+        # placements would go dark) — only a real content edit does.
+        content_changed = any(
+            field in validated_data and validated_data[field] != getattr(instance, field)
+            for field in self.CONTENT_FIELDS
+        )
         if instance.review_status == Campaign.ReviewStatus.APPROVED and content_changed:
             validated_data["review_version"] = instance.review_version + 1
             validated_data["review_status"] = Campaign.ReviewStatus.SUBMITTED

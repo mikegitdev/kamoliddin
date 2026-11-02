@@ -146,6 +146,19 @@ export function CampaignEditorPage() {
   const [editingBanner, setEditingBanner] = useState(false);
   const [start, setStart] = useState(dates.start);
   const [end, setEnd] = useState(dates.end);
+
+  // An UNTOUCHED default schedule drifts into the past while the editor sits
+  // open (>1h of typing) — rebase it (and the baseline, so the form does not
+  // become "dirty" on its own) instead of blocking pay/submit with
+  // "start in past" for dates the user never chose.
+  useEffect(() => {
+    if (start !== dates.start) return; // user picked their own dates
+    if (tashkentInputMs(start) > Date.now() - 60_000) return;
+    const fresh = defaultDates();
+    setStart(fresh.start);
+    setEnd((e) => (e === dates.end ? fresh.end : e));
+    setBaseline((b) => (b ? { ...b, start: fresh.start, end: fresh.end } : b));
+  }, [start, dates]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Paid visibility add-on (Joymee-style TOP/RAISED). Deliberately NOT part
   // of the persisted draft: it is a checkout-time money choice, reset on
@@ -215,6 +228,19 @@ export function CampaignEditorPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, business]);
+
+  // The init effect runs once; a background refetch (30s staleTime) can still
+  // deliver a newer server version (e.g. a moderator decision that just
+  // landed). Track `saved` so lock banners/editability reflect reality without
+  // a remount — form fields stay untouched (user edits are never clobbered).
+  const editingUpdatedAt = editing?.updated_at;
+  useEffect(() => {
+    if (!editingUpdatedAt || !editing) return;
+    setSaved((prev) =>
+      prev && prev.updated_at !== editingUpdatedAt ? editing : prev
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingUpdatedAt]);
 
   // New-campaign session: offer recovery for the business's unsaved draft.
   useEffect(() => {
@@ -338,14 +364,21 @@ export function CampaignEditorPage() {
   });
 
   // Submit always saves first: reviewers see exactly the previewed content.
+  // The saved campaign is settled BEFORE the fallible submit call (mirroring
+  // payAndSubmit): a failed submit must not leave `saved` stale, or retrying
+  // would create a duplicate draft.
   const submit = useMutation({
     mutationFn: async (): Promise<ApiCampaign> => {
       let current = saved;
-      if (dirty) {
+      // `!current` too: a RESTORED new-campaign draft is not dirty (baseline
+      // IS the draft) but no campaign exists yet — submit must create it,
+      // not crash on current=null (mirrors payAndSubmit).
+      if (dirty || !current) {
         current = current
           ? await updateCampaign(current.id, contentPayload())
           : await createCampaign(contentPayload());
       }
+      settleSaved(current!);
       return submitCampaign(current!.id);
     },
     onSuccess: (campaign) => {
@@ -429,13 +462,25 @@ export function CampaignEditorPage() {
 
   const discardRestored = () => {
     if (!baseline) return;
-    setHeadline(baseline.headline);
-    setBody(baseline.body);
-    setBannerKey(baseline.bannerKey);
+    // For a NEW campaign the baseline IS the restored draft — discarding
+    // must go to a blank form, not back to the same content.
+    const target = saved
+      ? baseline
+      : {
+          headline: "",
+          body: "",
+          bannerKey: "",
+          start: defaultDates().start,
+          end: defaultDates().end,
+          selected: [] as string[],
+        };
+    setHeadline(target.headline);
+    setBody(target.body);
+    setBannerKey(target.bannerKey);
     setBannerUrl(saved?.banner_url ?? "");
-    setStart(baseline.start);
-    setEnd(baseline.end);
-    setSelected(new Set(baseline.selected));
+    setStart(target.start);
+    setEnd(target.end);
+    setSelected(new Set(target.selected));
     clearDraft(draftKey);
     setRestoredAt(null);
   };
@@ -678,6 +723,7 @@ export function CampaignEditorPage() {
             <input
               id="ce-headline"
               ref={headlineRef}
+              required
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
               onBlur={() => setHeadlineTouched(true)}
@@ -924,7 +970,22 @@ export function CampaignEditorPage() {
           {tariff && (tariff.amount_top_per_24h != null || tariff.amount_raised_per_24h != null) && (
             <div className="promo-picker" role="radiogroup" aria-label={t.promoTitle}>
               <strong>{t.promoTitle}</strong>
-              <div className="promo-options">
+              <div
+                className="promo-options"
+                onKeyDown={(e) => {
+                  // Radiogroup arrow-key navigation (WCAG 4.1.2): cycle
+                  // through the options the current tariff actually offers.
+                  const next = ["ArrowDown", "ArrowRight"].includes(e.key);
+                  const prev = ["ArrowUp", "ArrowLeft"].includes(e.key);
+                  if (!next && !prev) return;
+                  e.preventDefault();
+                  const offered: ("top" | "raised" | null)[] = [null];
+                  if (tariff.amount_top_per_24h != null) offered.push("top");
+                  if (tariff.amount_raised_per_24h != null) offered.push("raised");
+                  const idx = offered.indexOf(promoTier);
+                  setPromoTier(offered[(idx + (next ? 1 : -1) + offered.length) % offered.length]);
+                }}
+              >
                 <button
                   type="button"
                   className="promo-option"

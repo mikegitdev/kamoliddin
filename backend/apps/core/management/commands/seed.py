@@ -9,7 +9,9 @@ purchase and a free grant, so the cabinet and map have meaningful content.
 Demo accounts (fake SMS prints codes to the server log):
   owner: +998901234567   staff: +998901110000 (password: admin12345)
 """
-from django.core.management.base import BaseCommand
+import os
+
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
@@ -23,7 +25,21 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from django.conf import settings
+
         from apps.moderation.models import DEFAULT_SETTINGS, PlatformSetting
+
+        if options.get("demo") and not (
+            settings.DEBUG
+            or os.environ.get("ALLOW_DEMO_SEED_IN_PROD") == "1"
+        ):
+            # The demo dataset installs a known-credential staff/superuser
+            # account — refuse to do that outside DEBUG stacks unless an
+            # operator explicitly accepts the risk.
+            raise CommandError(
+                "Refusing --demo outside DEBUG (it creates a known-password "
+                "staff account). Set ALLOW_DEMO_SEED_IN_PROD=1 to override."
+            )
 
         for key, value in DEFAULT_SETTINGS.items():
             _, created = PlatformSetting.objects.get_or_create(

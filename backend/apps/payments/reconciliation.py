@@ -110,7 +110,18 @@ def reconcile_payments(*, now=None) -> dict:
         .exclude(order__state=Order.State.PAID)
     )
     for attempt in unsettled:
-        order_state = settle_payment_attempt(attempt.id)
+        # Per-item isolation: one poison row (e.g. a promotion order whose
+        # snapshot is unusable) must not wedge the whole sweep — later
+        # attempts and leg B still run; the failure joins the manual queue.
+        try:
+            order_state = settle_payment_attempt(attempt.id)
+        except Exception:
+            logger.exception("Reconciliation failed to settle attempt %s", attempt.id)
+            unresolved.append(
+                f"attempt {attempt.id} ({attempt}) raised during settlement "
+                f"— manual resolution required"
+            )
+            continue
         if order_state == Order.State.PAID:
             settled += 1
         else:
@@ -130,48 +141,60 @@ def reconcile_payments(*, now=None) -> dict:
         )
     )
     for attempt in stale:
+        # Per-item isolation, same rationale as leg A: one failing attempt
+        # (unqueryable gateway, poison snapshot, network error) must never
+        # abort the rescue pass for the remaining ones.
         try:
-            gateway = get_payment_gateway(attempt.provider)
-            provider_status = gateway.get_payment_status(
-                provider_payment_id=attempt.provider_payment_id
-            )
-        except (LookupError, NotImplementedError) as exc:
-            unresolved.append(
-                f"attempt {attempt.id} ({attempt}) cannot be queried: {exc}"
-            )
-            continue
-
-        if provider_status == "succeeded":
-            status_now = _mark_terminal(attempt.id, "succeeded")
-            if status_now == PaymentAttempt.Status.FAILED:
-                # Webhook failure path won the race — do not resurrect money
-                # movement from a bare status string; a human decides.
+            try:
+                gateway = get_payment_gateway(attempt.provider)
+                provider_status = gateway.get_payment_status(
+                    provider_payment_id=attempt.provider_payment_id
+                )
+            except (LookupError, NotImplementedError) as exc:
                 unresolved.append(
-                    f"attempt {attempt.id} ({attempt}) failed locally but "
-                    f"provider reports succeeded — manual resolution required"
+                    f"attempt {attempt.id} ({attempt}) cannot be queried: {exc}"
                 )
                 continue
-            order_state = settle_payment_attempt(attempt.id)
-            if order_state == Order.State.PAID:
-                settled += 1
-            else:
-                unresolved.append(
-                    f"attempt {attempt.id} ({attempt}) reconciled succeeded "
-                    f"but settlement returned {order_state!r}"
-                )
-        elif provider_status in _FAILURE_STATUSES:
-            status_now = _mark_terminal(attempt.id, "failed")
-            if status_now == PaymentAttempt.Status.SUCCEEDED:
-                # Webhook succeeded it between query and write — settle instead.
+
+            if provider_status == "succeeded":
+                status_now = _mark_terminal(attempt.id, "succeeded")
+                if status_now == PaymentAttempt.Status.FAILED:
+                    # Webhook failure path won the race — do not resurrect money
+                    # movement from a bare status string; a human decides.
+                    unresolved.append(
+                        f"attempt {attempt.id} ({attempt}) failed locally but "
+                        f"provider reports succeeded — manual resolution required"
+                    )
+                    continue
                 order_state = settle_payment_attempt(attempt.id)
                 if order_state == Order.State.PAID:
                     settled += 1
-            elif status_now == PaymentAttempt.Status.FAILED:
-                failed_attempts += 1
-                if _fail_unpaid_order(attempt.order_id):
-                    orders_failed += 1
-        else:  # still "pending" (or unrecognized) at the provider — next pass
-            still_pending += 1
+                else:
+                    unresolved.append(
+                        f"attempt {attempt.id} ({attempt}) reconciled succeeded "
+                        f"but settlement returned {order_state!r}"
+                    )
+            elif provider_status in _FAILURE_STATUSES:
+                status_now = _mark_terminal(attempt.id, "failed")
+                if status_now == PaymentAttempt.Status.SUCCEEDED:
+                    # Webhook succeeded it between query and write — settle instead.
+                    order_state = settle_payment_attempt(attempt.id)
+                    if order_state == Order.State.PAID:
+                        settled += 1
+                elif status_now == PaymentAttempt.Status.FAILED:
+                    failed_attempts += 1
+                    if _fail_unpaid_order(attempt.order_id):
+                        orders_failed += 1
+            else:  # still "pending" (or unrecognized) at the provider — next pass
+                still_pending += 1
+        except Exception:
+            logger.exception(
+                "Reconciliation failed on attempt %s", attempt.id
+            )
+            unresolved.append(
+                f"attempt {attempt.id} ({attempt}) raised during reconciliation "
+                f"— retried next pass"
+            )
 
     result = {
         "settled": settled,

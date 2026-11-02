@@ -149,6 +149,68 @@ def test_expired_order_releases_reservation(owner, tariff, business, campaign, l
     assert not Placement.objects.filter(order=order, state=Placement.State.PENDING).exists()
 
 
+@pytest.mark.django_db(transaction=True)
+def test_sweep_never_expires_order_settled_under_it(
+    owner, tariff, business, campaign, location
+):
+    """Race regression guard: the sweep snapshotted a stale AWAITING order,
+    then a webhook settles it to PAID before the sweep takes the row lock.
+    The guarded expiry write must no-op — money that moved is never EXPIRED
+    and its reservations are never released."""
+    from unittest import mock
+
+    from apps.billing.models import Order
+    from apps.payments.models import PaymentAttempt
+
+    submit_for_review(campaign=campaign)
+    start = timezone.now() + timedelta(hours=1)
+    order = create_quote(
+        user=owner, business_id=business.id, campaign_id=campaign.id,
+        location_ids=[location.id],
+        requested_start_at=start, requested_end_at=start + timedelta(hours=24),
+    )
+    create_checkout(user=owner, order_id=order.id)
+    Order.objects.filter(pk=order.pk).update(
+        quote_expires_at=timezone.now() - timedelta(hours=3)
+    )
+
+    settled = threading.Event()
+    original = Order.objects.select_for_update
+    sweep_thread = threading.get_ident()
+
+    def gated_select_for_update():
+        # Deterministic interleave: on the SWEEP thread, block right before
+        # it takes the row lock until the concurrent settlement has committed.
+        if threading.get_ident() == sweep_thread:
+            assert settled.wait(timeout=10), "settler thread never finished"
+        return original()
+
+    def settle_concurrently():
+        close_old_connections()
+        try:
+            attempt = PaymentAttempt.objects.get(order=order)
+            attempt.status = PaymentAttempt.Status.SUCCEEDED
+            attempt.save(update_fields=["status", "updated_at"])
+            settle_payment_attempt(attempt.id)
+        finally:
+            close_old_connections()
+            settled.set()
+
+    with mock.patch.object(
+        Order.objects, "select_for_update", side_effect=gated_select_for_update
+    ):
+        settler = threading.Thread(target=settle_concurrently)
+        settler.start()
+        refresh_states()
+        settler.join()
+
+    order.refresh_from_db()
+    assert order.state == Order.State.PAID
+    assert Placement.objects.filter(
+        order=order, state=Placement.State.PENDING
+    ).exists()  # reservation survived: release never ran
+
+
 def test_activation_blocks_instead_of_overbooking(
     owner, tariff, business, campaign, location
 ):

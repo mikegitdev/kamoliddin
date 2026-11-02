@@ -44,9 +44,9 @@
    cp /etc/letsencrypt/live/ads.example.uz/fullchain.pem infra/nginx/certs/
    cp /etc/letsencrypt/live/ads.example.uz/privkey.pem  infra/nginx/certs/
    ```
-   Renewals: `certbot renew --webroot -w infra/nginx/certbot` (port 80 serves
-   `/.well-known/acme-challenge/` and redirects everything else to HTTPS),
-   then copy the refreshed files and `docker compose ... restart proxy`.
+   Renewals: automated via the cron in "Scheduled jobs" below (port 80 serves
+   `/.well-known/acme-challenge/` and redirects everything else to HTTPS);
+   the job copies the refreshed files and restarts the proxy on change.
 4. **Tooling** — docker (compose plugin), git, Node 22+ (the SPA is built on
    the VPS during deploy).
 
@@ -58,7 +58,7 @@ Only the proxy exposes public ports; DB/Redis/Garage stay on the internal
 compose network. Media objects live in Garage (private S3 API, ADR-0002) and
 are served publicly only through Django's `/media/` route (spec §11).
 
-## Steps (deploy.sh automates 1–9)
+## Steps (deploy.sh automates 1–10)
 
 1. **Preflight** — verify `.env.prod`, TLS certs, Node, pinned image tags,
    disk space.
@@ -76,6 +76,10 @@ are served publicly only through Django's `/media/` route (spec §11).
    (DB failure returns 503 and fails the gate).
 8. **Record release** — `.last-release-sha` is written by `deploy.sh`.
 9. **Verify** — `https://<domain>/` map page, advertiser login, admin login.
+10. **One-time after the first deploy of the thumbnail pipeline** —
+    `manage.py backfill_banner_thumbs` generates the `_sm` card variants for
+    banners uploaded before it existed (idempotent; new uploads make their
+    own). Clients fall back to the full image until it runs.
 
 ## Rollback
 
@@ -142,8 +146,10 @@ Cron on the VPS (07:00 local, output goes to cron mail; non-zero exit alerts):
   exec -T web python manage.py ops_report || echo "OPS CRITICAL — check report above"
 ```
 
-The report covers: succeeded-but-unsettled payment attempts (ADR-0005 §8), blocked
-placements, disk usage, and the Celery worker heartbeat. The reconciliation
+The report covers: succeeded-but-unsettled payment attempts (ADR-0005 §8),
+the reconciliation manual queue, blocked placements, failed orders, disk
+usage, backup freshness, the Celery worker heartbeat and queue backlog, 24h
+OTP health, and TLS certificate expiry. The reconciliation
 sweep itself runs automatically as the `reconcile-payments` beat task (every
 5 min, `manage.py reconcile_payments` for manual runs; non-zero exit = manual
 queue). Set
@@ -179,6 +185,23 @@ Weekly media hygiene (ADR-0004):
 ```
 0 4 * * 0 cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml \
   exec -T web python manage.py prune_orphan_media
+```
+
+Daily off-server backup (`backup.sh`; also runs before every deploy —
+`deploy.sh` step 2 — but a schedule must exist independently of deploys.
+The freshness stamp it writes feeds `ops_report`'s backup check):
+
+```
+0 2 * * * cd /srv/localads && BACKUP_TARGET=user@backup-host:/srv/backups/localads \
+  infra/scripts/backup.sh
+```
+
+TLS renewal (webroot via the proxy's port 80; `--deploy-hook` runs ONLY when
+a cert was actually renewed — no nightly no-op proxy restarts):
+
+```
+17 3 * * * sudo certbot renew --webroot -w /srv/localads/infra/nginx/certbot --quiet \
+  --deploy-hook 'cp /etc/letsencrypt/live/*/fullchain.pem /etc/letsencrypt/live/*/privkey.pem /srv/localads/infra/nginx/certs/ && cd /srv/localads && docker compose -f infra/docker/docker-compose.prod.yml restart proxy'
 ```
 
 ## Encrypted backups

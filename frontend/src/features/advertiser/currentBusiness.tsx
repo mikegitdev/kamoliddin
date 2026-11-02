@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useState } from "react";
+import { confirmDialog } from "@/shared/dialog";
+import { anyDirtyForms } from "@/shared/route-guard";
 import { useBusinesses } from "@/shared/api/queries";
 import { useI18n } from "@/shared/i18n";
 
@@ -52,13 +54,36 @@ export function BusinessSwitcher() {
   const { t } = useI18n();
   const { data: businesses } = useBusinesses();
   const current = useCurrentBusiness(businesses);
+  // While the discard-confirm is open the select shows the user's pick;
+  // restored to the store value when the dialog is declined.
+  const [pending, setPending] = useState<string | null>(null);
   if (!businesses || businesses.length < 2 || !current) return null;
   return (
     <select
       className="business-switch"
       aria-label={t.business}
-      value={current.id}
-      onChange={(e) => selectBusiness(e.target.value)}
+      value={pending ?? current.id}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (next === current.id || !anyDirtyForms()) {
+          selectBusiness(next);
+          return;
+        }
+        // Switching remounts the keyed page WITHOUT a navigation — the route
+        // guard never fires, so confirm here (edits would be lost silently).
+        setPending(next);
+        void confirmDialog({
+          t,
+          title: t.confirmTitle,
+          body: t.confirmLeavePage,
+          confirmLabel: t.leaveAnyway,
+          cancelLabel: t.keepEditing,
+          danger: true,
+        }).then((ok) => {
+          setPending(null);
+          if (ok) selectBusiness(next);
+        });
+      }}
     >
       {businesses.map((b) => (
         <option key={b.id} value={b.id}>

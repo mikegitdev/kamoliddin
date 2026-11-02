@@ -28,6 +28,7 @@ export interface ApiSearchAd {
   headline: string;
   business_name: string;
   banner_url: string;
+  banner_thumb_url?: string;
 }
 
 export interface ApiSearchResult {
@@ -46,11 +47,11 @@ export function useCategories() {
 export function useLocationPins(filters: LocationFilters | null) {
   return useQuery({
     queryKey: ["location-pins", filters],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams({ bbox: filters!.bbox, limit: String(PINS_LIMIT) });
       if (filters!.category) params.set("category", filters!.category);
       if (filters!.q) params.set("q", filters!.q);
-      return api<ApiLocationPin[]>(`/api/v1/public/locations?${params.toString()}`);
+      return api<ApiLocationPin[]>(`/api/v1/public/locations?${params.toString()}`, { signal });
     },
     // Every pan is a new key: keep the current pins/list on screen until the
     // new viewport arrives instead of flashing skeletons and "0 locations".
@@ -80,14 +81,14 @@ export interface SearchFilters {
 export function usePublicSearch(filters: SearchFilters | null) {
   return useQuery({
     queryKey: ["public-search", filters],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams({ q: filters!.q.trim() });
       if (filters!.category) params.set("category", filters!.category);
       if (filters!.lat !== undefined && filters!.lon !== undefined) {
         params.set("lat", String(filters!.lat));
         params.set("lon", String(filters!.lon));
       }
-      return api<ApiSearchResult>(`/api/v1/public/search?${params.toString()}`);
+      return api<ApiSearchResult>(`/api/v1/public/search?${params.toString()}`, { signal });
     },
     enabled: !!filters && filters.q.trim().length >= 2,
     // Typing refines the query per keystroke: keep results instead of blanking.
@@ -115,6 +116,7 @@ export interface ApiNearbyAd {
   headline: string;
   body: string;
   banner_url: string;
+  banner_thumb_url?: string;
   business_name: string;
   /** Staff-awarded trust badge on the business (blue check). */
   business_verified: boolean;
@@ -166,7 +168,7 @@ export const NEARBY_RADIUS_OPTIONS = [1000, 3000, 5000, 10000] as const;
 export function useNearbyAds(filters: NearbyAdsFilters | null) {
   return useInfiniteQuery({
     queryKey: ["nearby-ads", filters],
-    queryFn: ({ pageParam }) => {
+    queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         lat: String(filters!.lat),
         lon: String(filters!.lon),
@@ -178,7 +180,7 @@ export function useNearbyAds(filters: NearbyAdsFilters | null) {
       const q = filters!.q?.trim();
       if (q) params.set("q", q);
       if (pageParam) params.set("cursor", pageParam);
-      return api<ApiNearbyAdsPage>(`/api/v1/public/ads?${params.toString()}`);
+      return api<ApiNearbyAdsPage>(`/api/v1/public/ads?${params.toString()}`, { signal });
     },
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
@@ -350,6 +352,7 @@ export interface ApiAdminCampaign {
   business_name: string;
   owner_phone: string;
   banner_url: string;
+  banner_thumb_url?: string;
   updated_at: string;
 }
 
@@ -397,7 +400,7 @@ export function useStaffPage<T>(path: string, params: Record<string, string>, of
   const qs = search.toString();
   return useQuery({
     queryKey: ["staff", path, qs],
-    queryFn: () => api<Paged<T>>(`/api/v1/admin/${path}?${qs}`),
+    queryFn: ({ signal }) => api<Paged<T>>(`/api/v1/admin/${path}?${qs}`, { signal }),
     placeholderData: (prev) => prev,
   });
 }
@@ -488,6 +491,7 @@ export interface ApiAdminPlacement {
   campaign_headline: string;
   campaign_status: string;
   banner_url: string;
+  banner_thumb_url?: string;
   location_id: string;
   location_name: string;
   business_id: string;

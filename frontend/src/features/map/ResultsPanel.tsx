@@ -67,7 +67,11 @@ function ResultCard({
             the monogram; the monogram (yellow = has ads, gray = none) mirrors
             the map pin when no banner is available. */}
         {pin.preview_banner_url ? (
-          <FallImg src={pin.preview_banner_url} alt="" className="rc-thumb" />
+          <FallImg
+            src={pin.preview_banner_thumb_url || pin.preview_banner_url}
+            alt=""
+            className="rc-thumb"
+          />
         ) : (
           <span className={hasAds ? "rc-mono" : "rc-mono idle"} aria-hidden="true">
             {pin.business_name.trim().charAt(0)}
@@ -196,7 +200,7 @@ function LocationDetailView({
                     state={{ fromLocationId: loc.id }}
                     style={{ "--i": i } as React.CSSProperties}
                   >
-                    <FallImg src={ad.banner_url} alt="" className="" />
+                    <FallImg src={ad.banner_thumb_url || ad.banner_url} alt="" className="" />
                     <span className="sheet-ad-text">
                       <strong>{ad.headline}</strong>
                       <span className="muted-2">{ad.business_name}</span>

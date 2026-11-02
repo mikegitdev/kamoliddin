@@ -31,7 +31,7 @@ def _jpeg_bytes(size=(800, 400), with_marker=False) -> bytes:
 def test_reencode_strips_gps_exif():
     raw = _jpeg_bytes(with_marker=True)
     assert b"secret-upload-marker" in raw  # sanity: EXIF really was embedded
-    fmt, cleaned = _reencode(raw, purpose="banners")
+    fmt, cleaned, _thumb = _reencode(raw, purpose="banners")
     assert fmt == "JPEG"
     assert b"secret-upload-marker" not in cleaned
     img = Image.open(io.BytesIO(cleaned))
@@ -44,10 +44,51 @@ def test_reencode_enforces_minimum_dimensions():
 
 
 def test_reencode_caps_long_edge():
-    fmt, cleaned = _reencode(_jpeg_bytes(size=(3000, 1500)), purpose="banners")
+    fmt, cleaned, _thumb = _reencode(_jpeg_bytes(size=(3000, 1500)), purpose="banners")
     img = Image.open(io.BytesIO(cleaned))
     assert max(img.size) <= 2048
     assert img.width >= 600  # aspect preserved, still above the minimum
+
+
+def test_reencode_returns_card_thumbnail_for_banners():
+    from apps.core.media import THUMB_LONG_EDGE, banner_thumb_key
+
+    _fmt, _cleaned, thumb = _reencode(_jpeg_bytes(size=(3000, 1500)), purpose="banners")
+    assert thumb is not None
+    img = Image.open(io.BytesIO(thumb))
+    assert img.format == "JPEG"
+    assert max(img.size) <= THUMB_LONG_EDGE  # card-sized, aspect kept
+
+    # Logos never get a card variant (they are capped at 512 already).
+    logo = Image.new("RGB", (300, 300))
+    buf = io.BytesIO()
+    logo.save(buf, format="PNG")
+    _f, _c, no_thumb = _reencode(buf.getvalue(), purpose="logos")
+    assert no_thumb is None
+
+    # Derived key derivation is the single source both upload and prune use.
+    assert banner_thumb_key("banners/abc123.jpg") == "banners/abc123_sm.jpg"
+    assert banner_thumb_key("logos/abc.png") is None
+
+
+def test_upload_creates_derived_thumbnail(owner):
+    from django.core.files.storage import default_storage
+
+    from apps.core.media import banner_thumb_key
+
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    upload = io.BytesIO(_jpeg_bytes(size=(1600, 900)))
+    upload.name = "banner.jpg"
+    response = client.post(
+        "/api/v1/media/upload?purpose=banners", {"file": upload}, format="multipart"
+    )
+    assert response.status_code == 200
+    key = response.json()["key"]
+    thumb_key = banner_thumb_key(key)
+    assert thumb_key is not None and default_storage.exists(thumb_key)
+    served = client.get(f"/media/{thumb_key}")
+    assert served.status_code == 200
 
 
 def test_reencode_rejects_non_image():

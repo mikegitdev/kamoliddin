@@ -945,15 +945,33 @@ def _banner_image(name: str, headline: str, phone: str) -> str:
     buffer = io.BytesIO()
     img.convert("RGB").save(buffer, format="PNG")
     default_storage.save(key, ContentFile(buffer.getvalue()))
+
+    # Same derived card thumbnail the upload pipeline produces, so demo maps
+    # show real banners in the feed/strip cards instead of 404 placeholders.
+    from apps.core.media import THUMB_LONG_EDGE, THUMB_QUALITY, banner_thumb_key
+
+    card = img.copy()
+    card.thumbnail((THUMB_LONG_EDGE, THUMB_LONG_EDGE), Image.Resampling.LANCZOS)
+    thumb_buf = io.BytesIO()
+    card.convert("RGB").save(thumb_buf, format="JPEG", quality=THUMB_QUALITY, optimize=True)
+    thumb_key = banner_thumb_key(key)
+    if thumb_key:
+        default_storage.save(thumb_key, ContentFile(thumb_buf.getvalue()))
     return key
 
 
 def seed_demo(*, reset: bool = False, log=print) -> None:
     from apps.accounts.models import User
     from apps.billing.models import Order, OrderItem, Refund, Tariff
-    from apps.billing.services import create_checkout, create_quote, process_refund, request_refund
+    from apps.billing.services import (
+        create_checkout,
+        create_promotion_quote,
+        create_quote,
+        process_refund,
+        request_refund,
+    )
     from apps.businesses.models import Business, BusinessCategory
-    from apps.campaigns.models import Campaign
+    from apps.campaigns.models import Campaign, CampaignOutcome
     from apps.locations.models import Location
     from apps.moderation.services import (
         approve_campaign,
@@ -1114,6 +1132,20 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
             elif scenario == "one_day":
                 purchase(campaign, locations[:1], days=1)
                 approve_campaign(campaign=campaign, reviewer=staff)
+                # Shift the interval into the past and answer the survey
+                # (Joymee borrow #8): demos the ended-run + answered-outcome
+                # cabinet state alongside the live scenarios.
+                if not CampaignOutcome.objects.filter(campaign=campaign).exists():
+                    campaign.placements.update(
+                        start_at=now - timedelta(days=2),
+                        end_at=now - timedelta(hours=2),
+                        state=Placement.State.EXPIRED,
+                    )
+                    CampaignOutcome.objects.create(
+                        campaign=campaign,
+                        answer=CampaignOutcome.Answer.BROUGHT_CUSTOMERS,
+                        comment="За день продали почти всё, что готовили",
+                    )
             elif scenario == "grant":
                 submit_for_review(campaign=campaign)
                 approve_campaign(campaign=campaign, reviewer=staff)
@@ -1163,6 +1195,33 @@ def seed_demo(*, reset: bool = False, log=print) -> None:
             business=flagship, staff=staff, verified=True,
             reason="Демо: проверенный партнёр при посеве",
         )
+
+    # Post-hoc TOP window (open-questions #18): a running plain placement buys
+    # visibility days after checkout — exercises /orders/promotion-quote and
+    # settlement's window stamping on the demo stack. Idempotent per placement.
+    promo_target = (
+        Placement.objects.filter(
+            state=Placement.State.ACTIVE,
+            promotion_tier__isnull=True,
+            campaign__business__owner=owner,
+        )
+        .select_related("campaign")
+        .order_by("created_at")
+        .first()
+    )
+    if (
+        promo_target is not None
+        and not Order.objects.filter(
+            kind=Order.Kind.PROMOTION, promoted_placement=promo_target
+        ).exists()
+    ):
+        promo_order = create_promotion_quote(
+            user=owner, placement_id=promo_target.id, tier=PromotionTier.TOP, days=2
+        )
+        attempt, _ = create_checkout(user=owner, order_id=promo_order.id)
+        attempt.status = PaymentAttempt.Status.SUCCEEDED
+        attempt.save(update_fields=["status", "updated_at"])
+        settle_payment_attempt(attempt.id)
 
     stats["active_placements"] = Placement.objects.filter(
         state=Placement.State.ACTIVE, campaign__business__owner=owner

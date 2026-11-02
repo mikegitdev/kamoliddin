@@ -57,7 +57,7 @@ class BusinessDetailView(RetrieveUpdateDestroyAPIView):
             or instance.orders.exists()
         ):
             raise ValidationError(
-                {"detail": "Only a business without branches, campaigns or orders can be deleted"},
+                "Only a business without branches, campaigns or orders can be deleted",
                 code="business_in_use",
             )
         instance.delete()

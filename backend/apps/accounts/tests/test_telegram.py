@@ -186,6 +186,33 @@ def test_replayed_token_never_steals_a_chat(owner, other_owner, monkeypatch):
     assert other_owner.telegram_chat_id is None
 
 
+@override_settings(**TG_SETTINGS)
+def test_forwarded_token_is_single_use_even_after_unbind(owner, monkeypatch):
+    """A forwarded enrollment link must not hand the account's OTP delivery
+    to whoever clicks it: the first /start burns the token, and an unbind
+    does NOT revive it — only a freshly minted link can bind again."""
+    tg = RecordingTelegram()
+    token = _bind(owner, monkeypatch, tg, chat_id=111)
+
+    # Unbind (bot blocked / user-initiated) — the token is still within TTL…
+    owner.telegram_chat_id = None
+    owner.save(update_fields=["telegram_chat_id"])
+
+    # …but its replay must be refused: the attacker's /start changes nothing.
+    assert _webhook(_start_update(token, 999)).status_code == 200
+    owner.refresh_from_db()
+    assert owner.telegram_chat_id is None
+    assert tg.sent and "expired" in tg.sent[-1][1]
+
+    # A FRESH link still enrolls normally.
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    fresh = client.post("/api/v1/auth/telegram/bind").data["link"].rsplit("=", 1)[1]
+    assert _webhook(_start_update(fresh, 222)).status_code == 200
+    owner.refresh_from_db()
+    assert owner.telegram_chat_id == 222
+
+
 # --- Delivery ---------------------------------------------------------------------
 
 

@@ -48,7 +48,7 @@ class OrderListView(ListAPIView):
         return (
             Order.objects.filter(business__owner=_owner(self.request))
             .select_related("business", "campaign")
-            .prefetch_related("items__location")
+            .prefetch_related("items__location", "refunds")
             .order_by("-created_at")
         )
 
@@ -156,7 +156,10 @@ class CheckoutView(APIView):
         except CheckoutError as exc:
             return Response(
                 {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
-                status=status.HTTP_409_CONFLICT,
+                status=(
+                    status.HTTP_404_NOT_FOUND if exc.code == "not_found"
+                    else status.HTTP_409_CONFLICT
+                ),
             )
         return Response(
             {
@@ -198,7 +201,10 @@ class RefundRequestView(APIView):
         except RefundError as exc:
             return Response(
                 {"error": {"code": exc.code, "message": str(exc), "fields": {}}},
-                status=status.HTTP_409_CONFLICT,
+                status=(
+                    status.HTTP_404_NOT_FOUND if exc.code == "not_found"
+                    else status.HTTP_409_CONFLICT
+                ),
             )
         return Response(
             {"id": str(refund.id), "state": refund.state, "amount": refund.amount},

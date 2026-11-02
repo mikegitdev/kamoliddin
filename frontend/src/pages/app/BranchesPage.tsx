@@ -190,6 +190,11 @@ export function BranchesPage() {
   const locations = locationsQuery.data;
 
   const [form, setForm] = useState<BranchForm>(EMPTY_FORM);
+  const [locating, setLocating] = useState(false);
+  // Bumped on each geolocation use: remounts MapPicker (via key) so its
+  // mount-prefill flies the camera to the new point — without it the marker
+  // drops possibly off-screen with the camera stuck on the default view.
+  const [geoFocus, setGeoFocus] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -199,6 +204,18 @@ export function BranchesPage() {
   const [baseline, setBaseline] = useState<string>(JSON.stringify(EMPTY_FORM));
   const dirty = JSON.stringify(form) !== baseline;
   useDirtyRouteGuard(dirty);
+
+  useEffect(() => {
+    if (!dirty) return;
+    // beforeunload covers reload/close (the route guard covers in-app nav) —
+    // same pattern as the campaign editor and business profile.
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   const applyError = (e: unknown) => {
     if (e instanceof ApiError) {
@@ -431,7 +448,7 @@ export function BranchesPage() {
         <h3>{form.id ? t.editBranchTitle : t.addBranch}</h3>
         <div className="field">
           <label htmlFor="br-name">{t.branchName}</label>
-          <input id="br-name" value={form.name} onChange={set("name")} />
+          <input id="br-name" required value={form.name} onChange={set("name")} />
           {fieldErrors.name && (
             <span className="field-error" role="alert">
               {fieldErrors.name}
@@ -440,7 +457,7 @@ export function BranchesPage() {
         </div>
         <div className="field">
           <label htmlFor="br-address">{t.streetAddress}</label>
-          <input id="br-address" value={form.address} onChange={set("address")} />
+          <input id="br-address" required value={form.address} onChange={set("address")} />
           {fieldErrors.address && (
             <span className="field-error" role="alert">
               {fieldErrors.address}
@@ -529,10 +546,38 @@ export function BranchesPage() {
           </span>
           <div id="br-map">
             <MapPicker
+              key={`pick-${form.id ?? "new"}-${geoFocus}`}
               point={form.point}
               label={t.pickOnMap}
               onPick={(lng, lat) => setForm((f) => ({ ...f, point: { lng, lat } }))}
             />
+          </div>
+          <div className="row">
+            {/* Keyboard/pointer-free path to a point (WCAG 2.1.1): the map
+                picker is click/drag only, so offer the device location too. */}
+            <button
+              type="button"
+              className="btn subtle small"
+              disabled={locating}
+              onClick={() => {
+                if (!navigator.geolocation) return;
+                setLocating(true);
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    setLocating(false);
+                    setForm((f) => ({
+                      ...f,
+                      point: { lng: pos.coords.longitude, lat: pos.coords.latitude },
+                    }));
+                    setGeoFocus((n) => n + 1);
+                  },
+                  () => setLocating(false),
+                  { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+                );
+              }}
+            >
+              <IconPin size={12} /> {locating ? t.geoLocating : t.useMyLocation}
+            </button>
           </div>
           {form.point && (
             <p className="pin-confirm">

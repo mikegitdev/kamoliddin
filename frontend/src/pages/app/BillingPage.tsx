@@ -5,7 +5,7 @@ import { useOrders } from "@/shared/api/queries";
 import { ApiError } from "@/shared/api/client";
 import { requestRefund } from "@/features/advertiser/api";
 import { formatDateTime, formatMinor } from "@/shared/format";
-import { OrderChip, QueryError } from "@/shared/ui";
+import { OrderChip, QueryError, RefundStateChip } from "@/shared/ui";
 import { mountDialog, RefundDialogBody } from "@/shared/dialog";
 import { IconCheck } from "@/shared/icons";
 import { useI18n } from "@/shared/i18n";
@@ -21,7 +21,11 @@ export function BillingPage() {
   const refund = useMutation({
     mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
       requestRefund(orderId, reason),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", variables.orderId] });
+      queryClient.invalidateQueries({ queryKey: ["me", "summary"] });
+    },
   });
 
   /** Refund with a user-typed reason (the moderator reads it verbatim) —
@@ -74,10 +78,17 @@ export function BillingPage() {
                 <th />
               </tr>
             </thead>
-            <tbody>
-              {orders.slice(0, visibleCount).map((order) => {
-                const refundable = order.state === "paid" && order.campaign_status === "rejected";
-                const refundDone = refund.isSuccess && refund.variables?.orderId === order.id;
+          <tbody>
+            {orders.slice(0, visibleCount).map((order) => {
+              // Refundable only when no refund is in flight or finished; a
+              // rejected request may be retried.
+              const activeRefund =
+                order.refund_state && order.refund_state !== "refund_failed";
+              const refundable =
+                order.state === "paid" &&
+                order.campaign_status === "rejected" &&
+                !activeRefund;
+              const refundDone = refund.isSuccess && refund.variables?.orderId === order.id;
                 return (
                   <tr key={order.id}>
                     <td data-label={t.order}>
@@ -110,6 +121,8 @@ export function BillingPage() {
                         </button>
                       ) : refundDone ? (
                         <span className="ok"><IconCheck size={12} /> {t.refundSent}</span>
+                      ) : activeRefund ? (
+                        <RefundStateChip state={order.refund_state!} />
                       ) : (
                         <span className="muted-2">—</span>
                       )}

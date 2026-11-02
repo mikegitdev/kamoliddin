@@ -555,7 +555,10 @@ export interface paths {
         /**
          * Set the CSRF cookie
          * @description GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
-         *     X-CSRFToken on authenticated mutations (spec §9).
+         *     X-CSRFToken on authenticated mutations (spec §9). The token is also
+         *     returned in the body: a cross-origin SPA cannot read the API's cookie,
+         *     but the header token is validated against the cookie that travels with
+         *     the credentialed request, so the pair still matches.
          */
         get: operations["api_v1_auth_csrf_retrieve"];
         put?: never;
@@ -831,6 +834,26 @@ export interface paths {
         head?: never;
         /** Edit draft/rejected campaign */
         patch: operations["api_v1_campaigns_partial_update"];
+        trace?: never;
+    };
+    "/api/v1/campaigns/{id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate a campaign as a fresh draft
+         * @description Spec §13 cabinet flow (create/copy/purchase another term): copies headline, body and banner into a new DRAFT with review_version 1. The banner storage object is shared; reviews, orders and placements are not carried over.
+         */
+        post: operations["api_v1_campaigns_copy_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/campaigns/{id}/outcome": {
@@ -1507,6 +1530,7 @@ export interface components {
             readonly campaign_headline: string;
             readonly campaign_status: string;
             readonly banner_url: string;
+            readonly banner_thumb_url: string;
             /** Format: uuid */
             readonly location_id: string;
             readonly location_name: string;
@@ -1584,6 +1608,7 @@ export interface components {
             body?: string;
             banner_key: string;
             readonly banner_url: string;
+            readonly banner_thumb_url: string;
             readonly review_status: components["schemas"]["ReviewStatusEnum"];
             readonly review_version: number;
             readonly active_placements_count: number;
@@ -1595,7 +1620,13 @@ export interface components {
             } | null;
             readonly views_count: number;
             readonly contact_clicks_count: number;
-            readonly outcome: string;
+            readonly outcome: {
+                /** @enum {string} */
+                answer?: "brought_customers" | "other_channel" | "no_effect";
+                comment?: string;
+                /** Format: date-time */
+                created_at?: string;
+            } | null;
             /**
              * @description Ask exactly once: the campaign ran, every placement has ended, and
              *     no answer is recorded yet (Joymee's post-sale survey trigger).
@@ -1670,6 +1701,11 @@ export interface components {
             readonly currency: string;
             readonly redirect_url: string;
             readonly order_state: string;
+        };
+        CsrfToken: {
+            detail: string;
+            /** @description Same token as the csrftoken cookie — lets a cross-origin SPA echo it in X-CSRFToken */
+            csrftoken: string;
         };
         /** @description Plain acknowledgement body: {"detail": "..."}. */
         Detail: {
@@ -1809,6 +1845,7 @@ export interface components {
              */
             readonly interval_end_at: string | null;
             readonly items: components["schemas"]["OrderItem"][];
+            readonly refund_state: string | null;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1844,6 +1881,7 @@ export interface components {
              */
             readonly interval_end_at: string | null;
             readonly items: components["schemas"]["OrderItem"][];
+            readonly refund_state: string | null;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -2058,6 +2096,7 @@ export interface components {
             body?: string;
             banner_key?: string;
             readonly banner_url?: string;
+            readonly banner_thumb_url?: string;
             readonly review_status?: components["schemas"]["ReviewStatusEnum"];
             readonly review_version?: number;
             readonly active_placements_count?: number;
@@ -2069,7 +2108,13 @@ export interface components {
             } | null;
             readonly views_count?: number;
             readonly contact_clicks_count?: number;
-            readonly outcome?: string;
+            readonly outcome?: {
+                /** @enum {string} */
+                answer?: "brought_customers" | "other_channel" | "no_effect";
+                comment?: string;
+                /** Format: date-time */
+                created_at?: string;
+            } | null;
             /**
              * @description Ask exactly once: the campaign ran, every placement has ended, and
              *     no answer is recorded yet (Joymee's post-sale survey trigger).
@@ -2185,7 +2230,7 @@ export interface components {
         PromotionQuoteRequest: {
             /** Format: uuid */
             placement_id: string;
-            tier: components["schemas"]["TierEnum"];
+            tier: components["schemas"]["PromotionTierEnum"];
             days: number;
         };
         /**
@@ -2272,6 +2317,7 @@ export interface components {
             readonly active_ads_count: number;
             readonly preview_headline: string | null;
             readonly preview_banner_url: string | null;
+            readonly preview_banner_thumb_url: string | null;
         };
         PublicLocationDetail: {
             /** Format: uuid */
@@ -2309,6 +2355,7 @@ export interface components {
             readonly headline: string;
             readonly body: string;
             readonly banner_url: string;
+            readonly banner_thumb_url: string;
             readonly business_name: string;
             readonly business_verified: boolean;
             readonly category: string;
@@ -2350,6 +2397,7 @@ export interface components {
             readonly headline: string;
             readonly business_name: string;
             readonly banner_url: string;
+            readonly banner_thumb_url: string;
         };
         /**
          * @description Map pin payload: id, coordinates, count of CURRENTLY ACTIVE public ads
@@ -2371,6 +2419,7 @@ export interface components {
             readonly active_ads_count: number;
             readonly preview_headline: string | null;
             readonly preview_banner_url: string | null;
+            readonly preview_banner_thumb_url: string | null;
             /** @description Present only when lat/lon are given */
             readonly distance_m: number;
         };
@@ -2396,6 +2445,7 @@ export interface components {
             headline: string;
             body?: string;
             readonly banner_url: string;
+            readonly banner_thumb_url: string;
             review_status?: components["schemas"]["ReviewStatusEnum"];
             review_version?: number;
             readonly business_name: string;
@@ -2434,6 +2484,7 @@ export interface components {
              */
             readonly interval_end_at: string | null;
             readonly items: components["schemas"]["OrderItem"][];
+            readonly refund_state: string | null;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -2587,12 +2638,6 @@ export interface components {
             /** @description Whether login codes are delivered to Telegram */
             readonly bound: boolean;
         };
-        /**
-         * @description * `top` - TOP (pinned above organic results)
-         *     * `raised` - RAISED (second promotion block)
-         * @enum {string}
-         */
-        TierEnum: "top" | "raised";
         /**
          * @description * `live` - live
          *     * `draft` - draft
@@ -3536,7 +3581,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["CsrfToken"];
                 };
             };
         };
@@ -4052,6 +4097,27 @@ export interface operations {
         };
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Campaign"];
+                };
+            };
+        };
+    };
+    api_v1_campaigns_copy_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

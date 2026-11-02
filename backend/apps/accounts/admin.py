@@ -36,9 +36,24 @@ class PhoneChangeRecordAdmin(admin.ModelAdmin):
 
 @admin.register(OTPChallenge)
 class OTPChallengeAdmin(admin.ModelAdmin):
-    list_display = ("phone_e164", "purpose", "attempts", "expires_at", "consumed_at",
-                    "created_at")
+    """Append-only challenge inspection. No plaintext phone is stored on the
+    row — search by typing the phone number; the query is hashed to
+    phone_hash server-side (same digest the OTP service uses)."""
+
+    list_display = ("purpose", "attempts", "expires_at", "consumed_at", "created_at")
     list_filter = ("purpose",)
-    search_fields = ("phone_e164",)
     readonly_fields = [f.name for f in OTPChallenge._meta.fields]  # append-only; never editable
     actions = None
+
+    def get_search_results(self, request, queryset, search_term):
+        from apps.accounts.services import _hash, normalize_phone
+
+        term = search_term.strip()
+        if term:
+            try:
+                term = normalize_phone(term)
+            except Exception:
+                return queryset.none(), False
+            queryset = queryset.filter(phone_hash=_hash(term))
+            return queryset, False
+        return super().get_search_results(request, queryset, search_term)

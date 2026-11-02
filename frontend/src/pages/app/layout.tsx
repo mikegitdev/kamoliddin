@@ -52,7 +52,7 @@ export function AdvertiserLayout() {
               </span>
             </Link>
           </header>
-          <main>
+          <main id="main">
             <section>
               <h2>{t.cabinet}</h2>
               <p className="callout danger" role="alert">
@@ -87,6 +87,10 @@ export function AdvertiserLayout() {
 
   return (
     <div className="page app-page">
+      {/* Skip link (WCAG 2.4.1): keyboard users jump past the header/nav. */}
+      <a className="skip-link" href="#main">
+        {t.skipToContent}
+      </a>
       <header className="app-header">
         {/* The block labeled "cabinet" must stay inside the cabinet — the
             public map is reachable via the explicit "to map" action. */}
@@ -151,7 +155,7 @@ export function AdvertiserLayout() {
           </NavLink>
         )}
       </nav>
-      <main>
+      <main id="main">
         {/* Switching business remounts the page: no form state of the
             previous business may carry over. */}
         <Outlet key={selectedBusinessId ?? "default"} />

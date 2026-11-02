@@ -40,3 +40,8 @@ SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Structured logs for the VPS (spec §15 [R]): one JSON object per line with
+# the request id; dev keeps the human-readable console format.
+LOGGING["handlers"]["console"]["formatter"] = "json"  # noqa: F405

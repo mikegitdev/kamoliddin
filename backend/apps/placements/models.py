@@ -127,6 +127,11 @@ class Placement(models.Model):
             models.Index(fields=["location", "state"]),
             models.Index(fields=["campaign", "state"]),
             models.Index(fields=["order"]),
+            # State sweeper (every 60s): state-leading indexes so the
+            # scheduled->active / active->expired passes never seq-scan the
+            # ever-growing placement history.
+            models.Index(fields=["state", "start_at"]),
+            models.Index(fields=["state", "end_at"]),
         ]
         constraints = [
             # One placement per (order, location): checkout reservations are

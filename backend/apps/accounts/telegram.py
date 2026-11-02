@@ -28,6 +28,7 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -40,7 +41,10 @@ logger = logging.getLogger(__name__)
 
 WEBHOOK_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 # /start payloads are limited to 64 base64url characters (Bot API docs).
-_TOKEN_PAYLOAD_BYTES = 16 + 4  # user UUID + uint32 expiry
+# user UUID + 8 random nonce bytes + uint32 expiry. The nonce makes every
+# minted token unique — without it two links issued in the same second are
+# byte-identical, defeating single-use semantics.
+_TOKEN_PAYLOAD_BYTES = 16 + 8 + 4
 _TOKEN_SIG_BYTES = 8
 
 
@@ -154,9 +158,11 @@ def _sig(payload: bytes) -> bytes:
 
 
 def make_bind_token(user) -> str:
-    payload = user.pk.bytes + int(
-        time.time() + settings.TELEGRAM_BIND_TOKEN_TTL_SECONDS
-    ).to_bytes(4, "big")
+    payload = (
+        user.pk.bytes
+        + secrets.token_bytes(8)
+        + int(time.time() + settings.TELEGRAM_BIND_TOKEN_TTL_SECONDS).to_bytes(4, "big")
+    )
     return _b64(payload + _sig(payload))
 
 
@@ -176,7 +182,7 @@ def resolve_bind_token(token: str):
     expected = _sig(payload)
     if not hmac.compare_digest(sig, expected):
         return None
-    if int.from_bytes(payload[16:], "big") < time.time():
+    if int.from_bytes(payload[24:], "big") < time.time():
         return None  # expired
     return User.objects.filter(pk=uuid.UUID(bytes=payload[:16]), deleted_at__isnull=True).first()
 

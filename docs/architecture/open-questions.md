@@ -75,3 +75,69 @@ Constraints to resolve before choosing a provider:
     left untouched (maintainer-owned).
   - A user block does not hide that user's live ads; staff disable the
     business separately when needed.
+
+## Hardening pass 2026-11-02 — deliberate trade-offs (code is authoritative)
+
+- `GET /api/v1/orders` stays unpaginated: the cabinet's "paid total" stat sums
+  the full list. Organic growth is one order per purchase; quote spam is capped
+  by `MAX_OPEN_DRAFT_QUOTES` (10 open drafts per owner). Ceiling: paginate +
+  move the stat server-side when an advertiser legitimately exceeds ~1000 orders.
+- Staff work queues (`/admin/review-queue`, `/admin/refunds`) are capped at the
+  200 most recent rows (same pattern as `/admin/reports`); the overview's
+  counters keep reporting true totals.
+- Engagement counters are denormalized onto `Campaign.views_count` /
+  `contact_clicks_count` (F()-incremented with each `CampaignEvent` row).
+  `CampaignEvent` rows themselves are retained indefinitely as the raw log;
+  a pruning policy is a future product decision.
+- `create_checkout` still calls the provider inside the capacity-locked
+  transaction — acceptable while the only gateway is the instant fake adapter.
+  Constraint documented on `ClickPaymentGateway`; the real adapter must use a
+  hard socket timeout or the transaction must be split before it ships.
+- Order/placement not-found vs not-owned responses differ (400/404 vs 403):
+  accepted as-is because ids are UUID4 (unguessable); noted for symmetry with
+  the anti-enumeration discipline of the auth flow.
+
+## Phase 2 pass 2026-11-02 — spec §12/§15 reconciliation
+
+- `Order.State.PAYMENT_PROCESSING` and `Refund.State.ADMIN_REVIEW` (spec §7.2)
+  are defined but unreachable on purpose: `awaiting_payment` already covers
+  the provider window (settlement is a single atomic hop), and refunds go
+  request → decision in one staff action. Wiring the extra states would add
+  churn without behavior. Maintainer-owned state machines (§16) — flagging
+  the divergence here instead of changing them.
+- Spec §15 monitoring items now in `ops_report`: Celery queue backlog, OTP
+  failure health, TLS expiry. Garage storage usage stays a manual checklist
+  item (admin API on :3903) — no in-app query path without new credentials.
+- Structured logs: prod emits one JSON object per line with the request id
+  (`apps/core/logging.py`); dev keeps the readable console format.
+- Banner card thumbnails (spec §11 [R] "image variants"): uploads generate a
+  480px `_sm.jpg` variant; `backfill_banner_thumbs` covers pre-existing
+  banners (run once per environment after deploy); `prune_orphan_media`
+  treats derived thumbs as referenced. Clients fall back to `banner_url`
+  when `banner_thumb_url` is absent/404 until backfill runs.
+- Spec §12/§13 drift (route names, quote envelope shape, §5 model inventory)
+  is superseded by the generated OpenAPI schema — regenerate, don't edit prose.
+
+## Phase 4 pass 2026-11-02 — accounts hardening, envelope consistency, CSP
+
+- Telegram enrollment tokens are now single-use (cache-marked on first
+  /start) and carry a random nonce — previously a forwarded bind link could
+  be replayed after unbind, handing the account's OTP delivery to whoever
+  clicked it, and two links minted in the same second were byte-identical.
+- OTP delivery (Telegram/SMS) runs AFTER the challenge row commits — provider
+  latency no longer holds the per-phone advisory lock. Provider outages now
+  answer the uniform 202 + ops log instead of a 500.
+- Staff sessions via OTP for the /staff console are intentional (documented
+  scaffold assumption); Django Admin stays password-only. Model docstring
+  updated to match the blessed behavior.
+- Not-found/not-yours semantics unified: billing checkout/refunds return 404
+  for missing ids (was 400/409) and 404 for foreign orders (was 403), matching
+  the owner-filtered views; `ValidationError({"detail": ...})` pseudo-field
+  sites replaced with plain coded details.
+- nginx ships a CSP (`script-src 'self'` — the SPA loads no third-party
+  scripts); img-src/connect-src stay permissive until the licensed tile host
+  is known, then tighten.
+- Load smoke vs the dev container: anon throttle engaged exactly at the
+  configured 300/min; 200s at p50 169ms under 30-way concurrency (DEBUG
+  runserver) — consistent with the runbook's load checkpoint. Re-run against
+  prod-shaped infra before launch sign-off (runbook note stands).

@@ -3,6 +3,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import login
+from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -11,10 +12,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.serializers import DetailSerializer
-
 from . import telegram as telegram_transport
 from .serializers import (
+    CsrfTokenSerializer,
     OTPAcceptedSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
@@ -79,6 +79,13 @@ class OTPRequestView(APIView):
             return _accepted_response(
                 "If the number is valid, an SMS code has been sent.", None
             )
+        except Exception:
+            # Provider outage (Telegram/SMS transport): same uniform 202 — the
+            # challenge row is committed, the user may resend; log for ops.
+            logger.exception("OTP delivery failed during otp/request")
+            return _accepted_response(
+                "If the number is valid, an SMS code has been sent.", None
+            )
         return _accepted_response(
             "If the number is valid, an SMS code has been sent.", challenge
         )
@@ -112,6 +119,11 @@ class OTPVerifyView(APIView):
                        request=None, responses={204: None})
 )
 class LogoutView(APIView):
+    # Explicit (not inherited from DEFAULT_PERMISSION_CLASSES): session
+    # termination and account deletion must never silently open up if the
+    # global default ever changes.
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         request.session.flush()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -119,18 +131,22 @@ class LogoutView(APIView):
 
 @extend_schema_view(
     get=extend_schema(tags=["Auth"], summary="Set the CSRF cookie",
-                      responses={200: DetailSerializer})
+                      responses={200: CsrfTokenSerializer})
 )
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class CsrfView(APIView):
     """GET /auth/csrf — ensures the csrftoken cookie exists so the SPA can send
-    X-CSRFToken on authenticated mutations (spec §9)."""
+    X-CSRFToken on authenticated mutations (spec §9). The token is also
+    returned in the body: a cross-origin SPA cannot read the API's cookie,
+    but the header token is validated against the cookie that travels with
+    the credentialed request, so the pair still matches."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        return Response({"detail": "CSRF cookie set"})
+        return Response({"detail": "CSRF cookie set",
+                         "csrftoken": get_token(request)})
 
 
 @extend_schema_view(
@@ -143,6 +159,8 @@ class CsrfView(APIView):
                          responses={204: None}),
 )
 class MeView(APIView):
+    permission_classes = [IsAuthenticated]  # explicit; see LogoutView
+
     def get(self, request):
         return Response(SessionUserSerializer(request.user).data)
 
@@ -161,6 +179,7 @@ class MeView(APIView):
         description="Returns a one-time t.me deep link; the binding completes "
                     "when the user taps Start and the bot webhook resolves the "
                     "signed token (ADR-0006).",
+        request=None,
         responses={202: TelegramLinkSerializer},
     ),
     delete=extend_schema(tags=["Auth"], summary="Unlink Telegram",
@@ -288,6 +307,11 @@ class PhoneChangeRequestView(APIView):
             )
         except OTPError:
             challenge = None  # taken/blocked/throttled — uniform response
+        except Exception:
+            # Provider outage: uniform response + ops log (challenge is
+            # committed; the user may resend).
+            logger.exception("OTP delivery failed during phone-change request")
+            challenge = None
         return _accepted_response(
             "If the number is available, a code has been sent to it.", challenge
         )

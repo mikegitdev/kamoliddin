@@ -22,7 +22,11 @@ def settle_payment_attempt(attempt_id) -> str:
     )
     if attempt is None:
         return "unknown_attempt"
-    order = attempt.order
+    # Lock the order row too: refresh_states' expiry pass and the webhook
+    # failure path both write order.state under select_for_update — an
+    # unlocked read-modify-write here could be clobbered by (or clobber) the
+    # EXPIRED write even though money already moved.
+    order = Order.objects.select_for_update().get(pk=attempt.order_id)
     if attempt.status != PaymentAttempt.Status.SUCCEEDED:
         return order.state
 

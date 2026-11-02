@@ -32,6 +32,11 @@ class Campaign(models.Model):
         max_length=20, choices=ReviewStatus.choices, default=ReviewStatus.DRAFT
     )
     review_version = models.PositiveIntegerField(default=1)
+    # Denormalized engagement counters (apps.campaigns CampaignEvent rollup):
+    # incremented atomically with each event row so cabinet reads stay O(1)
+    # instead of counting an ever-growing append-only table per request.
+    views_count = models.PositiveBigIntegerField(default=0)
+    contact_clicks_count = models.PositiveBigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

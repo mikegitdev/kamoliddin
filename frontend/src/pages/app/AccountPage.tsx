@@ -245,7 +245,7 @@ export function AccountPage() {
                 {busy ? t.verifying : t.verify}
               </button>
               {countdown > 0 ? (
-                <span className="muted-2 otp-countdown">
+                <span className="muted-2 otp-countdown" role="status">
                   {t.resend} — {countdown} {t.seconds}
                 </span>
               ) : (

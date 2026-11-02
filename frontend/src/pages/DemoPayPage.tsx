@@ -130,6 +130,11 @@ function DemoPayFlow({ method, orderId, session }: { method: PayMethod; orderId:
       setStep("done");
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      // A paid placement/promotion changes the campaign page (live badge,
+      // promotion countdown) and the owner's spend summary.
+      queryClient.invalidateQueries({ queryKey: ["campaign"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["me", "summary"] });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : null);
       setStep("failed");
@@ -201,8 +206,13 @@ function DemoPayFlow({ method, orderId, session }: { method: PayMethod; orderId:
                   value={formatCardNumber(card)}
                   onChange={(e) => setCard(digitsOnly(e.target.value).slice(0, 16))}
                   aria-invalid={submitted && !!cardError}
+                  aria-describedby={submitted && cardError ? "demo-pay-card-error" : undefined}
                 />
-                {submitted && cardError && <span className="demo-pay-error">{cardError}</span>}
+                {submitted && cardError && (
+                  <span className="demo-pay-error" id="demo-pay-card-error" role="alert">
+                    {cardError}
+                  </span>
+                )}
               </label>
               <div className="demo-pay-row">
                 <label className="demo-pay-field">
@@ -214,12 +224,17 @@ function DemoPayFlow({ method, orderId, session }: { method: PayMethod; orderId:
                     value={formatExpiry(expiry)}
                     onChange={(e) => setExpiry(digitsOnly(e.target.value).slice(0, 4))}
                     aria-invalid={submitted && !!expiryError}
+                    aria-describedby={submitted && expiryError ? "demo-pay-expiry-error" : undefined}
                   />
-                  {submitted && expiryError && <span className="demo-pay-error">{expiryError}</span>}
+                  {submitted && expiryError && (
+                    <span className="demo-pay-error" id="demo-pay-expiry-error">
+                      {expiryError}
+                    </span>
+                  )}
                 </label>
                 {international && (
                   <label className="demo-pay-field">
-                    <span>CVV / CVC</span>
+                    <span>{t.payCvvLabel}</span>
                     <input
                       inputMode="numeric"
                       autoComplete="off"
@@ -228,8 +243,13 @@ function DemoPayFlow({ method, orderId, session }: { method: PayMethod; orderId:
                       value={cvv}
                       onChange={(e) => setCvv(digitsOnly(e.target.value).slice(0, 3))}
                       aria-invalid={submitted && !!cvvError}
+                      aria-describedby={submitted && cvvError ? "demo-pay-cvv-error" : undefined}
                     />
-                    {submitted && cvvError && <span className="demo-pay-error">{cvvError}</span>}
+                    {submitted && cvvError && (
+                      <span className="demo-pay-error" id="demo-pay-cvv-error">
+                        {cvvError}
+                      </span>
+                    )}
                   </label>
                 )}
               </div>

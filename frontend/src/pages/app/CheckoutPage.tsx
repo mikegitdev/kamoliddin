@@ -94,6 +94,14 @@ export function CheckoutPage() {
     ? Math.round((new Date(order.quote_expires_at).getTime() - Date.now()) / 60_000)
     : null;
   const quoteUrgent = quoteMinutesLeft !== null && quoteMinutesLeft < 60;
+  // Idle expiry: sitting on the page past the TTL (no pending attempt, so no
+  // polling) — the cached state still says payable, but the server will 409.
+  // Hide the pay UI up front instead of showing a live button that cannot work.
+  const quoteLocallyExpired =
+    unpaid &&
+    !processing &&
+    !!order.quote_expires_at &&
+    new Date(order.quote_expires_at).getTime() < Date.now();
 
   return (
     <section className="form">
@@ -224,7 +232,7 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {unpaid && !checkoutRes && (
+      {unpaid && !checkoutRes && !quoteLocallyExpired && (
         <>
           <fieldset className="pay-methods">
             <legend>{t.payMethodTitle}</legend>
@@ -284,7 +292,7 @@ export function CheckoutPage() {
           </span>
         </div>
       )}
-      {order.state === "expired" && (
+      {(order.state === "expired" || quoteLocallyExpired) && (
         <p className="error" role="alert">
           {t.quoteExpired}
         </p>

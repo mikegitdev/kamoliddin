@@ -28,7 +28,7 @@ test.describe("staff moderation console", () => {
   test("reports tab renders the complaints queue", async () => {
     const page = await session.open();
     await page.goto("/staff");
-    await page.getByRole("button", { name: "Жалобы" }).click();
+    await page.getByRole("button", { name: "Жалобы", exact: true }).click();
     await expect(page.locator(".review-card").first()).toBeVisible({ timeout: 15_000 });
   });
 });

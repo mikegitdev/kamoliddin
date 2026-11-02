@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.http import Http404
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -26,6 +27,7 @@ from apps.placements.services import (
     CapacityExhausted,
     assert_capacity,
     cancel_order_placements,
+    max_active_ads,
     reserve_order_capacity,
 )
 
@@ -43,6 +45,10 @@ QUOTE_TTL = timedelta(hours=1)
 # ago). Older starts would be capacity-checked and priced against time that
 # can no longer be sold.
 QUOTE_START_GRACE = timedelta(minutes=15)
+# Spam guard: quotes are cheap to request and each Order row lives forever
+# (financial retention), so one owner may hold at most this many un-expired
+# drafts. Expired/checked-out drafts don't count.
+MAX_OPEN_DRAFT_QUOTES = 10
 
 
 class CheckoutError(Exception):
@@ -91,6 +97,13 @@ def create_quote(
         raise ValidationError(
             {"requested_end_at": "End must be after start"}, code="invalid_interval"
         )
+    if Order.objects.filter(
+        business__owner=user, state=Order.State.DRAFT_QUOTE
+    ).count() >= MAX_OPEN_DRAFT_QUOTES:
+        raise ValidationError(
+            {"detail": "Too many open quotes — check out or let them expire first"},
+            code="too_many_open_quotes",
+        )
     now = timezone.now()
     if requested_start_at < now - QUOTE_START_GRACE:
         raise ValidationError(
@@ -102,6 +115,11 @@ def create_quote(
             pk__in=location_ids, business=business, status=Location.Status.ACTIVE
         )
     )
+    if len(set(location_ids)) != len(location_ids):
+        raise ValidationError(
+            {"location_ids": "Duplicate location ids are not allowed"},
+            code="duplicate_locations",
+        )
     if len(locations) != len(set(location_ids)):
         raise ValidationError(
             {"location_ids": "Some locations are missing or inactive"},
@@ -112,6 +130,7 @@ def create_quote(
     # activate). Shared predicate with checkout/activation (ADR-0003):
     # PENDING reservations count; own non-overlapping terms never collide with
     # the overlap filter, so extensions of the same campaign work.
+    limit = max_active_ads()  # one setting read for the whole basket
     for location in locations:
         try:
             assert_capacity(
@@ -119,6 +138,7 @@ def create_quote(
                 start_at=requested_start_at,
                 end_at=requested_end_at,
                 lock=True,
+                limit=limit,
             )
         except CapacityExhausted as exc:
             raise ValidationError({"location_ids": str(exc)}, code="capacity_exhausted")
@@ -246,9 +266,11 @@ def create_checkout(*, user, order_id, return_url: str = "") -> tuple[PaymentAtt
         .first()
     )
     if order is None:
-        raise ValidationError({"order_id": "Order not found"})
+        raise CheckoutError("Order not found", code="not_found")
     if order.business.owner_id != user.id:
-        raise PermissionDenied("Not your order")
+        # 404, not 403: same shape as the owner-filtered list/detail views —
+        # a foreign order id is indistinguishable from a nonexistent one.
+        raise Http404
     if order.state == Order.State.PAID:
         raise CheckoutError("Order is already paid", code="order_already_paid")
     if order.state not in (Order.State.DRAFT_QUOTE, Order.State.AWAITING_PAYMENT):
@@ -315,7 +337,7 @@ def request_refund(*, user, order_id: str, reason: str) -> Refund:
     if order is None:
         raise RefundError("Order not found", code="not_found")
     if order.business.owner_id != user.id:
-        raise PermissionDenied("Not your order")
+        raise Http404  # uniform with owner-scoped querysets (see create_checkout)
     if order.state != Order.State.PAID:
         raise RefundError("Only paid orders can be refunded", code="refund_not_eligible")
     if order.campaign.review_status not in (

@@ -40,6 +40,29 @@ def test_compute_charge_days_rejects_bad_interval():
         compute_charge_days(now, now - timedelta(seconds=1))
 
 
+def test_open_draft_quote_cap_blocks_spam(owner, tariff, business, campaign, location):
+    """At most MAX_OPEN_DRAFT_QUOTES un-expired drafts per owner: quotes are
+    cheap to request and Order rows live forever (financial retention)."""
+    from apps.billing.services import MAX_OPEN_DRAFT_QUOTES
+
+    submit_for_review(campaign=campaign)
+    start = timezone.now() + timedelta(hours=1)
+    for _ in range(MAX_OPEN_DRAFT_QUOTES):
+        create_quote(
+            user=owner, business_id=business.id, campaign_id=campaign.id,
+            location_ids=[location.id],
+            requested_start_at=start, requested_end_at=start + timedelta(hours=24),
+        )
+
+    with pytest.raises(ValidationError) as exc:
+        create_quote(
+            user=owner, business_id=business.id, campaign_id=campaign.id,
+            location_ids=[location.id],
+            requested_start_at=start, requested_end_at=start + timedelta(hours=24),
+        )
+    assert exc.value.get_codes() == {"detail": "too_many_open_quotes"}
+
+
 def test_quote_total_is_rate_times_days_times_locations(owner, tariff, business, campaign,
                                                          location):
     submit_for_review(campaign=campaign)

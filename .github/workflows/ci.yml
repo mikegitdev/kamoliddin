@@ -73,6 +73,16 @@ jobs:
       - name: Build
         run: npm run build
 
+  docker:
+    # The shipped image installs requirements.txt (manually synced with
+    # pyproject) while CI tests via uv.lock — build it here so a broken
+    # Dockerfile or requirements drift surfaces in CI, not on the VPS.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build backend/
+
   api-contract:
     # OpenAPI schema + generated TS client must match the committed artifacts
     # (spec §12: generated client, no silent drift).

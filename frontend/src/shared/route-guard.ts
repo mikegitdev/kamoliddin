@@ -12,10 +12,35 @@ import { useBlocker } from "react-router-dom";
 import { confirmDialog } from "@/shared/dialog";
 import { useI18n } from "@/shared/i18n";
 
+// Count of currently-dirty mounted forms (see useDirtyRouteGuard).
+let dirtyForms = 0;
+function notifyDirty() {
+  /* reserved for subscribers; the switcher reads on change events */
+}
+function registerDirtyForm() {
+  dirtyForms += 1;
+  notifyDirty();
+}
+function unregisterDirtyForm() {
+  dirtyForms -= 1;
+  notifyDirty();
+}
+/** True when any mounted form has unsaved edits. */
+export function anyDirtyForms(): boolean {
+  return dirtyForms > 0;
+}
+
 export function useDirtyRouteGuard(when: boolean) {
   const { t } = useI18n();
   const allowNext = useRef(false);
   const resolving = useRef(false);
+  // Mirror the dirtiness into a module counter so NON-router actors (the
+  // business switcher remounts pages without a navigation) can warn too.
+  useEffect(() => {
+    if (!when) return;
+    registerDirtyForm();
+    return unregisterDirtyForm;
+  }, [when]);
   const blocker = useBlocker(() => {
     if (allowNext.current) {
       allowNext.current = false;

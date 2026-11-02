@@ -3,6 +3,7 @@
  *  MapHomePage); owns only presentation: radius chips, sort, load-more,
  *  empty/error states, and the origin controls (geolocation / pick on map). */
 import { useI18n, plural } from "@/shared/i18n";
+import { formatDistanceM } from "@/shared/format";
 import {
   NEARBY_RADIUS_OPTIONS,
   useNearbyAds,
@@ -111,7 +112,7 @@ export function NearbyAdsList({
                 aria-pressed={m === radius}
                 onClick={() => onRadiusChange(m)}
               >
-                {m >= 1000 ? `${m / 1000} км` : `${m} м`}
+                {formatDistanceM(m, locale)}
               </button>
             ))}
           </div>

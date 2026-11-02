@@ -20,11 +20,13 @@ const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER || "localads-backend
  */
 function purgeOtpQuota(phone: string) {
   // 1) Challenges: kill the 60s resend window + per-phone code quota.
+  //    Challenges store only the phone HASH (plaintext never persisted);
+  //    look up via the same digest the OTP service uses.
   execSync(`docker exec -i ${BACKEND_CONTAINER} python manage.py shell`, {
     stdio: "pipe",
     input:
-      "from apps.accounts.models import OTPChallenge\n" +
-      `OTPChallenge.objects.filter(phone_e164="${phone}").delete()`,
+      "from apps.accounts.services import _hash\n" +
+      `OTPChallenge.objects.filter(phone_hash=_hash("${phone}")).delete()`,
   });
   // 2) Scoped throttle counters (shared Redis, per-IP): back-to-back runs
   // would otherwise 429 on otp/verify from the same proxy IP.

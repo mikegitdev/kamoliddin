@@ -110,7 +110,11 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["business", "state"])]
+        indexes = [
+            models.Index(fields=["business", "state"]),
+            # Expiry sweeper: stale draft/awaiting orders by quote_expires_at.
+            models.Index(fields=["state", "quote_expires_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"Order {self.id} [{self.state}]"
@@ -221,7 +225,8 @@ class Refund(models.Model):
     )
     provider_ref = models.CharField(max_length=200, blank=True, default="")
     completed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # Indexed: the staff refund queue sorts by created_at on every load.
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self) -> str:
         return f"Refund {self.order_id} [{self.state}]"

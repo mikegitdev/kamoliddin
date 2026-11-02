@@ -404,6 +404,7 @@ class AdminPlacementSerializer(serializers.ModelSerializer):
     campaign_status = serializers.CharField(source="campaign.review_status",
                                             read_only=True)
     banner_url = serializers.SerializerMethodField()
+    banner_thumb_url = serializers.SerializerMethodField()
     location_id = serializers.UUIDField(source="location.id", read_only=True)
     location_name = serializers.CharField(source="location.name", read_only=True)
     business_id = serializers.UUIDField(source="campaign.business.id", read_only=True)
@@ -415,12 +416,20 @@ class AdminPlacementSerializer(serializers.ModelSerializer):
         model = Placement
         fields = ("id", "state", "source_type", "promotion_tier", "block_reason",
                   "start_at", "end_at", "charge_days", "order_id", "campaign_id",
-                  "campaign_headline", "campaign_status", "banner_url", "location_id",
+                  "campaign_headline", "campaign_status", "banner_url",
+                  "banner_thumb_url", "location_id",
                   "location_name", "business_id", "business_name", "visible", "created_at")
 
     def get_banner_url(self, obj) -> str:
         key = obj.campaign.banner_key
         return f"/media/{key}" if key else ""
+
+    def get_banner_thumb_url(self, obj) -> str:
+        from apps.core.media import banner_thumb_key
+
+        key = obj.campaign.banner_key
+        thumb = banner_thumb_key(key) if key else None
+        return f"/media/{thumb}" if thumb else ""
 
 
 class AdminPlacementListView(ListAPIView):

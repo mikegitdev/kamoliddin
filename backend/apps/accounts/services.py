@@ -98,49 +98,52 @@ def _deliver_via_telegram(phone: str, code: str, request_id: str) -> bool:
     return True
 
 
-@transaction.atomic
 def _issue_challenge(phone: str, purpose: str, channel: str = "auto") -> OTPChallenge:
     """Create+send an OTP challenge, enforcing quota/resend throttling."""
-    # Serialize quota checks for this phone+purpose across workers.
-    lock_digest = _hash(f"otp-request:{phone}:{purpose}")[:16]
-    lock_key_1 = int(lock_digest[:8], 16)
-    lock_key_2 = int(lock_digest[8:], 16)
-    if lock_key_1 >= 2**31:
-        lock_key_1 -= 2**32
-    if lock_key_2 >= 2**31:
-        lock_key_2 -= 2**32
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [lock_key_1, lock_key_2])
+    # Serialize quota checks for this phone+purpose across workers; commit the
+    # challenge row before any provider I/O — delivery latency (Telegram,
+    # SMS with retries) must never hold the advisory lock or pin a DB
+    # connection behind it.
+    with transaction.atomic():
+        lock_digest = _hash(f"otp-request:{phone}:{purpose}")[:16]
+        lock_key_1 = int(lock_digest[:8], 16)
+        lock_key_2 = int(lock_digest[8:], 16)
+        if lock_key_1 >= 2**31:
+            lock_key_1 -= 2**32
+        if lock_key_2 >= 2**31:
+            lock_key_2 -= 2**32
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [lock_key_1, lock_key_2])
 
-    now = timezone.now()
-    recent = OTPChallenge.objects.filter(
-        Q(phone_hash=_hash(phone), purpose=purpose),
-        created_at__gte=now - timedelta(hours=24),
-    )
-    if recent.count() >= DAILY_CODE_QUOTA:  # daily per-phone quota
-        raise OTPError("Too many codes requested today. Try again later.")
-    last = recent.order_by("-created_at").first()
-    if last and last.resend_after > now:
-        raise OTPError("The previous code was sent recently. Please wait.")
+        now = timezone.now()
+        recent = OTPChallenge.objects.filter(
+            Q(phone_hash=_hash(phone), purpose=purpose),
+            created_at__gte=now - timedelta(hours=24),
+        )
+        if recent.count() >= DAILY_CODE_QUOTA:  # daily per-phone quota
+            raise OTPError("Too many codes requested today. Try again later.")
+        last = recent.order_by("-created_at").first()
+        if last and last.resend_after > now:
+            raise OTPError("The previous code was sent recently. Please wait.")
 
-    code = f"{secrets.randbelow(10 ** settings.OTP_CODE_LENGTH):0{settings.OTP_CODE_LENGTH}d}"
-    challenge = OTPChallenge.objects.create(
-        phone_e164=phone,
-        phone_hash=_hash(phone),
-        code_hash=_hash(f"{phone}:{code}"),
-        purpose=purpose,
-        expires_at=now + timedelta(seconds=settings.OTP_CODE_TTL_SECONDS),
-        resend_after=now + timedelta(seconds=settings.OTP_RESEND_AFTER_SECONDS),
-    )
-    # Dev-only echo for the E2E suite (spec §9): stashed on the in-memory
-    # instance only — the DB keeps hashes, never plaintext. Double-gated:
-    # OTP_DEV_ECHO is defined solely in dev settings, and the provider must
-    # be the fake adapter. Prod can never satisfy either gate.
-    if settings.SMS_PROVIDER == "fake" and getattr(settings, "OTP_DEV_ECHO", False):
-        challenge.dev_code = code  # type: ignore[attr-defined]
-    # Login codes prefer the enrolled Telegram chat (free, reliable in UZ);
-    # SMS remains the forced fallback. Phone-change challenges prove
-    # ownership of a DIFFERENT number and never use Telegram (ADR-0006).
+        code = f"{secrets.randbelow(10 ** settings.OTP_CODE_LENGTH):0{settings.OTP_CODE_LENGTH}d}"
+        challenge = OTPChallenge.objects.create(
+            phone_hash=_hash(phone),
+            code_hash=_hash(f"{phone}:{code}"),
+            purpose=purpose,
+            expires_at=now + timedelta(seconds=settings.OTP_CODE_TTL_SECONDS),
+            resend_after=now + timedelta(seconds=settings.OTP_RESEND_AFTER_SECONDS),
+        )
+        # Dev-only echo for the E2E suite (spec §9): stashed on the in-memory
+        # instance only — the DB keeps hashes, never plaintext. Double-gated:
+        # OTP_DEV_ECHO is defined solely in dev settings, and the provider must
+        # be the fake adapter. Prod can never satisfy either gate.
+        if settings.SMS_PROVIDER == "fake" and getattr(settings, "OTP_DEV_ECHO", False):
+            challenge.dev_code = code  # type: ignore[attr-defined]
+    # Delivery runs after commit: Login codes prefer the enrolled Telegram
+    # chat (free, reliable in UZ); SMS remains the forced fallback.
+    # Phone-change challenges prove ownership of a DIFFERENT number and never
+    # use Telegram (ADR-0006).
     delivered = (
         purpose == OTPChallenge.Purpose.LOGIN
         and channel == "auto"
@@ -177,7 +180,7 @@ def _consume_challenge(phone: str, code: str, purpose: str) -> OTPChallenge:
     now = timezone.now()
     challenge = (
         OTPChallenge.objects.filter(
-            phone_e164=phone,
+            phone_hash=_hash(phone),
             purpose=purpose,
             consumed_at__isnull=True,
         )
@@ -215,9 +218,14 @@ def verify_otp(raw_phone: str, code: str) -> User:
             if _old_phone_block(phone):
                 invalid = OTPError("Invalid or expired code.")
             else:
-                user, _ = User.objects.get_or_create(
-                    phone_e164=phone, defaults={"is_active": True}
-                )
+                try:
+                    with transaction.atomic():  # savepoint vs concurrent first login
+                        user, _ = User.objects.get_or_create(
+                            phone_e164=phone, defaults={"is_active": True}
+                        )
+                except IntegrityError:
+                    # Lost the create race — the winner already made the row.
+                    user = User.objects.get(phone_e164=phone)
                 if not user.is_active or user.deleted_at:
                     invalid = OTPError("Account disabled.")
     if invalid is not None:
@@ -255,6 +263,7 @@ def complete_phone_change(user: User, raw_new_phone: str, code: str) -> User:
     """
     phone = normalize_phone(raw_new_phone)
     invalid: OTPError | None = None
+    taken: PhoneTakenError | None = None
     with transaction.atomic():
         try:
             _consume_challenge(phone, code, OTPChallenge.Purpose.PHONE_CHANGE)
@@ -271,16 +280,21 @@ def complete_phone_change(user: User, raw_new_phone: str, code: str) -> User:
                         user.phone_e164 = phone
                         user.save(update_fields=["phone_e164"])
                 except IntegrityError:
-                    raise PhoneTakenError("This phone number is already in use.")
-                PhoneChangeRecord.objects.create(
-                    user=user,
-                    old_phone_e164=old_phone,
-                    new_phone_e164=phone,
-                    old_phone_blocked_until=timezone.now()
-                    + timedelta(days=settings.PHONE_RECLAIM_BLOCK_DAYS),
-                )
+                    # Raised AFTER the block: raising here would roll back the
+                    # challenge consumption above (documented invariant).
+                    taken = PhoneTakenError("This phone number is already in use.")
+                else:
+                    PhoneChangeRecord.objects.create(
+                        user=user,
+                        old_phone_e164=old_phone,
+                        new_phone_e164=phone,
+                        old_phone_blocked_until=timezone.now()
+                        + timedelta(days=settings.PHONE_RECLAIM_BLOCK_DAYS),
+                    )
     if invalid is not None:
         raise invalid
+    if taken is not None:
+        raise taken
     return user
 
 
@@ -309,9 +323,14 @@ def bind_telegram_chat(token: str, chat_id: int) -> str:
 
     Returns the outcome key (see _TELEGRAM_REPLIES). Binding succeeds only
     when the user has no binding and the chat is not bound to another
-    account — signed tokens are per-user and one-time in effect, so a
-    forwarded link cannot steal anyone's chat (ADR-0006).
+    account — signed tokens are per-user and ONE-TIME (a forwarded link must
+    never hand the account's OTP delivery to whoever clicks it: the first
+    /start wins and burns the token; unbind requires a fresh link).
     """
+    import hashlib
+
+    from django.core.cache import cache
+
     from . import telegram as tg
 
     user = tg.resolve_bind_token(token)
@@ -319,10 +338,18 @@ def bind_telegram_chat(token: str, chat_id: int) -> str:
         return "invalid"
     if user.telegram_chat_id is not None:
         return "already"
+    # Atomic single-use mark: cache.add succeeds only for the first consumer.
+    digest = hashlib.sha256(token.strip().encode()).hexdigest()
+    if not cache.add(f"tg-bind-used:{digest}", 1, settings.TELEGRAM_BIND_TOKEN_TTL_SECONDS):
+        return "invalid"
     if User.objects.filter(telegram_chat_id=chat_id).exists():
         return "chat_taken"
     user.telegram_chat_id = chat_id
-    user.save(update_fields=["telegram_chat_id"])
+    try:
+        user.save(update_fields=["telegram_chat_id"])
+    except IntegrityError:
+        # Concurrent enrollment raced us onto this chat id.
+        return "chat_taken"
     return "bound"
 
 
@@ -361,7 +388,16 @@ def delete_account(user: User) -> None:
         Business.objects.filter(owner=user).update(status=Business.Status.DISABLED)
 
         old_phone = user.phone_e164
-        user.phone_e164 = _anonymized_phone()
+        # The +998000*** space is only 10^6 against unique(phone_e164): retry
+        # the astronomically-unlikely collision instead of 500-ing a
+        # destructive user action.
+        for _ in range(5):
+            candidate = _anonymized_phone()
+            if not User.objects.filter(phone_e164=candidate).exists():
+                user.phone_e164 = candidate
+                break
+        else:  # pragma: no cover — 5 collisions in a row
+            user.phone_e164 = f"+998000{uuid.uuid4().hex[:12]}"
         user.is_active = False
         user.deleted_at = now
         user.telegram_chat_id = None  # stop delivering codes to the deleted user's chat

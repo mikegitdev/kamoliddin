@@ -24,11 +24,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.businesses.models import Business
         from apps.campaigns.models import Campaign
+        from apps.core.media import banner_thumb_key
 
         cutoff = timezone.now() - timedelta(days=options["older_than_days"])
-        referenced = set(
+        banners = set(
             Campaign.objects.exclude(banner_key="").values_list("banner_key", flat=True)
         )
+        referenced = set(banners)
+        # Derived card thumbnails are alive exactly as long as their banner.
+        referenced |= {t for t in (banner_thumb_key(k) for k in banners) if t}
         referenced |= set(
             Business.objects.exclude(logo_key="").values_list("logo_key", flat=True)
         )

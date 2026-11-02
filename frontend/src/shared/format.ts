@@ -146,7 +146,6 @@ export function formatRelative(iso: string | null | undefined, locale: Locale = 
   return formatDateTime(iso, locale);
 }
 
-/** Meters -> "850 м" / "2,4 км" (search result cards). */
 /** Compact remaining time for live countdowns: "3 д 14 ч" / "3 kun 14 soat",
  *  switching to a ticking "HH:MM:SS" clock in the final 24h. Clamps at 0. */
 export function formatCountdown(msLeft: number, locale: Locale): string {
@@ -162,10 +161,16 @@ export function formatCountdown(msLeft: number, locale: Locale): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(totalSec % 60)}`;
 }
 
+const DISTANCE_UNITS: Record<Locale, { m: string; km: string }> = {
+  ru: { m: "м", km: "км" },
+  uz: { m: "m", km: "km" },
+};
+
 export function formatDistanceM(meters: number, locale: Locale = "ru"): string {
   const nf = new Intl.NumberFormat(NUMBER_LOCALE[locale], { maximumFractionDigits: 1 });
-  if (meters < 1000) return `${nf.format(Math.max(1, Math.round(meters)))} м`;
-  return `${nf.format(meters / 1000)} км`;
+  const units = DISTANCE_UNITS[locale];
+  if (meters < 1000) return `${nf.format(Math.max(1, Math.round(meters)))} ${units.m}`;
+  return `${nf.format(meters / 1000)} ${units.km}`;
 }
 
 /** Compact travel duration from minutes: "7 мин", "1 ч 20 мин"

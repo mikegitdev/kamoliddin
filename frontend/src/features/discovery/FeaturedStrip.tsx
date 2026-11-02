@@ -38,7 +38,7 @@ export function FeaturedStrip({
             className="featured-card"
           >
             <span className="featured-media">
-              <FallImg src={ad.banner_url} alt="" className="" />
+              <FallImg src={ad.banner_thumb_url || ad.banner_url} alt="" className="" />
               <span className="promo-badge top">TOP</span>
             </span>
             <span className="featured-body">

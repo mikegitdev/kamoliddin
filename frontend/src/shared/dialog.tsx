@@ -15,10 +15,15 @@ export function mountDialog(render: (close: () => void) => React.ReactNode): Pro
     const host = document.createElement("div");
     host.className = "dialog-backdrop";
     document.body.appendChild(host);
+    // Lock background scroll while the modal is open (native <dialog> does
+    // this; custom overlays must do it themselves).
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const root = createRoot(host);
     const close = () => {
       // Restore focus to the element that opened the dialog (WCAG 2.4.3).
       previouslyFocused?.focus();
+      document.body.style.overflow = prevOverflow;
       root.unmount();
       host.remove();
       resolve();
@@ -202,7 +207,7 @@ function ReportBody({ options, close }: { options: ReportOptions; close: () => v
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
+  }, [close, state]); // re-run on state: focus the Close button once "sent" mounts
 
   // Stable category keys (mirror Report.Category on the backend) so staff can
   // filter the queue; the label is only what the visitor sees.
@@ -323,6 +328,12 @@ export function RefundDialogBody({ t, onSubmit, close }: RefundDialogProps) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && close();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, close]);
 
   const presets = [t.refundReasonRejected];
   const reason = (note.trim() || preset).trim();

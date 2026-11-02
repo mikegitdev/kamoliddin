@@ -27,6 +27,11 @@ class PaymentAttempt(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        indexes = [
+            # Reconciliation sweep: PENDING attempts older than the stale
+            # threshold, and leg A's succeeded-but-unsettled scan.
+            models.Index(fields=["status", "updated_at"]),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["provider", "provider_payment_id"],
@@ -49,7 +54,9 @@ class PaymentEvent(models.Model):
         PaymentAttempt, on_delete=models.PROTECT, related_name="events", null=True, blank=True
     )
     validated_payload_digest = models.CharField(max_length=128)
-    received_at = models.DateTimeField(auto_now_add=True)
+    # Indexed: the admin payment-event log sorts the append-only table by
+    # received_at on every page load.
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         constraints = [

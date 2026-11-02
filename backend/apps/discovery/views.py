@@ -9,13 +9,14 @@ import base64
 import binascii
 import hashlib
 import json
+import math
 import uuid
 
 from django.contrib.gis.db.models.functions import Distance as GisDistanceFunc
 from django.contrib.gis.geos import Point as GisPoint
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
-from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -29,11 +30,19 @@ from rest_framework.views import APIView
 
 from apps.businesses.models import Business, BusinessCategory
 from apps.campaigns.models import Campaign, CampaignEvent
+from apps.core.media import banner_thumb_key
 from apps.core.serializers import DetailSerializer
 from apps.locations.models import Location
 from apps.placements.models import Placement, PromotionTier, eligible_now_q, promotion_active_q
 
 from . import serializers
+
+
+def _thumb_url(banner_key: str) -> str:
+    """Card-thumbnail URL ("" when the key has no derived variant)."""
+    thumb = banner_thumb_key(banner_key) if banner_key else None
+    return f"/media/{thumb}" if thumb else ""
+
 
 # Guards (spec §12): bbox size and response count bounds.
 MAX_BBOX_AREA = 1.0  # deg^2; roughly a ~100km square around Tashkent
@@ -117,17 +126,13 @@ def _active_ads_count(now):
     return Coalesce(Subquery(counts, output_field=IntegerField()), 0)
 
 
-def _preview_field(now, field: str):
-    """Deterministic per-location ad preview: the campaign field of the FIRST
-    eligible placement, ordered exactly like the location detail sheet
-    (promoted first, then start_at, pk) — the preview is always the first ad
-    a visitor sees when the pin opens. Same live eligibility predicate as the
-    count (spec §7.2). Both preview subqueries share this ordering, so
-    headline and banner are guaranteed to come from the same campaign."""
+def _promo_first_case(now):
+    """SQL tier key: TOP=0, RAISED=1, organic=2 — the shared display order of
+    every public surface (pin preview, branch sheet, nearby feed)."""
     from django.db.models import Case, Value, When
     from django.db.models import IntegerField as IntegerField_
 
-    promo_first = Case(
+    return Case(
         When(
             Q(promotion_tier=PromotionTier.TOP) & promotion_active_q(now),
             then=Value(0),
@@ -139,10 +144,19 @@ def _preview_field(now, field: str):
         default=Value(2),
         output_field=IntegerField_(),
     )
+
+
+def _preview_field(now, field: str):
+    """Deterministic per-location ad preview: the campaign field of the FIRST
+    eligible placement, ordered exactly like the location detail sheet
+    (promoted first, then start_at, pk) — the preview is always the first ad
+    a visitor sees when the pin opens. Same live eligibility predicate as the
+    count (spec §7.2). Both preview subqueries share this ordering, so
+    headline and banner are guaranteed to come from the same campaign."""
     return Subquery(
         Placement.objects.filter(location=OuterRef("pk"))
         .filter(eligible_now_q(now))
-        .annotate(_promo_first=promo_first)
+        .annotate(_promo_first=_promo_first_case(now))
         .order_by("_promo_first", "start_at", "pk")
         .values(field)[:1]
     )
@@ -168,15 +182,18 @@ def _relevance_annotation(q: str):
     )
 
 
-def _text_match_q(q: str):
-    """Text filter across location/business/approved-campaign headline."""
+def _text_match_q(q: str, now=None):
+    """Text filter across location/business/campaign headline.
+
+    The campaign branch requires a CURRENTLY eligible placement (not just
+    approval) via the shared predicate — a headline with zero live placements
+    must not surface the branch ("only currently-eligible content")."""
+    now = now or timezone.now()
+    eligible = eligible_now_q(now, prefix="business__campaigns__placements__")
     return (
         Q(name__icontains=q)
         | Q(business__name__icontains=q)
-        | Q(
-            business__campaigns__headline__icontains=q,
-            business__campaigns__review_status=Campaign.ReviewStatus.APPROVED,
-        )
+        | Q(business__campaigns__headline__icontains=q) & eligible
     )
 
 
@@ -230,11 +247,18 @@ class PublicLocationListView(ListAPIView):
             qs = qs.filter(business__category__slug=category)
         q = params.get("q")
         if q:
-            # Relevance first (tiered), then name for a stable secondary order
-            # (acceptance #12); unapproved campaign headlines never match.
-            qs = qs.filter(_text_match_q(q)).annotate(relevance=_relevance_annotation(q)).order_by(
-                "-relevance", "name"
-            ).distinct()
+            # A 1-char q mirrors the search endpoint (too short to match);
+            # anything past the 200-char headline cap can only burn ILIKE CPU.
+            q = q.strip()[:200]
+            if len(q) < 2:
+                qs = qs.none()
+            else:
+                # Relevance first (tiered), then name for a stable secondary
+                # order (acceptance #12); unapproved campaign headlines never
+                # match.
+                qs = qs.filter(_text_match_q(q, now)).annotate(
+                    relevance=_relevance_annotation(q)
+                ).order_by("-relevance", "name").distinct()
         else:
             qs = qs.order_by("name")
         try:
@@ -263,15 +287,16 @@ class PublicLocationDetailView(RetrieveAPIView):
     def get_object(self):
         location = super().get_object()
         now = timezone.now()
+        # Slice by the DISPLAY order (promo first, then start_at, pk) — an
+        # organic ad at an earlier start_at must never push a paid TOP ad out
+        # of the [:20] window, and the pin preview must agree with the sheet.
         active_placements = (
             Placement.objects.filter(location=location)
             .filter(eligible_now_q(now))
             .select_related("campaign", "campaign__business")
-            .order_by("start_at", "pk")[:20]
+            .annotate(_promo_first=_promo_first_case(now))
+            .order_by("_promo_first", "start_at", "pk")[:20]
         )
-        # Joymee-style visibility: promoted ads lead the branch sheet (TOP >
-        # RAISED > organic), the previous (start_at, pk) order preserved within
-        # each tier — the same block ordering the nearby feed uses.
         # Joymee-style visibility: promoted ads lead the branch sheet (TOP >
         # RAISED > organic), previous (start_at, pk) order preserved within each
         # tier — the same block ordering the nearby feed uses. Window semantics
@@ -282,15 +307,13 @@ class PublicLocationDetailView(RetrieveAPIView):
                 "headline": p.campaign.headline,
                 "body": p.campaign.body,
                 "banner_url": f"/media/{p.campaign.banner_key}",
+                "banner_thumb_url": _thumb_url(p.campaign.banner_key),
                 "business_name": p.campaign.business.name,
                 "starts_at": p.start_at,
                 "ends_at": p.end_at,
                 "promotion": p.promotion_tier if p.promotion_active(now) else None,
             }
-            for p in sorted(
-                active_placements,
-                key=lambda p: (-p.promotion_rank(now), p.start_at, p.pk),
-            )
+            for p in active_placements
         ]
         return location
 
@@ -320,7 +343,7 @@ class PublicCampaignDetailView(APIView):
             Placement.objects.filter(campaign_id=id)
             .filter(eligible_now_q(now))
             .select_related("campaign", "campaign__business", "location", "location__business")
-            .order_by("start_at")
+            .order_by("start_at", "pk")  # pk tiebreak: deterministic payload
         )
         first = placements.first()
         if first is None:
@@ -353,6 +376,7 @@ class PublicCampaignDetailView(APIView):
             "headline": campaign.headline,
             "body": campaign.body,
             "banner_url": f"/media/{campaign.banner_key}",
+            "banner_thumb_url": _thumb_url(campaign.banner_key),
             "business_name": campaign.business.name,
             "business_verified": campaign.business.is_verified,
             "starts_at": first.start_at,
@@ -395,7 +419,7 @@ class PublicSearchView(APIView):
         from django.contrib.gis.db.models.functions import Distance as GisDistance
         from django.contrib.gis.geos import Point as GisPoint
 
-        q = (request.query_params.get("q") or "").strip()
+        q = (request.query_params.get("q") or "").strip()[:200]
         if len(q) < 2:
             return Response({"locations": [], "campaigns": []})
         category = request.query_params.get("category")
@@ -419,14 +443,27 @@ class PublicSearchView(APIView):
         )
         if category:
             locations = locations.filter(business__category__slug=category)
-        try:
-            lat = float(request.query_params.get("lat"))
-            lon = float(request.query_params.get("lon"))
+        origin = None
+        raw_lat = request.query_params.get("lat")
+        raw_lon = request.query_params.get("lon")
+        if raw_lat is not None and raw_lon is not None:
+            try:
+                lat = float(raw_lat)
+                lon = float(raw_lon)
+            except ValueError:
+                raise ValidationError({"lat": "Expected numbers"})
+            if not (
+                math.isfinite(lat)
+                and math.isfinite(lon)
+                and -90 <= lat <= 90
+                and -180 <= lon <= 180
+            ):
+                raise ValidationError({"lat": "lat/lon out of range"})
             origin = GisPoint(lon, lat, srid=4326)
             locations = locations.annotate(distance=GisDistance("point", origin)).order_by(
                 "-relevance", "distance"
             )
-        except (TypeError, ValueError):
+        else:
             locations = locations.order_by("-relevance", "name")
         locations = locations[:20]
 
@@ -459,6 +496,7 @@ class PublicSearchView(APIView):
                         "headline": c.headline,
                         "business_name": c.business.name,
                         "banner_url": f"/media/{c.banner_key}" if c.banner_key else "",
+                        "banner_thumb_url": _thumb_url(c.banner_key),
                     }
                     for c in campaigns
                 ],
@@ -525,7 +563,7 @@ class PublicNearbyAdsView(APIView):
                 {"radius_m": f"Expected {NEARBY_MIN_RADIUS_M}..{NEARBY_MAX_RADIUS_M} meters"}
             )
 
-        q = (params.get("q") or "").strip()
+        q = (params.get("q") or "").strip()[:200]
         category = params.get("category")
         sort = params.get("sort") or ("relevance" if len(q) >= 2 else "distance")
         if sort not in ("distance", "relevance"):
@@ -726,12 +764,14 @@ class PublicFeaturedAdsView(APIView):
             )
         )
         # One card per campaign: the most recently promoted placement of each.
+        # created_at (not auto_now updated_at) as the checkout-add-on fallback:
+        # updated_at jumps on unrelated row touches (sweeps, admin edits).
         rows = list(
-            base.order_by("campaign_id", "-promotion_started_at", "-updated_at", "pk")
+            base.order_by("campaign_id", "-promotion_started_at", "-created_at", "pk")
             .distinct("campaign_id")[:limit]
         )
         rows.sort(
-            key=lambda p: (-(p.promotion_started_at or p.updated_at).timestamp(), p.pk)
+            key=lambda p: (-(p.promotion_started_at or p.created_at).timestamp(), p.pk)
         )
 
         try:
@@ -814,25 +854,22 @@ class PublicReportView(APIView):
     throttle_scope = "report"
 
     def post(self, request):
-        entity = request.data.get("entity", "")
-        entity_id = str(request.data.get("entity_id", ""))
-        reason = (request.data.get("reason") or "").strip()
-        if entity not in {"location", "campaign"} or not entity_id or not reason:
+        # The serializer IS the contract (OpenAPI declares it): run the request
+        # through it so a >2000-char reason 400s instead of being silently
+        # truncated past the declared maximum.
+        form = serializers.PublicReportRequestSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        entity = form.validated_data["entity"]
+        entity_id = str(form.validated_data["entity_id"])
+        reason = form.validated_data["reason"].strip()
+        if not reason:
             return Response(
                 {"error": {"code": "validation_error",
                            "message": "entity, entity_id and reason are required",
                            "fields": {}}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        from apps.moderation.models import Report
-
-        category = request.data.get("category") or Report.Category.OTHER
-        if category not in Report.Category.values:
-            return Response(
-                {"error": {"code": "validation_error", "message": "Unknown report category",
-                           "fields": {"category": "Not a valid choice"}}},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        category = form.validated_data["category"]
         # The referenced entity must exist — otherwise the public endpoint is a
         # spam sink (spec §12 rate-limited, but still garbage-in).
         try:
@@ -852,8 +889,10 @@ class PublicReportView(APIView):
         # Anonymous reports go to the moderation queue ONLY. ActivityEvent is
         # an append-only audit trail for privileged actions — public input must
         # not write into it (audit-log pollution / unbounded growth).
+        from apps.moderation.models import Report
+
         Report.objects.create(
-            entity=entity, entity_id=entity_id, category=category, reason=reason[:2000]
+            entity=entity, entity_id=entity_id, category=category, reason=reason
         )
         return Response({"detail": "Report received"}, status=status.HTTP_202_ACCEPTED)
 
@@ -882,4 +921,12 @@ class PublicCampaignEventView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         CampaignEvent.objects.create(campaign_id=id, kind=body.validated_data["kind"])
+        # Keep the campaign's denormalized counter in lockstep with the raw
+        # event row (atomic F() increment — concurrent events never lose one).
+        counter = (
+            "views_count"
+            if body.validated_data["kind"] == CampaignEvent.Kind.VIEW
+            else "contact_clicks_count"
+        )
+        Campaign.objects.filter(pk=id).update(**{counter: F(counter) + 1})
         return Response({"detail": "Event recorded"}, status=status.HTTP_202_ACCEPTED)

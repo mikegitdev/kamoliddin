@@ -7,7 +7,8 @@ test.describe("public map", () => {
     // Counts live in the results panel (collapsed pill on mobile shows them
     // too); the footer carries status + legend only.
     await expect(page.locator(".panel-count")).toContainText(
-      /точек|объявлен|nuqta|e'lon/,
+      // any Russian plural form of "точка" (63 точки / 117 точек / 21 точка)
+      /точ|nuqta/,
       { timeout: 20_000 },
     );
   });
@@ -15,7 +16,7 @@ test.describe("public map", () => {
   test("search filters the map data", async ({ page }) => {
     await page.goto("/");
     const counts = page.locator(".panel-count");
-    await expect(counts).toContainText(/точек|nuqta/, { timeout: 20_000 });
+    await expect(counts).toContainText(/точ|nuqta/, { timeout: 20_000 });
     await page.getByPlaceholder(/Поиск|Qidirish/).fill("пицц");
     await page.waitForTimeout(900); // 400ms debounce + request + render
     await expect(counts).toContainText(/Найдено|точ|nuqta/);
