@@ -197,6 +197,24 @@ export function useSession() {
   });
 }
 
+/** Backend release stamp (last commit touching backend/), carried by the
+ *  health probe — outside /api/v1, hence not in the OpenAPI client. */
+export interface ApiRelease {
+  sha: string;
+  date: string;
+  built_at: string;
+}
+
+export function useBackendRelease() {
+  return useQuery({
+    queryKey: ["health-release"],
+    queryFn: () => api<{ release?: ApiRelease }>("/health/"),
+    select: (d) => d.release,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 // ---------- Staff moderation (spec §12 admin block) ----------
 
 export function useCampaign(id: string | undefined) {

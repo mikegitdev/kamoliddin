@@ -83,6 +83,10 @@ fi
 
 # docker-mode invocation: compose network, backend/ mounted for autoreload,
 # env overrides point at the compose service names instead of localhost.
+# The container has no .git, so the /health/ release stamp is passed in
+# (captured at startup — restart dev.sh to refresh it).
+BACKEND_GIT_SHA="$(git log -1 --format=%h -- backend)"
+git diff --quiet HEAD -- backend || BACKEND_GIT_SHA="$BACKEND_GIT_SHA-dirty"
 docker_backend() {
   docker run --rm -i --name "$BACKEND_CONTAINER" --network local-ads_default \
     -p 8000:8000 \
@@ -90,6 +94,8 @@ docker_backend() {
     -e DATABASE_URL=postgis://localads:localads@db:5432/localads \
     -e REDIS_URL=redis://redis:6379/1 \
     -e CELERY_BROKER_URL=redis://redis:6379/0 \
+    -e APP_GIT_SHA="$BACKEND_GIT_SHA" \
+    -e APP_GIT_DATE="$(git log -1 --format=%cI -- backend)" \
     localads-backend:dev "$@"
 }
 

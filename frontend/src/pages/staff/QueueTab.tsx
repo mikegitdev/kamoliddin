@@ -78,7 +78,7 @@ export function QueueTab({
                 <strong>{c.headline}</strong>
                 <span className="chip orange">v{c.review_version}</span>
               </div>
-              <p className="muted-2 pre-wrap">{c.body}</p>
+              <p className="review-text pre-wrap">{c.body}</p>
               <div className="muted-2">
                 {c.business_name} · {c.owner_phone}
               </div>

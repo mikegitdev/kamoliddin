@@ -39,6 +39,16 @@ RUN useradd --system --uid 1000 app \
     && chown app:app /app/staticfiles /data
 USER app
 
+# Release stamp (last commit touching backend/), passed by deploy.sh via
+# compose build args and reported on /health/. Declared last so a new
+# commit never invalidates the pip layers above.
+ARG APP_GIT_SHA=""
+ARG APP_GIT_DATE=""
+ARG APP_BUILT_AT=""
+ENV APP_GIT_SHA=$APP_GIT_SHA \
+    APP_GIT_DATE=$APP_GIT_DATE \
+    APP_BUILT_AT=$APP_BUILT_AT
+
 EXPOSE 8000
 
 # No automatic migrations on startup (spec §15): run `manage.py migrate`

@@ -18,6 +18,14 @@ command -v git >/dev/null || { echo "git required" >&2; exit 1; }
 COMPOSE_FILE="infra/docker/docker-compose.prod.yml"
 COMPOSE="docker compose -f $COMPOSE_FILE --env-file $ENV_FILE"
 TAG="$(git rev-parse --short HEAD)" && export TAG
+# Release stamp baked into the backend image (/health/ "release"); the
+# frontend build stamps itself the same way (vite.config.ts). "-dirty" = an
+# uncommitted on-server edit (hotfix) went into the build.
+BACKEND_GIT_SHA="$(git log -1 --format=%h -- backend)"
+BACKEND_GIT_DATE="$(git log -1 --format=%cI -- backend)"
+git diff --quiet HEAD -- backend || BACKEND_GIT_SHA="$BACKEND_GIT_SHA-dirty"
+BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export BACKEND_GIT_SHA BACKEND_GIT_DATE BUILT_AT
 
 echo "==> 2/10 Off-server DB + object backup"
 BACKUP_TARGET="${BACKUP_TARGET:?}" ENV_FILE="$ENV_FILE" infra/scripts/backup.sh

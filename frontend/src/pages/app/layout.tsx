@@ -6,6 +6,7 @@ import { useSession } from "@/shared/api/queries";
 import { LanguageSwitcher, useI18n } from "@/shared/i18n";
 import { formatPhone } from "@/shared/format";
 import { toast } from "@/shared/toast";
+import { BuildStamp } from "@/shared/build-info";
 import { IconAlert, IconExternal, IconPin, IconUser } from "@/shared/icons";
 import { BusinessSwitcher, useSelectedBusinessId } from "@/features/advertiser/currentBusiness";
 
@@ -131,6 +132,7 @@ export function AdvertiserLayout() {
                 <button type="button" role="menuitem" onClick={logout}>
                   {t.logout}
                 </button>
+                <BuildStamp />
               </div>
             )}
           </div>

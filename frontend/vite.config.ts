@@ -1,5 +1,23 @@
+import { execSync } from "node:child_process";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
+
+/** Release stamp: the last commit that touched frontend/ ("-dirty" when
+ *  uncommitted edits were built in) + build time. Shown in the cabinet user
+ *  menu so a deployed hotfix can be confirmed. Builds without git → "unknown". */
+function buildInfo() {
+  const git = (args: string) =>
+    execSync(`git ${args}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  let sha = "unknown";
+  let date = "";
+  try {
+    [sha = "unknown", date = ""] = git("log -1 --format=%h%n%cI -- .").split("\n");
+    if (git("status --porcelain -- .")) sha += "-dirty";
+  } catch {
+    // no git (tarball build): keep "unknown"
+  }
+  return { sha, date, builtAt: new Date().toISOString() };
+}
 
 /** Absolutize og:image for link previews (Telegram & co. ignore relative
  *  URLs). Deployment sets VITE_SITE_URL (e.g. https://example.uz); without
@@ -24,6 +42,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "VITE_");
   return {
     plugins: [react(), absoluteOgImage(env.VITE_SITE_URL)],
+    define: {
+      __BUILD_INFO__: JSON.stringify(buildInfo()),
+    },
     resolve: {
       alias: {
         "@": new URL("./src", import.meta.url).pathname,
@@ -53,6 +74,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
         "/media": {
+          target: "http://localhost:8000",
+          changeOrigin: true,
+        },
+        // Release stamp lives on the health probe (nginx proxies it in prod).
+        "/health/": {
           target: "http://localhost:8000",
           changeOrigin: true,
         },

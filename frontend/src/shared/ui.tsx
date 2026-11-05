@@ -486,6 +486,9 @@ export function FallImg({
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
+  // Keyed by src so a new image fades in again; the ref catches images the
+  // browser already had cached (complete before React saw onLoad).
+  const [loadedSrc, setLoadedSrc] = useState<string>();
   useEffect(() => setFailed(false), [src]);
   if (!src || failed) {
     return (
@@ -496,10 +499,14 @@ export function FallImg({
   }
   return (
     <img
-      className={className}
+      ref={(el) => {
+        if (el?.complete && el.naturalWidth > 0) setLoadedSrc(src);
+      }}
+      className={`${className ?? ""} img-fade${loadedSrc === src ? " is-loaded" : ""}`.trim()}
       src={src}
       alt={alt}
       loading="lazy"
+      onLoad={() => setLoadedSrc(src)}
       onError={() => setFailed(true)}
     />
   );

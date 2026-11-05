@@ -14,3 +14,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Injected by vite.config.ts (`define`): last commit touching frontend/. */
+declare const __BUILD_INFO__: { sha: string; date: string; builtAt: string };
+
+// vite.config.ts shells out to git; the one Node API it needs is typed here
+// instead of pulling @types/node (whose timer types would leak into src/).
+declare module "node:child_process" {
+  export function execSync(
+    command: string,
+    options: { encoding: "utf8"; stdio: ("ignore" | "pipe")[] },
+  ): string;
+}

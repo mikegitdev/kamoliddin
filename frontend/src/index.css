@@ -103,6 +103,9 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Controls carry their own :active feedback; the gray WebKit tap flash
+     on top of it reads as a glitch. */
+  -webkit-tap-highlight-color: transparent;
 }
 ::selection {
   background: var(--primary-soft);
@@ -239,6 +242,8 @@ h3 {
   letter-spacing: -0.02em;
   margin: 0 0 6px;
   line-height: 1.25;
+  /* No lone last word on wrapped headings / paragraphs (RU/UZ run long). */
+  text-wrap: balance;
 }
 h1 {
   font-size: 1.6rem;
@@ -251,6 +256,7 @@ h3 {
 }
 p {
   margin: 0;
+  text-wrap: pretty;
 }
 a {
   color: var(--primary);
@@ -303,7 +309,7 @@ a:hover {
   line-height: 1.2;
   cursor: pointer;
   transition: background var(--motion-fast), border-color var(--motion-fast),
-    color var(--motion-fast);
+    color var(--motion-fast), transform var(--motion-fast) var(--ease-out);
   white-space: nowrap;
 }
 .btn:hover:not(:disabled) {
@@ -474,20 +480,32 @@ svg.ico {
   box-shadow: var(--shadow-xs);
   padding: 14px;
 }
+/* Report cards have no banner: the body must span the card, not sit in
+   the 300px banner column. */
+.review-card > .review-body:only-child {
+  grid-column: 1 / -1;
+}
 .review-banner {
-  /* Banners are 3:1 — a fixed height cropped their text. */
+  /* Banners are 3:1 — a fixed height cropped their text. Moderators must see
+     the whole upload, so off-ratio images letterbox instead of cropping. */
   width: 100%;
   height: auto;
   aspect-ratio: 3 / 1;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--fill);
 }
 .review-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+/* The ad copy under review is the thing being judged — full ink, not meta gray. */
+.review-text {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ink-2);
 }
 .review-body .row {
   margin-top: 6px;
@@ -1766,7 +1784,8 @@ img.rc-thumb {
 /* ---------- Callouts & feedback ---------- */
 .callout {
   background: var(--primary-soft);
-  border: 1px solid #dcef9c;
+  /* Warm edge of the brand yellow (was a leftover lime from the v1 palette). */
+  border: 1px solid #f6e38a;
   border-radius: var(--radius);
   padding: 13px 15px;
   color: var(--ink);
@@ -1799,6 +1818,15 @@ img.rc-thumb {
 .error {
   color: var(--danger);
   font-size: 0.9rem;
+}
+
+/* Remote images (FallImg) fade in once decoded instead of popping. */
+img.img-fade {
+  opacity: 0;
+  transition: opacity 0.3s var(--ease-out);
+}
+img.img-fade.is-loaded {
+  opacity: 1;
 }
 
 /* ---------- Skeletons ---------- */
@@ -2367,7 +2395,10 @@ img.rc-thumb {
   place-items: center;
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--bg);
+  /* A faint wash of the brand yellow from the top: warmer than bare white,
+     still flat (no shadows off the map). */
+  background: radial-gradient(70rem 32rem at 50% -8rem, var(--primary-soft), transparent 70%),
+    var(--bg);
   padding: 20px;
 }
 .login-card {
@@ -2375,6 +2406,7 @@ img.rc-thumb {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 26px;
+  animation: rise 0.45s var(--ease-out);
   /* 100%, not 94vw: the page already carries 20px gutters, so a vw width
      overflows the narrowest screens by twice the gutter. */
   width: min(410px, 100%);
@@ -2472,6 +2504,12 @@ img.rc-thumb {
    ============================================================ */
 .app-page {
   max-width: 1020px;
+}
+/* Each cabinet section settles in on open (the map has its own
+   choreography). No fill-mode: once done, no transform lingers to become
+   a containing block for fixed-position overlays inside the page. */
+.app-page > main > * {
+  animation: rise 0.32s var(--ease-out);
 }
 .app-header {
   display: flex;
@@ -3680,6 +3718,11 @@ img.rc-thumb {
   padding: 12px 14px;
   box-shadow: var(--shadow-xs);
   min-width: 0;
+  transition: border-color var(--motion-fast);
+}
+/* The whole card is the link target — let the edge say so, too. */
+.campaign-card:hover {
+  border-color: var(--border-2);
 }
 .campaign-card .thumb {
   width: 64px;
@@ -4054,35 +4097,48 @@ img.rc-thumb {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  /* Room for the hover lift + a slim scrollbar that doesn't shout. */
+  padding: 2px 0 8px;
   scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
 }
+/* Same card language as the feed below: hairline border, lift on hover. */
 .featured-card {
   flex: 0 0 220px;
   display: grid;
+  align-content: start;
   gap: 6px;
   scroll-snap-align: start;
   text-decoration: none;
   color: inherit;
-  border: 1px solid var(--control-border);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
+  transition: border-color var(--motion-fast),
+    transform var(--motion-fast) var(--ease-out);
 }
 .featured-card:hover {
-  border-color: var(--accent, #1f6feb);
+  color: inherit;
+  border-color: var(--border-2);
+  transform: translateY(-1px);
 }
+.featured-card:active {
+  transform: scale(0.985);
+}
+/* Banners are 3:1 artwork with text: show all of it, never crop. */
 .featured-media {
   position: relative;
   display: block;
-  aspect-ratio: 16 / 7;
+  aspect-ratio: 3 / 1;
   background: var(--surface-subtle);
 }
 .featured-media img,
 .featured-media .img-fallback {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 .featured-media .promo-badge {
@@ -4863,6 +4919,28 @@ section > label,
   display: grid;
   gap: 2px;
   z-index: 50;
+  transform-origin: top right;
+  animation: menu-in 0.18s var(--ease-out);
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+/* Release stamps (shared/build-info.tsx): deliberately quiet — for
+   "did the hotfix land?" checks, not for advertisers. */
+.user-menu-pop .build-stamp {
+  display: grid;
+  gap: 1px;
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  color: var(--muted-2);
+  white-space: nowrap;
+  user-select: all;
 }
 .user-menu-pop .user-menu-phone {
   padding: 8px 10px 6px;
